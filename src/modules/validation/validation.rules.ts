@@ -19,12 +19,12 @@ export const mvpValidationRules: ValidationRule[] = [
   {
     path: "parties.seller.name",
     required: true,
-    message: "İhracatçı firma zorunludur."
+    message: "Alıcı (gönderen) firma zorunludur."
   },
   {
     path: "parties.buyer.name",
     required: true,
-    message: "Alıcı firma zorunludur."
+    message: "Yurt dışı alıcı firma zorunludur."
   },
   {
     path: "goodsLines",

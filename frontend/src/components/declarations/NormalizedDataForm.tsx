@@ -75,7 +75,7 @@ export function NormalizedDataForm({
         <h4 style={{ margin: "0 0 0.5rem", fontSize: 13, color: "var(--muted)" }}>Taraflar</h4>
         <div className="grid-form">
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>İhracatçı (ad)</label>
+            <label>Alıcı (ad)</label>
             <input
               value={seller.name ?? ""}
               onChange={(e) =>
@@ -84,7 +84,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div>
-            <label>İhracatçı vergi no</label>
+            <label>Alıcı vergi no</label>
             <input
               value={seller.taxNo ?? ""}
               onChange={(e) =>
@@ -93,7 +93,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div>
-            <label>İhracatçı ülke</label>
+            <label>Alıcı ülke</label>
             <input
               value={seller.country ?? ""}
               onChange={(e) =>
@@ -102,7 +102,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>İhracatçı adres</label>
+            <label>Alıcı adres</label>
             <textarea
               rows={2}
               value={seller.address ?? ""}
@@ -112,7 +112,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Alıcı (ad)</label>
+            <label>Yurt dışı alıcı (ad)</label>
             <input
               value={buyer.name ?? ""}
               onChange={(e) =>
@@ -121,7 +121,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Alıcı adres</label>
+            <label>Yurt dışı alıcı adres</label>
             <textarea
               rows={2}
               value={buyer.address ?? ""}
@@ -131,7 +131,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div>
-            <label>Alıcı ülke</label>
+            <label>Yurt dışı alıcı ülke</label>
             <input
               value={buyer.country ?? ""}
               onChange={(e) =>

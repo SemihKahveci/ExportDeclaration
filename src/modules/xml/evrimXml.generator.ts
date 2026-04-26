@@ -1,6 +1,6 @@
 import { getByPath } from "../../common/utils/getByPath.js";
 import type { NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
-import { evrimXmlMapping } from "./evrimXml.mapping.js";
+import { beyannameXmlFields, packageXmlFields, weightXmlFields } from "./evrimXml.mapping.js";
 
 function escapeXml(s: string): string {
   return s
@@ -17,34 +17,67 @@ function formatScalar(value: unknown): string {
   return escapeXml(String(value));
 }
 
-export function generateEvrimXmlDraft(data: NormalizedDeclaration): string {
-  const headerTags: string[] = [];
-  for (const [xmlPath, dataPath] of Object.entries(evrimXmlMapping)) {
-    const raw = getByPath(data, dataPath);
-    const tagName = xmlPath.replaceAll(".", "_");
-    headerTags.push(`    <${tagName}>${formatScalar(raw)}</${tagName}>`);
-  }
+function formatNumber(value: unknown): string {
+  if (value === undefined || value === null || value === "") return "";
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return escapeXml(String(value));
+  return escapeXml(String(n));
+}
 
-  const goodsTags = data.goodsLines.map((item) => {
-    const line = [
-      `      <HSCode>${formatScalar(item.hsCode)}</HSCode>`,
-      `      <Description>${formatScalar(item.description)}</Description>`,
-      `      <Quantity>${formatScalar(item.quantity)}</Quantity>`,
-      `      <UnitPrice>${formatScalar(item.unitPrice)}</UnitPrice>`,
-      `      <LineTotal>${formatScalar(item.lineTotal)}</LineTotal>`
-    ].join("\n");
-    return `    <GoodsLine>\n${line}\n    </GoodsLine>`;
+function emitFields(fields: { xmlTag: string; path: string }[], data: NormalizedDeclaration, indent: string): string[] {
+  const lines: string[] = [];
+  for (const { xmlTag, path } of fields) {
+    const raw = getByPath(data, path);
+    lines.push(`${indent}<${xmlTag}>${formatScalar(raw)}</${xmlTag}>`);
+  }
+  return lines;
+}
+
+/**
+ * Doküman §9 taslağına uygun XML iskeleti:
+ * - Beyanname kökü altında başlık alanları
+ * - GoodsLines / GoodsLine (HSCode, Description, Quantity, UnitPrice; birim ve satır tutarı varsa)
+ * - Package / Weight blokları
+ */
+export function generateEvrimXmlDraft(data: NormalizedDeclaration): string {
+  const I2 = "  ";
+  const I4 = "    ";
+  const beyanLines = emitFields(beyannameXmlFields, data, I2);
+
+  const goodsLinesXml = data.goodsLines.map((item) => {
+    const inner = [
+      `${I4}<HSCode>${formatScalar(item.hsCode)}</HSCode>`,
+      `${I4}<Description>${formatScalar(item.description)}</Description>`,
+      `${I4}<Quantity>${formatNumber(item.quantity)}</Quantity>`,
+      `${I4}<UnitPrice>${formatNumber(item.unitPrice)}</UnitPrice>`
+    ];
+    if (item.unit) {
+      inner.push(`${I4}<Unit>${formatScalar(item.unit)}</Unit>`);
+    }
+    if (item.lineTotal !== undefined && item.lineTotal !== null) {
+      inner.push(`${I4}<LineTotal>${formatNumber(item.lineTotal)}</LineTotal>`);
+    }
+    return [`${I2}<GoodsLine>`, ...inner, `${I2}</GoodsLine>`].join("\n");
   });
 
-  return [
+  const packageInner = emitFields(packageXmlFields, data, I4);
+  const weightInner = emitFields(weightXmlFields, data, I4);
+
+  const parts = [
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<Beyanname xmlns="urn:evrim:draft">`,
-    `  <Header>`,
-    ...headerTags,
-    `  </Header>`,
+    ...beyanLines,
     `  <GoodsLines>`,
-    ...goodsTags,
+    ...goodsLinesXml,
     `  </GoodsLines>`,
+    `  <Package>`,
+    ...packageInner,
+    `  </Package>`,
+    `  <Weight>`,
+    ...weightInner,
+    `  </Weight>`,
     `</Beyanname>`
-  ].join("\n");
+  ];
+
+  return parts.join("\n");
 }
