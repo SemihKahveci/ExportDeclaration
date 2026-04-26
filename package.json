@@ -8,6 +8,7 @@
     "dev": "tsx watch backend/src/index.ts",
     "dev:api": "tsx watch backend/src/index.ts",
     "dev:web": "npm run dev --prefix frontend",
+    "build:web": "npm run build --prefix frontend",
     "build": "tsc",
     "prestart": "npm run build",
     "start": "node dist/index.js",
