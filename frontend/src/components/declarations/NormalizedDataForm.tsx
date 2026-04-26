@@ -112,7 +112,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Yurt dışı alıcı (ad)</label>
+            <label>Alıcı (ad)</label>
             <input
               value={buyer.name ?? ""}
               onChange={(e) =>
@@ -121,7 +121,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Yurt dışı alıcı adres</label>
+            <label>Alıcı adres</label>
             <textarea
               rows={2}
               value={buyer.address ?? ""}
@@ -131,7 +131,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div>
-            <label>Yurt dışı alıcı ülke</label>
+            <label>Alıcı ülke</label>
             <input
               value={buyer.country ?? ""}
               onChange={(e) =>
