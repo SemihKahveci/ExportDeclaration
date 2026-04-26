@@ -6,7 +6,13 @@ import { declarationRouter } from "./modules/declarations/declaration.routes.js"
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    allowedHeaders: ["Content-Type", "x-company-id", "x-user-id"]
+  })
+);
 app.use(express.json({ limit: "2mb" }));
 
 app.get("/health", (_req: Request, res: Response) => {

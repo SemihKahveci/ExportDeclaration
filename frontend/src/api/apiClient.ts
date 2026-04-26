@@ -2,7 +2,12 @@ const defaultBase = typeof window !== "undefined" ? "" : "http://localhost:3000"
 
 function baseUrl(): string {
   const b = import.meta.env.VITE_API_BASE;
-  return (b && String(b).trim() !== "" ? String(b) : defaultBase).replace(/\/$/, "");
+  let base = (b && String(b).trim() !== "" ? String(b) : defaultBase).replace(/\/$/, "");
+  // Netlify/.env'de bazen .../api yazılıyor; path'ler zaten /api/... ile başlıyor — çift /api/api önlenir.
+  if (base.endsWith("/api")) {
+    base = base.slice(0, -4);
+  }
+  return base;
 }
 
 function companyId(): string {
