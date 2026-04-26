@@ -21,6 +21,10 @@ declare global {
  * Üretimde değiştirilmeli: Authorization + firma üyeliği doğrulaması.
  */
 export function authContextMiddleware(req: Request, _res: Response, next: NextFunction): void {
+  if (req.method === "OPTIONS") {
+    next();
+    return;
+  }
   const companyHeader = req.header("x-company-id");
   const userHeader = req.header("x-user-id");
 
