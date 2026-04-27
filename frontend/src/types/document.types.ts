@@ -49,10 +49,6 @@ export interface NormalizedDeclaration {
   };
   transport: {
     mode?: string;
-    carrier?: string;
-    departureCustoms?: string;
-    containerNo?: string;
-    billOfLadingNo?: string;
   };
   packageInfo: {
     totalPackage?: number;

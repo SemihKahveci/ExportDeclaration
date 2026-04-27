@@ -18,7 +18,6 @@ export function NormalizedDataForm({
   const h = value.header;
   const seller = value.parties.seller ?? {};
   const buyer = value.parties.buyer ?? {};
-  const notify = value.parties.notify ?? {};
   const t = value.trade;
   const tr = value.transport;
   const p = value.packageInfo;
@@ -75,7 +74,7 @@ export function NormalizedDataForm({
         <h4 style={{ margin: "0 0 0.5rem", fontSize: 13, color: "var(--muted)" }}>Taraflar</h4>
         <div className="grid-form">
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Alıcı (ad)</label>
+            <label>Gönderici (ad)</label>
             <input
               value={seller.name ?? ""}
               onChange={(e) =>
@@ -84,7 +83,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div>
-            <label>Alıcı vergi no</label>
+            <label>Gönderici vergi no</label>
             <input
               value={seller.taxNo ?? ""}
               onChange={(e) =>
@@ -93,7 +92,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div>
-            <label>Alıcı ülke</label>
+            <label>Gönderici ülke</label>
             <input
               value={seller.country ?? ""}
               onChange={(e) =>
@@ -102,7 +101,7 @@ export function NormalizedDataForm({
             />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Alıcı adres</label>
+            <label>Gönderici adres</label>
             <textarea
               rows={2}
               value={seller.address ?? ""}
@@ -120,13 +119,12 @@ export function NormalizedDataForm({
               }
             />
           </div>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label>Alıcı adres</label>
-            <textarea
-              rows={2}
-              value={buyer.address ?? ""}
+          <div>
+            <label>Alıcı vergi no</label>
+            <input
+              value={buyer.taxNo ?? ""}
               onChange={(e) =>
-                onChange({ ...value, parties: { ...value.parties, buyer: { ...buyer, address: e.target.value } } })
+                onChange({ ...value, parties: { ...value.parties, buyer: { ...buyer, taxNo: e.target.value } } })
               }
             />
           </div>
@@ -140,11 +138,12 @@ export function NormalizedDataForm({
             />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
-            <label>Notify ad</label>
-            <input
-              value={notify.name ?? ""}
+            <label>Alıcı adres</label>
+            <textarea
+              rows={2}
+              value={buyer.address ?? ""}
               onChange={(e) =>
-                onChange({ ...value, parties: { ...value.parties, notify: { ...notify, name: e.target.value } } })
+                onChange({ ...value, parties: { ...value.parties, buyer: { ...buyer, address: e.target.value } } })
               }
             />
           </div>
@@ -181,34 +180,6 @@ export function NormalizedDataForm({
           <div>
             <label>Mod</label>
             <input value={tr.mode ?? ""} onChange={(e) => onChange({ ...value, transport: { ...tr, mode: e.target.value } })} />
-          </div>
-          <div>
-            <label>Taşıyıcı</label>
-            <input
-              value={tr.carrier ?? ""}
-              onChange={(e) => onChange({ ...value, transport: { ...tr, carrier: e.target.value } })}
-            />
-          </div>
-          <div>
-            <label>Çıkış gümrüğü</label>
-            <input
-              value={tr.departureCustoms ?? ""}
-              onChange={(e) => onChange({ ...value, transport: { ...tr, departureCustoms: e.target.value } })}
-            />
-          </div>
-          <div>
-            <label>Konteyner</label>
-            <input
-              value={tr.containerNo ?? ""}
-              onChange={(e) => onChange({ ...value, transport: { ...tr, containerNo: e.target.value } })}
-            />
-          </div>
-          <div>
-            <label>Konşimento no</label>
-            <input
-              value={tr.billOfLadingNo ?? ""}
-              onChange={(e) => onChange({ ...value, transport: { ...tr, billOfLadingNo: e.target.value } })}
-            />
           </div>
         </div>
       </section>

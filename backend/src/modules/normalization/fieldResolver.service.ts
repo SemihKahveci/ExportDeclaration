@@ -1,4 +1,5 @@
 import { getByPath } from "../../common/utils/getByPath.js";
+import { inferBuyerCountryFromAddressString } from "../../common/utils/inferBuyerCountryFromAddress.js";
 import type { DocumentTypeValue } from "../../common/enums/documentType.js";
 import type { ExtractedSource, FieldResolution, GoodsLine, NormalizedDeclaration } from "./normalizedDeclaration.types.js";
 import { goodsLineSourcePriority, sourcePriorityRules } from "./sourcePriority.rules.js";
@@ -125,10 +126,6 @@ export function buildNormalizedDeclaration(sources: ExtractedSource[]): {
     "trade.paymentType",
     "trade.origin",
     "transport.mode",
-    "transport.carrier",
-    "transport.departureCustoms",
-    "transport.containerNo",
-    "transport.billOfLadingNo",
     "packageInfo.totalPackage",
     "packageInfo.packageType",
     "packageInfo.grossKg",
@@ -140,6 +137,22 @@ export function buildNormalizedDeclaration(sources: ExtractedSource[]): {
   setPartyNested(normalized.parties, "seller", sources, trace);
   setPartyNested(normalized.parties, "buyer", sources, trace);
   setPartyNested(normalized.parties, "notify", sources, trace);
+
+  if (sources.length > 0) {
+    normalized.parties.seller ??= {};
+    normalized.parties.seller.country = "TÜRKİYE";
+    trace["parties.seller.country"] = { value: "TÜRKİYE", source: null };
+  }
+
+  const buyerAddr = normalized.parties.buyer?.address;
+  if (typeof buyerAddr === "string" && buyerAddr.trim() !== "") {
+    const guess = inferBuyerCountryFromAddressString(buyerAddr);
+    if (!isEmpty(guess)) {
+      normalized.parties.buyer ??= {};
+      normalized.parties.buyer.country = guess;
+      trace["parties.buyer.country"] = { value: guess, source: null };
+    }
+  }
 
   const { lines, source } = resolveGoodsLines(sources);
   normalized.goodsLines = lines;

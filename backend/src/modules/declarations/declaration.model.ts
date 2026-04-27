@@ -40,6 +40,7 @@ const DeclarationSchema = new Schema(
         },
         buyer: {
           name: String,
+          taxNo: String,
           address: String,
           country: String
         },
@@ -54,11 +55,7 @@ const DeclarationSchema = new Schema(
         origin: String
       },
       transport: {
-        mode: String,
-        carrier: String,
-        departureCustoms: String,
-        containerNo: String,
-        billOfLadingNo: String
+        mode: String
       },
       packageInfo: {
         totalPackage: Number,

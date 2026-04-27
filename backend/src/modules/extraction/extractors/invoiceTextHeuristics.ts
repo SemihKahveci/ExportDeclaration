@@ -3,6 +3,8 @@
  * Örnek: CLK2026000001021.pdf (IHRACAT / ISTISNA e-fatura metin katmanı) — kalem blokları "Karayolu" + GTİP ile biter.
  */
 
+import { inferBuyerCountryFromAddressString } from "../../../common/utils/inferBuyerCountryFromAddress.js";
+
 function parseAmount(raw: string): number | undefined {
   const s = raw.replace(/\s/g, "").replace(/[^\d.,-]/g, "");
   if (!s) return undefined;
@@ -236,25 +238,187 @@ function parseGoodsLinesSingleLine(text: string): ParsedGoodsLine[] {
   return goodsLines;
 }
 
-function extractBuyerSAYIN(text: string): string | undefined {
-  const m = text.match(
-    /SAYIN\s*\n+\s*([^\n]+(?:\n[^\n]+){0,3}?)(?=\n\s*ALSO|\n\s*Özelleştirme|\n\s*VKN:|\n\s*\/)/is
+/** Adres serbest metni; `Adres:` satırı (CLK PDF) adresin parçası — bitiş sayılmaz. */
+function lineClosesFreeformAddressAfterName(line: string): boolean {
+  const t = line.trim();
+  if (/^Adres\s*:/i.test(t)) return false;
+  return /^(?:Tel|Fax|Web\s*Sitesi|E-Posta|Vergi\s*Dairesi|VKN|TİCARESİCİLNO|TİCARETSİCİLNO|TICARETSICILNO|MERSISNO|MERSİSNO)\s*:/i.test(
+    t
   );
-  if (m?.[1]) {
-    return m[1]
-      .split(/\n/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(" ")
-      .replace(/\s{2,}/g, " ")
-      .slice(0, 240);
-  }
-  return undefined;
 }
 
-function extractSellerCelikel(text: string): string | undefined {
-  const m = text.match(/(Çelikel\s+Alüminyum[^\n]{5,220})/im);
-  return m?.[1]?.replace(/\s+/g, " ").trim().slice(0, 240);
+function normalizeInvoiceWhitespace(s: string): string {
+  return s.replace(/\u00a0/g, " ").replace(/\u2007/g, " ");
+}
+
+function trimLeadingPdfNoiseLines(lines: string[]): string[] {
+  let i = 0;
+  while (i < lines.length) {
+    const l = lines[i]!.trim();
+    if (!l) {
+      i++;
+      continue;
+    }
+    if (/^e\s*[-]?\s*fatura/i.test(l)) {
+      i++;
+      continue;
+    }
+    if (/^T\.C\.\s*/i.test(l) && /Hazine|Maliye|Gelir/i.test(l)) {
+      i++;
+      continue;
+    }
+    if (/^TASLAK$/i.test(l)) {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return lines.slice(i);
+}
+
+function extractVknFromText(block: string): string | undefined {
+  const t = normalizeInvoiceWhitespace(block);
+  const m =
+    t.match(/\bVKN\s*[:：]\s*(\d{10,11})\b/i) ??
+    t.match(/\bVKN\s*[.:]\s*(\d{10,11})\b/i) ??
+    t.match(/\bVKN\s+(\d{10,11})\b/i);
+  return m?.[1];
+}
+
+function isBuyerBlockTerminator(trimmedLine: string): boolean {
+  if (!trimmedLine) return false;
+  if (/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i.test(trimmedLine)) return true;
+  if (/^ETTN\s*:/i.test(trimmedLine)) return true;
+  if (/^Özelleştirme\s*No/i.test(trimmedLine)) return true;
+  if (/^Senaryo\s*:/i.test(trimmedLine)) return true;
+  if (/^Fatura\s*Türü/i.test(trimmedLine)) return true;
+  return false;
+}
+
+/**
+ * Alıcı: SAYIN sonrası (blok sonlandırıcıya kadar).
+ * Gönderici: çoğu PDF'te SAYIN öncesi; pdf-parse CLK örneğinde önce alıcı geliyor (SAYIN satırı 0) —
+ * o zaman gönderici "İrsaliye Tarihi:" sonrası, "e-FATURA" / "ETTN" / tablo öncesi.
+ */
+function extractSellerLinesWhenSayinIsFirst(lines: string[]): string[] {
+  if (lines.length < 2) return [];
+  let i = 1;
+  while (i < lines.length) {
+    if (isBuyerBlockTerminator(lines[i]!.trim())) break;
+    i++;
+  }
+  while (i < lines.length && !/^İrsaliye\s*Tarihi\s*:/i.test(lines[i]!.trim())) {
+    i++;
+  }
+  if (i >= lines.length) return [];
+  i += 1;
+  const start = i;
+  let end = start;
+  while (end < lines.length) {
+    const t = lines[end]!.trim();
+    if (/^e\s*[-]?\s*fatura/i.test(t)) break;
+    if (/^ETTN\s*:/i.test(t)) break;
+    if (/^Sıra\s*$/i.test(t)) break;
+    end++;
+  }
+  return lines.slice(start, end);
+}
+
+function splitEfaturaSellerBuyerLines(fullText: string): { sellerLines: string[]; buyerLines: string[] } | null {
+  const lines = fullText.replace(/\r\n/g, "\n").split("\n");
+  let sayinIdx = -1;
+  let buyerFirstFromSameLine: string | undefined;
+
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i]!.trim();
+    const inline = t.match(/^SAYIN\s+(.+)/i);
+    if (inline?.[1]?.trim()) {
+      sayinIdx = i;
+      buyerFirstFromSameLine = inline[1].trim();
+      break;
+    }
+    if (/^SAYIN\s*$/i.test(t)) {
+      sayinIdx = i;
+      break;
+    }
+  }
+  if (sayinIdx < 0) return null;
+
+  const sellerLines =
+    sayinIdx > 0 ? lines.slice(0, sayinIdx) : extractSellerLinesWhenSayinIsFirst(lines);
+  const after = lines.slice(sayinIdx + 1);
+  const buyerOut: string[] = [];
+  if (buyerFirstFromSameLine) buyerOut.push(buyerFirstFromSameLine);
+
+  let j = 0;
+  while (j < after.length && after[j]!.trim() === "") j++;
+  for (; j < after.length; j++) {
+    const raw = after[j]!;
+    const tr = raw.trim();
+    if (isBuyerBlockTerminator(tr)) break;
+    buyerOut.push(raw);
+  }
+
+  return { sellerLines, buyerLines: buyerOut };
+}
+
+function parseEfaturaPartyBlock(rawLines: string[]): { name?: string; address?: string; taxNo?: string } {
+  const nonEmpty = rawLines.map((l) => l.trim()).filter((l) => l.length > 0);
+  const lines = trimLeadingPdfNoiseLines(nonEmpty);
+  if (lines.length === 0) return {};
+
+  const blockText = normalizeInvoiceWhitespace(lines.join("\n"));
+  const taxNo = extractVknFromText(blockText);
+
+  let nameLine = lines[0]!;
+  const firmaM = nameLine.match(/^Firma\s*Adı\s*:\s*(.+)$/i);
+  if (firmaM?.[1]) nameLine = firmaM[1].trim();
+
+  let endAddr = lines.length;
+  for (let i = 1; i < lines.length; i++) {
+    if (lineClosesFreeformAddressAfterName(lines[i]!)) {
+      endAddr = i;
+      break;
+    }
+  }
+
+  const name = nameLine.replace(/\s+/g, " ").trim().slice(0, 240);
+  const addressParts: string[] = [];
+  for (let i = 1; i < endAddr; i++) {
+    let seg = normalizeInvoiceWhitespace(lines[i]!).trim();
+    const adm = seg.match(/^Adres\s*:\s*(.*)$/i);
+    if (adm) seg = adm[1]!.trim();
+    if (seg) addressParts.push(seg);
+  }
+  const address = addressParts.join(" ").replace(/\s{2,}/g, " ").trim().slice(0, 500);
+
+  return {
+    name: name || undefined,
+    address: address || undefined,
+    taxNo
+  };
+}
+
+function applyEfaturaParties(
+  parties: Record<string, Record<string, unknown>>,
+  text: string
+): void {
+  const split = splitEfaturaSellerBuyerLines(text);
+  if (!split) return;
+
+  const seller = parseEfaturaPartyBlock(split.sellerLines);
+  if (seller.name) parties.seller.name = seller.name;
+  if (seller.address) parties.seller.address = seller.address;
+  if (seller.taxNo) parties.seller.taxNo = seller.taxNo;
+
+  const buyer = parseEfaturaPartyBlock(split.buyerLines);
+  if (buyer.name) parties.buyer.name = buyer.name;
+  if (buyer.address) parties.buyer.address = buyer.address;
+  if (buyer.taxNo) parties.buyer.taxNo = buyer.taxNo;
+  if (buyer.address) {
+    const ctry = inferBuyerCountryFromAddressString(buyer.address);
+    if (ctry) parties.buyer.country = ctry;
+  }
 }
 
 export function extractFieldsFromInvoiceText(fullText: string): Record<string, unknown> {
@@ -298,11 +462,7 @@ export function extractFieldsFromInvoiceText(fullText: string): Record<string, u
 
   const parties: Record<string, Record<string, unknown>> = { seller: {}, buyer: {}, notify: {} };
 
-  const buyerFromSayin = extractBuyerSAYIN(text);
-  if (buyerFromSayin) parties.buyer.name = buyerFromSayin;
-
-  const sellerC = extractSellerCelikel(text);
-  if (sellerC) parties.seller.name = sellerC;
+  applyEfaturaParties(parties, text);
 
   const sellerLine =
     lineAfterLabel(text, /(?:Satıcı|Seller|Vendor|Tedarikçi|Gönderen)/i) ??

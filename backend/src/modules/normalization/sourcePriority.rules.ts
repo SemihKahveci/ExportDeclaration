@@ -18,6 +18,7 @@ export const sourcePriorityRules: Record<string, DocumentTypeValue[]> = {
 
   "parties.buyer": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
   "parties.buyer.name": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
+  "parties.buyer.taxNo": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
   "parties.buyer.address": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
   "parties.buyer.country": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
 
@@ -30,10 +31,6 @@ export const sourcePriorityRules: Record<string, DocumentTypeValue[]> = {
   "trade.origin": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
 
   "transport.mode": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "BILL_OF_LADING_INSTRUCTION"],
-  "transport.carrier": ["BILL_OF_LADING_INSTRUCTION", "INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "transport.departureCustoms": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "BILL_OF_LADING_INSTRUCTION"],
-  "transport.containerNo": ["BILL_OF_LADING_INSTRUCTION", "INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "transport.billOfLadingNo": ["BILL_OF_LADING_INSTRUCTION", "INVOICE", "E_INVOICE_XML"],
 
   "packageInfo.totalPackage": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PACKING_LIST"],
   "packageInfo.packageType": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PACKING_LIST"],
