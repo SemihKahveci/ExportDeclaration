@@ -12,11 +12,12 @@ export function resolveField(path: string, extractedSources: ExtractedSource[]):
   const priorities = sourcePriorityRules[path] ?? [];
 
   for (const sourceType of priorities) {
-    const source = extractedSources.find((x) => x.type === sourceType);
-    const value = getByPath(source?.data, path);
-
-    if (!isEmpty(value)) {
-      return { value: value as unknown, sourceType };
+    const matches = extractedSources.filter((x) => x.type === sourceType);
+    for (const source of matches) {
+      const value = getByPath(source.data, path);
+      if (!isEmpty(value)) {
+        return { value: value as unknown, sourceType };
+      }
     }
   }
 
@@ -43,11 +44,13 @@ function setPartyNested(
 
 function resolveGoodsLines(sources: ExtractedSource[]): { lines: GoodsLine[]; source: DocumentTypeValue | null } {
   for (const sourceType of goodsLineSourcePriority) {
-    const source = sources.find((x) => x.type === sourceType);
-    const raw = source?.data?.goodsLines;
-    if (Array.isArray(raw) && raw.length > 0) {
-      const lines = raw.map((row, idx) => normalizeGoodsLine(row as Record<string, unknown>, idx + 1));
-      return { lines, source: sourceType };
+    const matches = sources.filter((x) => x.type === sourceType);
+    for (const source of matches) {
+      const raw = source.data?.goodsLines;
+      if (Array.isArray(raw) && raw.length > 0) {
+        const lines = raw.map((row, idx) => normalizeGoodsLine(row as Record<string, unknown>, idx + 1));
+        return { lines, source: sourceType };
+      }
     }
   }
   return { lines: [], source: null };

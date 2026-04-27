@@ -297,8 +297,8 @@ function isBuyerBlockTerminator(trimmedLine: string): boolean {
 
 /**
  * Alıcı: SAYIN sonrası (blok sonlandırıcıya kadar).
- * Gönderici: çoğu PDF'te SAYIN öncesi; pdf-parse CLK örneğinde önce alıcı geliyor (SAYIN satırı 0) —
- * o zaman gönderici "İrsaliye Tarihi:" sonrası, "e-FATURA" / "ETTN" / tablo öncesi.
+ * Gönderici: çoğu PDF'te SAYIN öncesi; SAYIN ilk satırsa (IHR vb.) metinde gönderici genelde alıcıdan sonra —
+ * önce "İrsaliye Tarihi:", yoksa "Fatura Tarihi:" satırının hemen ardından, "e-FATURA" / "ETTN" / tablo öncesi.
  */
 function extractSellerLinesWhenSayinIsFirst(lines: string[]): string[] {
   if (lines.length < 2) return [];
@@ -307,16 +307,32 @@ function extractSellerLinesWhenSayinIsFirst(lines: string[]): string[] {
     if (isBuyerBlockTerminator(lines[i]!.trim())) break;
     i++;
   }
-  while (i < lines.length && !/^İrsaliye\s*Tarihi\s*:/i.test(lines[i]!.trim())) {
-    i++;
+  /** Blok sonlandırıcı hiç yoksa (seyrek PDF), yine de Fatura Tarihi aranır. */
+  const scanFrom = i < lines.length ? i : 1;
+  let anchor = -1;
+  const irsaliyeRe = /^\s*İrsaliye\s*Tarihi\s*:/i;
+  const faturaTarihiRe = /^\s*Fatura\s*Tarihi\s*:/i;
+  for (let j = scanFrom; j < lines.length; j++) {
+    if (irsaliyeRe.test(lines[j]!)) {
+      anchor = j + 1;
+      break;
+    }
   }
-  if (i >= lines.length) return [];
-  i += 1;
-  const start = i;
+  if (anchor < 0) {
+    for (let j = scanFrom; j < lines.length; j++) {
+      if (faturaTarihiRe.test(lines[j]!)) {
+        anchor = j + 1;
+        break;
+      }
+    }
+  }
+  if (anchor < 0 || anchor >= lines.length) return [];
+  const start = anchor;
   let end = start;
   while (end < lines.length) {
     const t = lines[end]!.trim();
     if (/^e\s*[-]?\s*fatura/i.test(t)) break;
+    if (/\be\s*[-]?\s*fatura\b/i.test(t)) break;
     if (/^ETTN\s*:/i.test(t)) break;
     if (/^Sıra\s*$/i.test(t)) break;
     end++;
