@@ -78,7 +78,7 @@ def extract_description_from_words(words, product_code):
             continue
 
         # Product code description içine girmesin
-        if product_code and normalize_text(product_code) in upper:
+        if product_code and normalize_code(product_code) == normalize_code(text):
             continue
 
         if upper in ORIGINS:
