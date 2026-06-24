@@ -9,6 +9,15 @@ DELIVERY_TERMS = [
     "FAS", "CPT", "CIP"
 ]
 
+STOP_DESCRIPTION_WORDS = {
+    "VERGI", "VERGİ",
+    "MUAFIYET", "MUAFİYET",
+    "ODEME", "ÖDEME",
+    "KOSULU", "KOŞULU",
+    "ACIKLAMALAR", "AÇIKLAMALAR",
+    "TOPLAM",
+}
+
 TRANSPORT_MODES = {
     "KARAYOLU": "Karayolu",
     "KARAYOLU:": "Karayolu",
@@ -42,8 +51,8 @@ QUANTITY_UNITS = [
 
 ORIGINS = {
     "GERMANY", "MOROCCO", "U.K", "UK",
-    "TURKEY", "TURKIYE", "TÜRKİYE",
-    "FRANCE", "ITALY", "INDIA", "POLAND", "CHINA"
+    "TURKEY", "TURKIYE", "TURKIYE",
+    "FRANCE", "ITALY", "INDIA", "POLAND", "CHINA",
 }
 
 def repair_quantity_by_amount_and_price(quantity, unit_price, amount):
@@ -120,7 +129,8 @@ def extract_description_from_words(words, product_code):
             continue
         if re.fullmatch(r"\d{1,3}", upper):
             continue
-
+        if upper in STOP_DESCRIPTION_WORDS:
+            break
         desc_words.append(text)
 
     description = " ".join(desc_words)
@@ -129,7 +139,7 @@ def extract_description_from_words(words, product_code):
     return description or None
 
 def normalize_text(text):
-    return (text or "").strip().upper().replace("İ", "I")
+    return (text or "").strip().upper().replace("İ", "I").replace("Ü", "U").replace("Ş", "S").replace("Ğ", "G").replace("Ö", "O").replace("Ç", "C")
 
 def find_nearby_words(words, y0, y_range=45):
     return [w for w in words if abs(w["y0"] - y0) <= y_range]
@@ -188,7 +198,7 @@ def parse_tr_number(value):
 
 def extract_line_number_and_code(text):
     match = re.search(
-        r"(?:(\d{1,3}))?\s*(AG\.[A-Z]{2,5}\.[A-Z0-9]+)",
+        r"(?:(\d{1,3})\s+)?((?:[A-Z]{2,5}\.)+[A-Z0-9]+(?:\.[A-Z0-9]+)*)",
         text or "",
         re.IGNORECASE
     )
@@ -204,7 +214,12 @@ def split_product_codes(full_code):
         return None, None
 
     full_code = full_code.upper()
-    short_code = full_code.split(".")[-1]
+
+    if full_code.startswith("AG."):
+        short_code = full_code.split(".")[-1]
+    else:
+        short_code = full_code
+
     return full_code, short_code
 
 def extract_product_codes(words):
@@ -503,7 +518,7 @@ def find_product_word(words, product_code):
 
 
 def find_next_product_y(words, current_y):
-    product_pattern = r"AG\.?\s*[A-Z]{2,5}\.?\s*[A-Z0-9]+"
+    product_pattern = r"(?:[A-Z]{2,5}\.)+[A-Z0-9]+(?:\.[A-Z0-9]+)*"
 
     candidates = [
         w for w in words
