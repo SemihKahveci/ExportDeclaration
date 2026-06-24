@@ -40,7 +40,11 @@ QUANTITY_UNITS = [
     "MT"
 ]
 
-ORIGINS = {"GERMANY", "MOROCCO", "U.K", "UK", "TURKEY", "TURKIYE", "TÜRKİYE"}
+ORIGINS = {
+    "GERMANY", "MOROCCO", "U.K", "UK",
+    "TURKEY", "TURKIYE", "TÜRKİYE",
+    "FRANCE", "ITALY", "INDIA", "POLAND", "CHINA"
+}
 
 def repair_quantity_by_amount_and_price(quantity, unit_price, amount):
     q = parse_tr_number(quantity)
@@ -58,6 +62,30 @@ def repair_quantity_by_amount_and_price(quantity, unit_price, amount):
 
     return quantity, True
 
+def normalize_code(text):
+    return normalize_text(text).replace("-", "").replace(".", "").replace(" ", "")
+
+def build_description_column(columns):
+    product_col = columns.get("PRODUCT")
+    qty_col = columns.get("QTY")
+
+    if product_col and qty_col:
+        return {
+            "xMin": product_col["xMin"] + 70,
+            "xMax": qty_col["xMin"] - 5,
+        }
+
+    if qty_col:
+        return {
+            "xMin": 120,
+            "xMax": qty_col["xMin"] - 5,
+        }
+
+    return {
+        "xMin": 120,
+        "xMax": 430,
+    }
+
 def extract_description_from_words(words, product_code):
     desc_words = []
 
@@ -74,7 +102,11 @@ def extract_description_from_words(words, product_code):
             continue
 
         # Headerları alma
-        if "MALZEME" in upper or "HIZMET" in upper or "AÇIKLAMA" in upper or "ACIKLAMA" in upper:
+        if upper in {
+            "MALZEME", "HIZMET", "HİZMET", "KODU",
+            "AÇIKLAMASI", "ACIKLAMASI", "AÇIKLAMA", "ACIKLAMA",
+            "SATIR"
+        }:
             continue
 
         # Product code description içine girmesin
@@ -155,7 +187,11 @@ def parse_tr_number(value):
         return None
 
 def extract_line_number_and_code(text):
-    match = re.search(r"(?:(\d{1,3}))?\s*(AG\.EAT\.\d+)", text or "", re.IGNORECASE)
+    match = re.search(
+        r"(?:(\d{1,3}))?\s*(AG\.[A-Z]{2,5}\.[A-Z0-9]+)",
+        text or "",
+        re.IGNORECASE
+    )
     if not match:
         return None, None
 
@@ -163,19 +199,27 @@ def extract_line_number_and_code(text):
     product_code = match.group(2).upper()
     return line_no, product_code
 
-def extract_product_code(words):
+def split_product_codes(full_code):
+    if not full_code:
+        return None, None
+
+    full_code = full_code.upper()
+    short_code = full_code.split(".")[-1]
+    return full_code, short_code
+
+def extract_product_codes(words):
     joined = " ".join(w["text"].strip() for w in words)
 
     _, code = extract_line_number_and_code(joined)
     if code:
-        return code
+        return split_product_codes(code)
 
     for w in words:
         text = w["text"].strip()
         if re.fullmatch(r"\d{5,10}", text):
-            return text
+            return text, text
 
-    return None
+    return None, None
 
 def split_joined_quantity_price(text):
     text = normalize_text(text)
@@ -459,7 +503,7 @@ def find_product_word(words, product_code):
 
 
 def find_next_product_y(words, current_y):
-    product_pattern = r"AG\.?\s*EAT\.?\s*\d+"
+    product_pattern = r"AG\.?\s*[A-Z]{2,5}\.?\s*[A-Z0-9]+"
 
     candidates = [
         w for w in words
@@ -497,7 +541,8 @@ def extract_items(paddle_all, gtip_result):
         y = g["y0"]
 
         same_line = sorted(find_nearby_words(words, y, 55), key=lambda w: w["x0"])
-        product_code = extract_product_code(same_line)
+        product_code_full, product_code_short = extract_product_codes(same_line)
+        product_code = product_code_short
         currency = find_currency(same_line)
         delivery_term = find_delivery_term(same_line)
         transport_mode = find_transport_mode(same_line)
@@ -548,9 +593,10 @@ def extract_items(paddle_all, gtip_result):
 
         # Description columundaki kutular y ekseninde tasabilir
         row_words = get_description_row_words(words, product_code, y)
+
         description = extract_description_from_words(row_words, product_code)
-    
-        columns = detect_columns(row_words)
+
+        columns = detect_columns(words)
 
         boxes = {
             "gtip": [g["x0"], g["y0"], g["x1"], g["y1"]] if g.get("x1") else None,
@@ -562,7 +608,9 @@ def extract_items(paddle_all, gtip_result):
 
         item = {
             "lineNo": idx,
-            "productCode": product_code,
+            "productCode": product_code_short,
+            "productCodeFull": product_code_full,
+            "productCodeShort": product_code_short,
             "currency": currency,
             "deliveryTerm": delivery_term,
             "transportMode": transport_mode,
