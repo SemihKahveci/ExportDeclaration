@@ -5,6 +5,7 @@ import { errorHandler } from "./common/middlewares/errorHandler.js";
 import { buildCorsOptions } from "./config/corsOptions.js";
 import { env } from "./config/env.js";
 import { declarationRouter } from "./modules/declarations/declaration.routes.js";
+import { gtipQueryRouter } from "./modules/gtip-query/gtipQuery.routes.js";
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.use("/api/declarations", authContextMiddleware, declarationRouter);
+app.use("/api/gtip-query", authContextMiddleware, gtipQueryRouter);
 
 app.use(errorHandler);
 

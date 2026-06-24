@@ -5,6 +5,7 @@ interface UploadBoxProps {
   title?: string;
   hint?: string;
   multiple?: boolean;
+  accept?: string;
   onFiles: (files: File[]) => void;
 }
 
@@ -12,6 +13,7 @@ export default function UploadBox({
   title = 'Dosya yüklemek için tıklayın veya sürükleyin',
   hint = 'PDF, DOCX, XLSX — maks. 20 MB',
   multiple = false,
+  accept,
   onFiles,
 }: UploadBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -68,6 +70,7 @@ export default function UploadBox({
         ref={inputRef}
         type="file"
         multiple={multiple}
+        accept={accept}
         className="hidden"
         onChange={onChange}
       />

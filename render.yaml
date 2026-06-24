@@ -1,0 +1,28 @@
+# Render Web Service — Node API + Python invoice parser
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: export-declaration-api
+    runtime: node
+    plan: starter
+    buildCommand: >-
+      npm install &&
+      npm run build &&
+      pip3 install --user -r backend/scripts/invoice_parser/requirements.txt
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: INVOICE_PARSER_ENABLED
+        value: "true"
+      - key: INVOICE_PARSER_PYTHON
+        value: python3
+      - key: INVOICE_PARSER_DIR
+        value: backend/scripts/invoice_parser
+      - key: UPLOAD_DIR
+        value: /tmp/uploads
+      - key: MONGODB_URI
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

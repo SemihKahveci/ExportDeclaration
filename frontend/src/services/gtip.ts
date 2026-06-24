@@ -2,6 +2,7 @@ import type {
   GtipEntry, MaterialCustomer, MaterialRecord,
   GtipDeclaration, GtipQueryResult, GtipPageStats,
 } from '../types';
+import { parseInvoiceForGtipQuery } from '../api/gtipQueryApi';
 import { delay } from './utils';
 
 const GTIP_ENTRIES: GtipEntry[] = [
@@ -259,35 +260,6 @@ const GTIP_DECLARATIONS: GtipDeclaration[] = [
   },
 ];
 
-// ─── GTİP Hazırlık – query results data ──────────────────────────────────────
-
-const INITIAL_QUERY_RESULTS: GtipQueryResult[] = [
-  {
-    id: 'qr-001',
-    materialNo: 'MLZ-100701',
-    description: 'Elektronik kontrol kartı',
-    foundGtip: '8537.10.91.00.00',
-    status: 'Bulundu',
-    approvalStatus: 'Onaylı',
-  },
-  {
-    id: 'qr-002',
-    materialNo: 'MLZ-100990',
-    description: 'Paslanmaz çelik iç tank',
-    foundGtip: '7310.29.90.00.00',
-    status: 'Bulundu',
-    approvalStatus: 'Onaylı',
-  },
-  {
-    id: 'qr-003',
-    materialNo: 'MLZ-100888',
-    description: 'Özel plastik parça',
-    foundGtip: '—',
-    status: 'Operasyon Girişi Gerekli',
-    approvalStatus: 'Giriş Bekliyor',
-  },
-];
-
 const GTIP_PAGE_STATS: GtipPageStats = {
   pendingRequests:     18,
   declarationControl:  9,
@@ -296,7 +268,7 @@ const GTIP_PAGE_STATS: GtipPageStats = {
   mismatchedRecords:   3,
 };
 
-// ─── Müşteri GTİP Sorgulama (Kapanış tab) ────────────────────────────────────
+// ─── Müşteri GTİP Sorgulama ───────────────────────────────────────────────────
 
 export interface CustomerGtipRequest {
   id: string;
@@ -307,32 +279,7 @@ export interface CustomerGtipRequest {
   createdAt: string;
 }
 
-const CUSTOMER_GTIP_REQUESTS: CustomerGtipRequest[] = [
-  {
-    id: 'cgr-001',
-    customer: 'Arçelik A.Ş.',
-    source: 'Mail',
-    requestStatus: 'Yeni Talep',
-    manualList: 'MLZ-100701 Elektronik kontrol kartı\nMLZ-100990 Paslanmaz çelik iç tank',
-    createdAt: '27.05.2026',
-  },
-  {
-    id: 'cgr-002',
-    customer: 'Ford Otosan',
-    source: 'WhatsApp',
-    requestStatus: 'Operasyon Bekliyor',
-    manualList: 'MLZ-200118 Metal bağlantı aparatı',
-    createdAt: '26.05.2026',
-  },
-  {
-    id: 'cgr-003',
-    customer: 'Vestel Ticaret',
-    source: 'Sistem',
-    requestStatus: 'Tamamlandı',
-    manualList: 'MLZ-300145 Etiket baskılı kumaş\nMLZ-300201 Plastik askı',
-    createdAt: '25.05.2026',
-  },
-];
+const CUSTOMER_GTIP_REQUESTS: CustomerGtipRequest[] = [];
 
 export const gtipService = {
   list: async (): Promise<GtipEntry[]> => {
@@ -360,7 +307,7 @@ export const gtipService = {
   },
   getInitialQueryResults: async (): Promise<GtipQueryResult[]> => {
     await delay(80);
-    return INITIAL_QUERY_RESULTS.map((r) => ({ ...r }));
+    return [];
   },
   getCustomerQueryRequests: async (): Promise<CustomerGtipRequest[]> => {
     await delay(80);
@@ -368,7 +315,28 @@ export const gtipService = {
   },
   getCustomerQueryResults: async (): Promise<GtipQueryResult[]> => {
     await delay(80);
-    return INITIAL_QUERY_RESULTS.map((r) => ({ ...r }));
+    return [];
+  },
+  parseInvoicePdf: async (file: File): Promise<{
+    results: GtipQueryResult[];
+    meta: { fileName: string; pdfType: string; itemCount: number };
+  }> => {
+    const data = await parseInvoiceForGtipQuery(file);
+    return {
+      meta: {
+        fileName: data.fileName,
+        pdfType: data.pdfType,
+        itemCount: data.itemCount,
+      },
+      results: data.results.map((r) => ({
+        id: r.id,
+        materialNo: r.materialNo,
+        description: r.description,
+        foundGtip: r.foundGtip,
+        status: r.status,
+        approvalStatus: r.approvalStatus,
+      })),
+    };
   },
   getPageStats: async (): Promise<GtipPageStats> => {
     await delay(60);

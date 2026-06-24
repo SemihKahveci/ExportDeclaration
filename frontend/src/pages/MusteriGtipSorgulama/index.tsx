@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Search, Send, Plus, Loader2 } from 'lucide-react';
-import type { GtipQueryResult, QueryResultStatus, QueryApprovalStatus } from '../../types';
+import type { GtipQueryResult, MaterialCustomer, QueryResultStatus, QueryApprovalStatus } from '../../types';
 import { gtipService } from '../../services/gtip';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
@@ -11,6 +11,7 @@ import Pill from '../../components/ui/Pill';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
 import GtipRecordDrawer from '../GtipHazirlik/GtipRecordDrawer';
+import { ApiError } from '../../api/apiClient';
 
 function queryStatusVariant(v: QueryResultStatus): 'ok' | 'warn' {
   return v === 'Bulundu' ? 'ok' : 'warn';
@@ -26,19 +27,30 @@ export default function MusteriGtipSorgulamaPage() {
   const { toast } = useToast();
 
   const [loading, setLoading]             = useState(true);
+  const [parsing, setParsing]             = useState(false);
   const [results, setResults]             = useState<GtipQueryResult[]>([]);
-  const [customer, setCustomer]           = useState('Arçelik A.Ş.');
+  const [customers, setCustomers]         = useState<MaterialCustomer[]>([]);
+  const [customer, setCustomer]           = useState('');
   const [requestSource, setRequestSource] = useState('Mail');
   const [requestStatus, setRequestStatus] = useState('Yeni Talep');
-  const [manualList, setManualList]       = useState(
-    'MLZ-100701 Elektronik kontrol kartı\nMLZ-100990 Paslanmaz çelik iç tank'
-  );
+  const [manualList, setManualList]       = useState('');
+  const [lastParseMeta, setLastParseMeta] = useState<{
+    fileName: string;
+    pdfType: string;
+    itemCount: number;
+  } | null>(null);
+  const [uploadedFile, setUploadedFile]   = useState<File | null>(null);
   const [drawerOpen, setDrawerOpen]       = useState(false);
   const [drawerTarget, setDrawerTarget]   = useState<GtipQueryResult | null>(null);
 
   useEffect(() => {
-    gtipService.getCustomerQueryResults().then((r) => {
+    Promise.all([
+      gtipService.getCustomerQueryResults(),
+      gtipService.getCustomers(),
+    ]).then(([r, c]) => {
       setResults(r);
+      setCustomers(c);
+      if (c.length > 0) setCustomer(c[0].name);
       setLoading(false);
     });
   }, []);
@@ -49,6 +61,38 @@ export default function MusteriGtipSorgulamaPage() {
       ?? null;
     setDrawerTarget(target);
     setDrawerOpen(true);
+  }
+
+  async function handleGtipQuery() {
+    if (!uploadedFile) {
+      toast('Önce PDF fatura yükleyin');
+      return;
+    }
+    if (!uploadedFile.name.toLowerCase().endsWith('.pdf') && uploadedFile.type !== 'application/pdf') {
+      toast('GTİP sorgusu için PDF dosyası gerekli');
+      return;
+    }
+
+    setParsing(true);
+    try {
+      const { results: parsed, meta } = await gtipService.parseInvoicePdf(uploadedFile);
+      if (parsed.length === 0) {
+        toast('PDF içinde GTİP kalemi bulunamadı');
+        return;
+      }
+      setResults(parsed);
+      setLastParseMeta(meta);
+      toast(`${meta.fileName}: ${meta.itemCount} kalem (${meta.pdfType})`);
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'GTİP sorgusu başarısız';
+      toast(msg);
+    } finally {
+      setParsing(false);
+    }
   }
 
   function handleSaveRecord(materialNo: string, description: string, gtipNo: string) {
@@ -120,9 +164,12 @@ export default function MusteriGtipSorgulamaPage() {
               <div className="mb-4">
                 <UploadBox
                   title="Liste / Doküman Yükle"
-                  hint="Malzeme listesi, Excel, PDF veya görsel"
+                  hint="Fatura PDF — maks. 25 MB"
+                  accept="application/pdf,.pdf"
                   onFiles={(files) => {
-                    if (files.length) toast(files[0].name + ' yüklendi');
+                    const file = files[0] ?? null;
+                    setUploadedFile(file);
+                    if (file) toast(`${file.name} seçildi`);
                   }}
                 />
               </div>
@@ -134,11 +181,9 @@ export default function MusteriGtipSorgulamaPage() {
                     value={customer}
                     onChange={(e) => setCustomer(e.target.value)}
                   >
-                    <option>Arçelik A.Ş.</option>
-                    <option>Ford Otosan</option>
-                    <option>Vestel Ticaret</option>
-                    <option>BSH Ev Aletleri</option>
-                    <option>Eczacıbaşı</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
                   </Select>
                 </Field>
 
@@ -180,14 +225,17 @@ export default function MusteriGtipSorgulamaPage() {
                 <div className="flex gap-2.5 pt-1">
                   <Button
                     variant="blue"
-                    icon={Search}
-                    onClick={() => toast('GTİP sorgulama tamamlandı')}
+                    icon={parsing ? Loader2 : Search}
+                    disabled={parsing || !uploadedFile}
+                    className={parsing ? '[&_svg]:animate-spin' : ''}
+                    onClick={handleGtipQuery}
                   >
-                    GTİP Sorgulat
+                    {parsing ? 'Sorgulanıyor…' : 'GTİP Sorgulat'}
                   </Button>
                   <Button
                     variant="primary"
                     icon={Send}
+                    disabled={results.length === 0}
                     onClick={() => toast('Sorgu sonucu müşteriye gönderildi')}
                   >
                     Sonucu Müşteriye Gönder
@@ -201,42 +249,52 @@ export default function MusteriGtipSorgulamaPage() {
           <Card>
             <CardHead
               title="Sorgu Sonuçları"
-              sub="Müşteri bazlı GTİP / Malzeme kayıtlarından karşılanır"
+              sub={
+                lastParseMeta
+                  ? `${lastParseMeta.fileName} · ${lastParseMeta.itemCount} kalem · ${lastParseMeta.pdfType}`
+                  : 'Yüklenen faturadan çıkarılan malzeme ve GTİP kayıtları'
+              }
               actions={
                 <Button variant="primary" icon={Plus} size="sm" onClick={openDrawer}>
                   GTİP Kaydı Ekle
                 </Button>
               }
             />
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Malzeme No</Th>
-                  <Th>Tanım</Th>
-                  <Th>Bulunan GTİP</Th>
-                  <Th>Durum</Th>
-                  <Th>Onay Durumu</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r) => (
-                  <Tr
-                    key={r.id}
-                    className={r.approvalStatus === 'Giriş Bekliyor' ? '!bg-warn-tint' : undefined}
-                  >
-                    <Td><span className="font-mono text-[13px]">{r.materialNo}</span></Td>
-                    <Td><span className="text-[13px]">{r.description}</span></Td>
-                    <Td>
-                      <span className={`font-mono text-[13px] ${r.foundGtip === '—' ? 'text-muted' : ''}`}>
-                        {r.foundGtip}
-                      </span>
-                    </Td>
-                    <Td><Pill variant={queryStatusVariant(r.status)}>{r.status}</Pill></Td>
-                    <Td><Pill variant={approvalVariant(r.approvalStatus)}>{r.approvalStatus}</Pill></Td>
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
+            {results.length === 0 ? (
+              <div className="px-6 py-16 text-center text-[13px] text-muted">
+                Henüz sorgu sonucu yok. PDF yükleyip &quot;GTİP Sorgulat&quot; butonuna basın.
+              </div>
+            ) : (
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Malzeme No</Th>
+                    <Th>Tanım</Th>
+                    <Th>Bulunan GTİP</Th>
+                    <Th>Durum</Th>
+                    <Th>Onay Durumu</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((r) => (
+                    <Tr
+                      key={r.id}
+                      className={r.approvalStatus === 'Giriş Bekliyor' ? '!bg-warn-tint' : undefined}
+                    >
+                      <Td><span className="font-mono text-[13px]">{r.materialNo}</span></Td>
+                      <Td><span className="text-[13px]">{r.description}</span></Td>
+                      <Td>
+                        <span className={`font-mono text-[13px] ${r.foundGtip === '—' ? 'text-muted' : ''}`}>
+                          {r.foundGtip}
+                        </span>
+                      </Td>
+                      <Td><Pill variant={queryStatusVariant(r.status)}>{r.status}</Pill></Td>
+                      <Td><Pill variant={approvalVariant(r.approvalStatus)}>{r.approvalStatus}</Pill></Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
           </Card>
         </div>
       )}
