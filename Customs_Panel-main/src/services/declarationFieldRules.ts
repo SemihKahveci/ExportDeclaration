@@ -1,0 +1,235 @@
+import type { DeclarationFieldRule } from '../types';
+import { delay } from './utils';
+
+export const FIELD_GROUPS: { label: string; fields: string[] }[] = [
+  {
+    label: 'Genel Beyan Bilgileri',
+    fields: [
+      'Beyanname No',
+      'Referans No',
+      'Tescil Tarihi',
+      'Rejim',
+      'Rejim Kodu',
+      'Gümrük İdaresi',
+      'Beyan Sahibi / Temsilci',
+      'İşlem Niteliği',
+      'Beyan Türü',
+    ],
+  },
+  {
+    label: 'Taraf Bilgileri',
+    fields: [
+      'Gönderici / İhracatçı Ünvanı',
+      'Gönderici / İhracatçı Adresi',
+      'Alıcı / İthalatçı Ünvanı',
+      'Alıcı / İthalatçı Adresi',
+      'Mali Müşavir / Temsilci Bilgisi',
+    ],
+  },
+  {
+    label: 'Ülke ve Teslimat Bilgileri',
+    fields: [
+      'Gönderici Ülke',
+      'Alıcı Ülke',
+      'Çıkış Ülkesi',
+      'Varış Ülkesi',
+      'Gideceği Ülke',
+      'Menşe Ülke',
+      'Ticaret Yapılan Ülke',
+      'Teslim Şekli',
+    ],
+  },
+  {
+    label: 'Taşıma Bilgileri',
+    fields: [
+      'Taşıma Şekli',
+      'Taşıyıcı / Nakliyeci',
+      'Çıkış Aracı',
+      'Sınır Geçiş Aracı',
+      'Plaka',
+      'Konteyner No',
+      'Konşimento No',
+      'CMR No',
+      'AWB No',
+      'Özet Beyan No',
+      'Taşıma Senedi No',
+    ],
+  },
+  {
+    label: 'Fatura ve Kıymet Bilgileri',
+    fields: [
+      'Fatura No',
+      'Fatura Tarihi',
+      'Döviz Cinsi',
+      'Toplam Fatura Bedeli',
+      'Döviz Kuru',
+      'İstatistiki Kıymet',
+      'Navlun',
+      'Sigorta',
+      'Ödeme Şekli',
+      'Finansal / Banka Bilgisi',
+    ],
+  },
+  {
+    label: 'Kap ve Ağırlık Bilgileri',
+    fields: [
+      'Kap Adedi',
+      'Kap Cinsi',
+      'Brüt Kilo',
+      'Net Kilo',
+    ],
+  },
+  {
+    label: 'Kalem / Malzeme Bilgileri',
+    fields: [
+      'Kalem No',
+      'Malzeme No',
+      'GTİP No',
+      'Ticari Tanım',
+      'Eşyanın Cinsi',
+      'Mal Tanımı',
+      'Miktar',
+      'Miktar Birimi',
+      'Kalem Menşe',
+      'Kalem Brüt KG',
+      'Kalem Net KG',
+      'Kalem Kıymet',
+      'Kalem Döviz Cinsi',
+    ],
+  },
+  {
+    label: 'Rejim / Muafiyet / Ek Bilgiler',
+    fields: [
+      'Muafiyet Kodu',
+      'Ek Kod',
+      'Ölçü Birimi',
+      'Antrepo Kodu',
+      'Önceki Belge No',
+      'Dolaşım Belgesi No',
+      'Menşe Belgesi No',
+      'Açıklama / Not Alanı',
+    ],
+  },
+];
+
+export const SOURCE_DOCUMENT_OPTIONS: string[] = [
+  'Fatura',
+  'Çeki Listesi',
+  'CMR',
+  'Konşimento',
+  'AWB',
+  'Booking',
+  'Dolaşım Belgesi',
+  'Menşe Şahadetnamesi',
+  'Müşteri Kartı',
+  'Müşteri Adres Kaydı',
+  'GTİP Veri Tabanı',
+  'Manuel Giriş',
+];
+
+export const CONFLICT_ACTION_OPTIONS: string[] = [
+  'Ana kaynak öncelikli',
+  'Kullanıcıya göster',
+  'Müşteriye sor',
+  'Manuel karar iste',
+];
+
+// ─── Mock data ────────────────────────────────────────────────────────────────
+
+const DECL_FIELD_RULES: DeclarationFieldRule[] = [
+  {
+    id: 'dfr-001',
+    customerId: 'valeo',
+    fieldGroup: 'Taraf Bilgileri',
+    fieldName: 'Gönderici / İhracatçı Ünvanı',
+    primarySource: 'Fatura',
+    fallbackSource: 'Müşteri Kartı',
+    conflictAction: 'Kullanıcıya göster',
+    status: 'Aktif',
+    description: 'Faturadaki gönderici ünvanı önceliklidir; eksikse müşteri kartına bakılır.',
+  },
+  {
+    id: 'dfr-002',
+    customerId: 'valeo',
+    fieldGroup: 'Taraf Bilgileri',
+    fieldName: 'Alıcı / İthalatçı Adresi',
+    primarySource: 'Müşteri Adres Kaydı',
+    fallbackSource: 'Fatura',
+    conflictAction: 'Ana kaynak öncelikli',
+    status: 'Aktif',
+    description: '',
+  },
+  {
+    id: 'dfr-003',
+    customerId: 'valeo',
+    fieldGroup: 'Taşıma Bilgileri',
+    fieldName: 'CMR No',
+    primarySource: 'CMR',
+    fallbackSource: 'Fatura',
+    conflictAction: 'Ana kaynak öncelikli',
+    status: 'Aktif',
+    description: 'CMR numarası CMR belgesinden okunur.',
+  },
+  {
+    id: 'dfr-004',
+    customerId: 'valeo',
+    fieldGroup: 'Kalem / Malzeme Bilgileri',
+    fieldName: 'GTİP No',
+    primarySource: 'GTİP Veri Tabanı',
+    fallbackSource: 'Fatura',
+    conflictAction: 'Kullanıcıya göster',
+    status: 'Aktif',
+    description: 'GTİP numarası önce veri tabanından alınır, bulunamazsa faturaya bakılır.',
+  },
+  {
+    id: 'dfr-005',
+    customerId: 'valeo',
+    fieldGroup: 'Fatura ve Kıymet Bilgileri',
+    fieldName: 'Toplam Fatura Bedeli',
+    primarySource: 'Fatura',
+    fallbackSource: 'Manuel Giriş',
+    conflictAction: 'Manuel karar iste',
+    status: 'Aktif',
+    description: '',
+  },
+  {
+    id: 'dfr-006',
+    customerId: 'valeo',
+    fieldGroup: 'Kap ve Ağırlık Bilgileri',
+    fieldName: 'Brüt Kilo',
+    primarySource: 'Çeki Listesi',
+    fallbackSource: 'CMR',
+    conflictAction: 'Kullanıcıya göster',
+    status: 'Pasif',
+    description: 'Çeki listesi yoksa CMR kullanılır.',
+  },
+  {
+    id: 'dfr-007',
+    customerId: 'valeo',
+    fieldGroup: 'Genel Beyan Bilgileri',
+    fieldName: 'Referans No',
+    primarySource: 'Müşteri Kartı',
+    fallbackSource: 'Fatura',
+    conflictAction: 'Ana kaynak öncelikli',
+    status: 'Aktif',
+    description: '',
+  },
+  {
+    id: 'dfr-008',
+    customerId: 'valeo',
+    fieldGroup: 'Ülke ve Teslimat Bilgileri',
+    fieldName: 'Teslim Şekli',
+    primarySource: 'Fatura',
+    fallbackSource: '',
+    conflictAction: 'Ana kaynak öncelikli',
+    status: 'Aktif',
+    description: '',
+  },
+];
+
+export const declarationFieldRulesService = {
+  getRules: async (customerId: string): Promise<DeclarationFieldRule[]> => {
+    await delay(70);
+    return DECL_FIELD_RULES.filter((r) => r.customerId === customerId).map((r) => ({ ...r }));
+  },
+};

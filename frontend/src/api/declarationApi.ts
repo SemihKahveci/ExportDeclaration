@@ -1,5 +1,5 @@
 import { apiGetBlob, apiGetJson, apiPatchJson, apiPostJson } from "./apiClient";
-import type { Declaration, ValidationResult } from "@/types/declaration.types";
+import type { Declaration, ValidationResult } from "@/api/types/declaration.types";
 
 export async function listDeclarations(): Promise<Declaration[]> {
   return apiGetJson<Declaration[]>("/api/declarations");
