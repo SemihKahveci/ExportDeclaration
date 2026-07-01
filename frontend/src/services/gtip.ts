@@ -1,9 +1,39 @@
 import type {
   GtipEntry, MaterialCustomer, MaterialRecord,
   GtipDeclaration, GtipQueryResult, GtipPageStats,
+  CustomerListItem,
 } from '../types';
 import { parseInvoiceForGtipQuery } from '../api/gtipQueryApi';
+import {
+  bulkCreateMaterialRecords,
+  createMaterialRecord,
+  deleteMaterialRecord,
+  downloadMaterialRecordTemplate,
+  getCustomerRecordCounts,
+  importMaterialRecordsExcel,
+  listMaterialRecords,
+  patchMaterialRecord,
+  type CreateMaterialRecordPayload,
+  type MaterialRecordImportResult,
+} from '../api/materialRecordApi';
+import { customersService } from './customers';
 import { delay } from './utils';
+
+function parseCityFromMeta(meta?: string): string {
+  if (!meta) return '—';
+  const part = meta.split(' · ')[0]?.trim();
+  return part || '—';
+}
+
+function toMaterialCustomer(c: CustomerListItem, recordCount: number): MaterialCustomer {
+  return {
+    id: c.id,
+    name: c.name,
+    initials: c.initials,
+    city: parseCityFromMeta(c.meta),
+    recordCount,
+  };
+}
 
 const GTIP_ENTRIES: GtipEntry[] = [
   {
@@ -37,110 +67,6 @@ const GTIP_ENTRIES: GtipEntry[] = [
     description: 'Dökme demir atıkları ve hurdaları',
     unit: 'kg',
     taxRate: 0,
-  },
-];
-
-const CUSTOMERS: MaterialCustomer[] = [
-  { id: 'arcelik',    name: 'Arçelik A.Ş.',    initials: 'AR', city: 'İstanbul',  recordCount: 124 },
-  { id: 'vestel',     name: 'Vestel Ticaret',   initials: 'VE', city: 'Manisa',    recordCount: 89  },
-  { id: 'bsh',        name: 'BSH Ev Aletleri',  initials: 'BS', city: 'Çerkezköy', recordCount: 67  },
-  { id: 'ford',       name: 'Ford Otosan',      initials: 'FO', city: 'Kocaeli',   recordCount: 156 },
-  { id: 'sisecam',    name: 'Şişecam',          initials: 'Şİ', city: 'Mersin',    recordCount: 43  },
-  { id: 'eczacibasi', name: 'Eczacıbaşı',       initials: 'EC', city: 'İstanbul',  recordCount: 58  },
-  { id: 'tofas',      name: 'Tofaş Türk',       initials: 'TO', city: 'Bursa',     recordCount: 201 },
-  { id: 'aygaz',      name: 'Aygaz',            initials: 'AY', city: 'Kocaeli',   recordCount: 31  },
-  { id: 'kordsa',     name: 'Kordsa',           initials: 'KO', city: 'İzmit',     recordCount: 22  },
-  { id: 'brisa',      name: 'Brisa',            initials: 'BR', city: 'İzmit',     recordCount: 38  },
-];
-
-const RECORDS: MaterialRecord[] = [
-  {
-    id: '1',
-    materialNo: 'MLZ-100482',
-    description: 'Hermetik kompresör 1/4 HP',
-    gtipNo: '8414.30.20.00.00',
-    transactionTypes: ['ithalat', 'ihracat', 'transit', 'antrepo'],
-    status: 'verified',
-    source: 'manuel',
-    updatedAt: '12.05.2026',
-    customerId: 'arcelik',
-  },
-  {
-    id: '2',
-    materialNo: 'MLZ-100517',
-    description: 'Çamaşır mak. tahrik motoru',
-    gtipNo: '8501.40.00.00.11',
-    transactionTypes: ['ihracat'],
-    status: 'verified',
-    source: 'fatura',
-    updatedAt: '19.05.2026',
-    customerId: 'arcelik',
-  },
-  {
-    id: '3',
-    materialNo: 'MLZ-100701',
-    description: 'Elektronik kontrol kartı',
-    gtipNo: '8537.10.99.00.00',
-    transactionTypes: ['ithalat', 'ihracat', 'transit', 'antrepo'],
-    status: 'pending',
-    source: 'fatura',
-    updatedAt: '23.05.2026',
-    customerId: 'arcelik',
-  },
-  {
-    id: '4',
-    materialNo: 'MLZ-100633',
-    description: 'Buzdolabı kapı contası (PVC)',
-    gtipNo: '3926.90.97.90.18',
-    transactionTypes: ['ithalat', 'ihracat', 'transit', 'antrepo'],
-    status: 'pending',
-    source: 'fatura',
-    updatedAt: '22.05.2026',
-    customerId: 'arcelik',
-  },
-  {
-    id: '5',
-    materialNo: 'MLZ-100204',
-    description: 'Cam fırın kapağı paneli',
-    gtipNo: '7007.19.80.00.00',
-    transactionTypes: ['ihracat'],
-    status: 'verified',
-    source: 'manuel',
-    updatedAt: '02.05.2026',
-    customerId: 'arcelik',
-  },
-  {
-    id: '6',
-    materialNo: 'MLZ-100990',
-    description: 'Paslanmaz çelik iç tank',
-    gtipNo: '7310.29.90.00.00',
-    transactionTypes: ['ihracat'],
-    status: 'pending',
-    source: 'fatura',
-    updatedAt: '23.05.2026',
-    customerId: 'arcelik',
-  },
-  {
-    id: '7',
-    materialNo: 'MLZ-100455',
-    description: 'Bulaşık mak. sirkülasyon pompası',
-    gtipNo: '8413.70.21.00.00',
-    transactionTypes: ['ithalat', 'ihracat', 'transit', 'antrepo'],
-    status: 'pending',
-    source: 'fatura',
-    updatedAt: '21.05.2026',
-    customerId: 'arcelik',
-  },
-  {
-    id: '8',
-    materialNo: 'MLZ-100311',
-    description: 'Termostat sensörü',
-    gtipNo: '9032.10.20.00.00',
-    transactionTypes: ['ithalat', 'ihracat', 'transit', 'antrepo'],
-    status: 'verified',
-    source: 'manuel',
-    updatedAt: '28.04.2026',
-    customerId: 'arcelik',
   },
 ];
 
@@ -291,12 +217,43 @@ export const gtipService = {
     return GTIP_ENTRIES.find((g) => g.code === code) ?? null;
   },
   getCustomers: async (): Promise<MaterialCustomer[]> => {
-    await delay(100);
-    return [...CUSTOMERS];
+    const [customers, counts] = await Promise.all([
+      customersService.getCustomerList(),
+      getCustomerRecordCounts(),
+    ]);
+    const countMap = new Map(counts.map((c) => [c.customerId, c.recordCount]));
+    return customers.map((c) => toMaterialCustomer(c, countMap.get(c.id) ?? 0));
   },
   getRecords: async (customerId: string): Promise<MaterialRecord[]> => {
-    await delay(80);
-    return RECORDS.filter((r) => r.customerId === customerId).map((r) => ({ ...r }));
+    if (!customerId) return [];
+    return listMaterialRecords(customerId);
+  },
+  createRecord: async (
+    customerId: string,
+    record: CreateMaterialRecordPayload
+  ): Promise<MaterialRecord> => {
+    return createMaterialRecord({ ...record, customerId });
+  },
+  importRecords: async (
+    customerId: string,
+    items: CreateMaterialRecordPayload[]
+  ): Promise<MaterialRecord[]> => {
+    return bulkCreateMaterialRecords(customerId, items);
+  },
+  approveRecord: async (id: string): Promise<MaterialRecord> => {
+    return patchMaterialRecord(id, { status: 'verified' });
+  },
+  rejectRecord: async (id: string): Promise<void> => {
+    return deleteMaterialRecord(id);
+  },
+  downloadMaterialRecordTemplate: async (): Promise<void> => {
+    return downloadMaterialRecordTemplate();
+  },
+  importMaterialRecordsExcel: async (
+    customerId: string,
+    file: File
+  ): Promise<MaterialRecordImportResult> => {
+    return importMaterialRecordsExcel(customerId, file);
   },
   getGtipDeclarations: async (): Promise<GtipDeclaration[]> => {
     await delay(80);

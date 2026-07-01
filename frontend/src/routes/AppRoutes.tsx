@@ -5,6 +5,7 @@ import PlaceholderPage from '../pages/PlaceholderPage';
 import ProtectedRoute from './ProtectedRoute';
 import DosyaTakipPage from '../pages/DosyaTakip';
 import GtipMalzemePage from '../pages/GtipMalzeme';
+import GtipOnayPage from '../pages/GtipOnay';
 import MusterilerPage from '../pages/Musteriler';
 import AyarlarPage from '../pages/Ayarlar';
 import MaillerPage from '../pages/Mailler';
@@ -70,7 +71,11 @@ export default function AppRoutes() {
             <GtipMalzemePage />
           </ProtectedRoute>
         } />
-        <Route path="/gtip/onay" element={<PlaceholderPage />} />
+        <Route path="/gtip/onay" element={
+          <ProtectedRoute requiredCaps={['gtip_onay.view', 'gtip_onay.approve']}>
+            <GtipOnayPage />
+          </ProtectedRoute>
+        } />
 
         {/* Arşiv */}
         <Route path="/arsiv/:operationType" element={

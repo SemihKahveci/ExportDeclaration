@@ -76,6 +76,18 @@ export async function apiPostMultipart<T>(path: string, form: FormData): Promise
   return (data as { data: T }).data;
 }
 
+export async function apiDeleteJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() }
+  });
+  const data = await parseJson<{ ok?: boolean; error?: string; data?: T }>(res);
+  if (!res.ok) {
+    throw new ApiError((data as { error?: string }).error ?? res.statusText, res.status, data);
+  }
+  return (data as { data: T }).data;
+}
+
 export async function apiGetBlob(path: string): Promise<Blob> {
   const res = await fetch(`${apiBaseUrl()}${path}`, { headers: { ...authHeaders() } });
   if (!res.ok) {

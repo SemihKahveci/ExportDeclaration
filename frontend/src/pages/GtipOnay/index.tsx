@@ -7,6 +7,8 @@ import {
   Plus,
   Download,
   Pencil,
+  Check,
+  X,
   Search,
   Loader2,
 } from 'lucide-react';
@@ -112,7 +114,7 @@ function SummaryCard({ count, label, dotColor, active, onClick }: SummaryCardPro
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function GtipMalzemePage() {
+export default function GtipOnayPage() {
   const { toast } = useToast();
 
   const [customers, setCustomers] = useState<MaterialCustomer[]>([]);
@@ -122,7 +124,7 @@ export default function GtipMalzemePage() {
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [custSearch, setCustSearch] = useState('');
   const [transactionType, setTransactionType] = useState<ActiveTransactionType>('ihracat');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
   const [search, setSearch] = useState('');
 
   const [newRecordOpen, setNewRecordOpen] = useState(false);
@@ -140,7 +142,7 @@ export default function GtipMalzemePage() {
   useEffect(() => {
     if (!selectedCustomerId) return;
     setLoading(true);
-    setStatusFilter('all');
+    setStatusFilter('pending');
     setSearch('');
     gtipService.getRecords(selectedCustomerId).then((data) => {
       setRecords(data);
@@ -182,6 +184,29 @@ export default function GtipMalzemePage() {
   async function refreshCustomers() {
     const data = await gtipService.getCustomers();
     setCustomers(data);
+  }
+
+  async function handleApprove(id: string) {
+    const rec = records.find((r) => r.id === id);
+    try {
+      const updated = await gtipService.approveRecord(id);
+      setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      toast(`${rec?.materialNo ?? 'Kayıt'} onaylandı · Doğrulanmış`);
+    } catch {
+      toast('Onaylama başarısız · lütfen tekrar dene');
+    }
+  }
+
+  async function handleReject(id: string) {
+    const rec = records.find((r) => r.id === id);
+    try {
+      await gtipService.rejectRecord(id);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+      await refreshCustomers();
+      toast(`${rec?.materialNo ?? 'Kayıt'} reddedildi · kayıt listeden çıkarıldı`);
+    } catch {
+      toast('Reddetme başarısız · lütfen tekrar dene');
+    }
   }
 
   async function handleNewRecord(record: Omit<MaterialRecord, 'id' | 'customerId'>) {
@@ -242,10 +267,10 @@ export default function GtipMalzemePage() {
         <div className="flex items-start gap-4 mb-4">
           <div className="flex-1 min-w-0">
             <h1 className="text-[22px] font-extrabold text-text-strong tracking-tight leading-snug">
-              {selectedCustomer?.name ?? '—'}
+              GTİP Onay · {selectedCustomer?.name ?? '—'}
             </h1>
             <div className="flex items-center gap-2 mt-1 text-[12.5px] text-muted flex-wrap">
-              Uygulanabilir kayıtlar:
+              Onay bekleyen malzeme kayıtları ·
               <ScopeTag transactionType={transactionType} />
               · malzeme ↔ GTİP eşlemesi
             </div>
@@ -361,11 +386,28 @@ export default function GtipMalzemePage() {
                         <span className="text-muted text-[12.5px]">{rec.updatedAt}</span>
                       </Td>
                       <Td className="w-px">
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center gap-1.5 justify-end">
+                          {rec.status === 'pending' && (
+                            <>
+                              <button
+                                onClick={() => handleApprove(rec.id)}
+                                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#bcdcca] text-ok bg-[#eef6f1] hover:bg-ok hover:border-ok hover:text-white"
+                              >
+                                <Check size={12} strokeWidth={2.4} />
+                                Onayla
+                              </button>
+                              <button
+                                onClick={() => handleReject(rec.id)}
+                                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white"
+                              >
+                                <X size={12} strokeWidth={2.4} />
+                                Reddet
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => setNewRecordOpen(true)}
                             className="text-muted-2 hover:text-accent transition-colors"
-                            title="Düzenle"
                           >
                             <Pencil size={16} strokeWidth={2} />
                           </button>
