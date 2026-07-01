@@ -4,6 +4,8 @@ import type { AppUser, DocProcess, OperationType, ApproverLevel, ScreenPermissio
 import { usersService } from '../../services/users';
 import { documentsService } from '../../services/documents';
 import { useToast } from '../../components/ui/Toast';
+import { ApiError } from '../../api/apiClient';
+import { deriveAuthFromScreenPermissions } from '../../permissions/deriveUserAuth';
 import Tabs from '../../components/ui/Tabs';
 import UsersTab from './UsersTab';
 import type { UsersTabLocalPerms } from './UsersTab';
@@ -29,7 +31,6 @@ const DEFAULT_APPROVAL_RULES: DeclarationApprovalRules = {
 
 function deriveScreenPerms(user: AppUser): Record<string, ScreenPermission> {
   if (user.screenPermissions) return user.screenPermissions;
-  // Derive from legacy menuAccess: all accessible menus get view+operate
   const result: Record<string, ScreenPermission> = {};
   for (const key of user.menuAccess) {
     result[key] = { view: true, operate: true };
@@ -46,12 +47,17 @@ function defaultPerms(user: AppUser): LocalPerms {
   };
 }
 
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
+
 export default function AyarlarPage() {
   const { toast } = useToast();
 
   const [activeTab, setActiveTab] = useState('users');
 
-  // ── Users state ───────────────────────────────────────────────────────────
   const [users,           setUsers]           = useState<AppUser[]>([]);
   const [selectedUserIdx, setSelectedUserIdx] = useState(0);
   const [localPerms,      setLocalPerms]      = useState<LocalPerms>({
@@ -61,21 +67,16 @@ export default function AyarlarPage() {
     approverLevel:     'none' as ApproverLevel,
   });
 
-  // ── Approval rules state ──────────────────────────────────────────────────
   const [approvalRules, setApprovalRules] = useState<DeclarationApprovalRules>(DEFAULT_APPROVAL_RULES);
-
-  // ── Docs state ────────────────────────────────────────────────────────────
   const [docs, setDocs] = useState<DocProcess[]>([]);
-
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  // ── Drawer state ──────────────────────────────────────────────────────────
   const [userDrawerOpen, setUserDrawerOpen] = useState(false);
   const [editUserIdx,    setEditUserIdx]    = useState<number | null>(null);
   const [docDrawerOpen,  setDocDrawerOpen]  = useState(false);
   const [editDocIdx,     setEditDocIdx]     = useState<number | null>(null);
 
-  // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
       usersService.getAppUsers(),
@@ -85,66 +86,82 @@ export default function AyarlarPage() {
       setDocs(docProcs);
       if (appUsers.length > 0) setLocalPerms(defaultPerms(appUsers[0]));
       setLoading(false);
+    }).catch((err) => {
+      toast(errorMessage(err, 'Ayarlar yüklenemedi'));
+      setLoading(false);
     });
-  }, []);
+  }, [toast]);
 
-  // ── Select user ───────────────────────────────────────────────────────────
   function selectUser(idx: number) {
     setSelectedUserIdx(idx);
     setLocalPerms(defaultPerms(users[idx]));
   }
 
-  // ── Permission change ─────────────────────────────────────────────────────
   function handlePermsChange(patch: Partial<LocalPerms>) {
     setLocalPerms((prev) => ({ ...prev, ...patch }));
   }
 
-  function handleSavePerms() {
-    setUsers((prev) =>
-      prev.map((u, i) =>
-        i === selectedUserIdx
-          ? {
-              ...u,
-              role:              localPerms.role,
-              operationTypes:    localPerms.operationTypes,
-              screenPermissions: localPerms.screenPermissions,
-              approverLevel:     localPerms.approverLevel,
-            }
-          : u
-      )
-    );
-    toast('Kullanıcı yetkileri güncellendi');
+  async function handleSavePerms() {
+    const current = users[selectedUserIdx];
+    if (!current) return;
+
+    setSaving(true);
+    try {
+      const derived = deriveAuthFromScreenPermissions(localPerms.screenPermissions);
+      const updated = await usersService.updateUserPermissions(current.id, {
+        role: localPerms.role,
+        operationTypes: localPerms.operationTypes,
+        screenPermissions: localPerms.screenPermissions,
+        approverLevel: localPerms.approverLevel,
+        capabilities: derived.capabilities,
+        menuAccess: derived.menuAccess,
+        menuActions: derived.menuActions,
+        specialActions: derived.specialActions,
+      });
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      toast('Kullanıcı yetkileri kaydedildi');
+    } catch (err) {
+      toast(errorMessage(err, 'Yetkiler kaydedilemedi'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleResetPerms() {
     setLocalPerms(defaultPerms(users[selectedUserIdx]));
   }
 
-  // ── User drawer ───────────────────────────────────────────────────────────
   function openUserDrawer(editIdx: number | null) {
     setEditUserIdx(editIdx);
     setUserDrawerOpen(true);
   }
 
-  function handleSaveUser(data: Omit<AppUser, 'id'>) {
-    if (editUserIdx !== null) {
-      setUsers((prev) =>
-        prev.map((u, i) => i === editUserIdx ? { ...u, ...data } : u)
-      );
-      if (editUserIdx === selectedUserIdx) {
-        setLocalPerms(defaultPerms({ ...users[editUserIdx], ...data }));
+  async function handleSaveUser(data: Omit<AppUser, 'id'>) {
+    setSaving(true);
+    try {
+      if (editUserIdx !== null) {
+        const existing = users[editUserIdx];
+        const updated = await usersService.updateUserPermissions(existing.id, data);
+        const nextUsers = users.map((u) => (u.id === updated.id ? updated : u));
+        setUsers(nextUsers);
+        const idx = nextUsers.findIndex((u) => u.id === updated.id);
+        if (idx === selectedUserIdx) setLocalPerms(defaultPerms(updated));
+      } else {
+        const created = await usersService.createAppUser(data);
+        const nextUsers = [created, ...users];
+        setUsers(nextUsers);
+        setSelectedUserIdx(0);
+        setLocalPerms(defaultPerms(created));
       }
-    } else {
-      const newUser: AppUser = { id: `au-${Date.now()}`, ...data };
-      setUsers((prev) => [newUser, ...prev]);
-      setSelectedUserIdx(0);
-      setLocalPerms(defaultPerms(newUser));
+      setUserDrawerOpen(false);
+      toast('Kullanıcı kaydedildi');
+    } catch (err) {
+      toast(errorMessage(err, 'Kullanıcı kaydedilemedi'));
+    } finally {
+      setSaving(false);
     }
-    setUserDrawerOpen(false);
-    toast('Kullanıcı kaydedildi');
   }
 
-  // ── Doc drawer ────────────────────────────────────────────────────────────
   function openDocDrawer(editIdx: number | null) {
     setEditDocIdx(editIdx);
     setDocDrawerOpen(true);
@@ -169,7 +186,6 @@ export default function AyarlarPage() {
 
   return (
     <div className="px-7 pt-6 pb-12 overflow-y-auto">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
           <h1 className="text-[23px] font-extrabold text-text-strong tracking-tight">Ayarlar</h1>
@@ -199,6 +215,7 @@ export default function AyarlarPage() {
               onResetPerms={handleResetPerms}
               onNew={() => openUserDrawer(null)}
               onEdit={() => openUserDrawer(selectedUserIdx)}
+              saving={saving}
             />
           )}
 
@@ -225,6 +242,7 @@ export default function AyarlarPage() {
         initial={editUser}
         onClose={() => setUserDrawerOpen(false)}
         onSave={handleSaveUser}
+        saving={saving}
       />
 
       <DocDrawer

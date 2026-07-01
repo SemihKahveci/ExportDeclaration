@@ -9,9 +9,10 @@ interface UserDrawerProps {
   initial?: AppUser;
   onClose: () => void;
   onSave: (data: Omit<AppUser, 'id'>) => void;
+  saving?: boolean;
 }
 
-export default function UserDrawer({ open, initial, onClose, onSave }: UserDrawerProps) {
+export default function UserDrawer({ open, initial, onClose, onSave, saving = false }: UserDrawerProps) {
   const [name,   setName]   = useState('');
   const [email,  setEmail]  = useState('');
   const [role,   setRole]   = useState<AppUserRole>('Operasyon');
@@ -56,8 +57,10 @@ export default function UserDrawer({ open, initial, onClose, onSave }: UserDrawe
       subtitle={initial?.name ?? 'Temel bilgileri doldurun'}
       footer={
         <>
-          <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave}>Kaydet</Button>
+          <Button onClick={onClose} disabled={saving}>Vazgeç</Button>
+          <Button variant="primary" onClick={handleSave} disabled={saving || !name.trim() || !email.trim()}>
+            {saving ? 'Kaydediliyor…' : 'Kaydet'}
+          </Button>
         </>
       }
     >

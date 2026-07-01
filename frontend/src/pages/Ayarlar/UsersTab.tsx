@@ -191,6 +191,7 @@ interface UsersTabProps {
   onResetPerms: () => void;
   onNew: () => void;
   onEdit: () => void;
+  saving?: boolean;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -205,6 +206,7 @@ export default function UsersTab({
   onResetPerms,
   onNew,
   onEdit,
+  saving = false,
 }: UsersTabProps) {
   const sel = users[selectedIdx];
   const [search, setSearch] = useState('');
@@ -460,8 +462,8 @@ export default function UsersTab({
               {/* ── Save / Reset ─────────────────────────────────────────── */}
               <div className="flex gap-2.5 pt-1 border-t border-line">
                 <Button size="sm" onClick={onResetPerms}>Vazgeç</Button>
-                <Button variant="primary" size="sm" onClick={onSavePerms}>
-                  Yetkileri Kaydet
+                <Button variant="primary" size="sm" onClick={onSavePerms} disabled={saving || !sel}>
+                  {saving ? 'Kaydediliyor…' : 'Yetkileri Kaydet'}
                 </Button>
               </div>
             </CardBody>

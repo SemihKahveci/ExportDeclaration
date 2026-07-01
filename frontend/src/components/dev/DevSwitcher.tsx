@@ -1,12 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronUp, ChevronDown, Settings2 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
-import { MOCK_FIRM_USERS } from '../../services/users';
-import type { DeploymentMode } from '../../types';
+import { usersService } from '../../services/users';
+import type { DeploymentMode, FirmUser } from '../../types';
 
 export default function DevSwitcher() {
   const { currentUser, deploymentMode, setCurrentUser, setDeploymentMode } = useAppContext();
   const [open, setOpen] = useState(false);
+  const [firmUsers, setFirmUsers] = useState<FirmUser[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    usersService.getFirmUsers()
+      .then(setFirmUsers)
+      .catch(() => setFirmUsers([]));
+  }, [open]);
 
   return (
     <div className="fixed bottom-4 left-4 z-50 select-none">
@@ -29,7 +37,9 @@ export default function DevSwitcher() {
           <div className="space-y-1">
             <p className="text-[11px] text-muted font-medium">Kullanıcı</p>
             <div className="flex flex-col gap-0.5">
-              {MOCK_FIRM_USERS.map((u) => (
+              {firmUsers.length === 0 ? (
+                <p className="text-[11px] text-muted-2 px-2 py-1">Kayıtlı kullanıcı yok</p>
+              ) : firmUsers.map((u) => (
                 <button
                   key={u.id}
                   onClick={() => setCurrentUser(u)}

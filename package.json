@@ -5,7 +5,7 @@
   "description": "İhracat beyannamesi: belge yükleme, normalizasyon, Evrim XML üretimi",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch backend/src/index.ts",
+    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev:api\" \"npm run dev:web\"",
     "dev:api": "tsx watch backend/src/index.ts",
     "dev:web": "npm run dev --prefix frontend",
     "build:web": "npm run build --prefix frontend",
@@ -33,6 +33,7 @@
     "typescript": "^5.6.3"
   },
   "devDependencies": {
+    "concurrently": "^9.2.3",
     "tsx": "^4.19.2"
   }
 }
