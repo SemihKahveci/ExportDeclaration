@@ -8,6 +8,7 @@ import { declarationRouter } from "./modules/declarations/declaration.routes.js"
 import { gtipQueryRouter } from "./modules/gtip-query/gtipQuery.routes.js";
 import { userRouter } from "./modules/users/user.routes.js";
 import { materialRecordRouter } from "./modules/material-records/materialRecord.routes.js";
+import { evrakRuleRouter } from "./modules/evrak-rules/evrakRule.routes.js";
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use("/api/declarations", authContextMiddleware, declarationRouter);
 app.use("/api/gtip-query", authContextMiddleware, gtipQueryRouter);
 app.use("/api/users", authContextMiddleware, userRouter);
 app.use("/api/material-records", authContextMiddleware, materialRecordRouter);
+app.use("/api/evrak-rules", authContextMiddleware, evrakRuleRouter);
 
 app.use(errorHandler);
 

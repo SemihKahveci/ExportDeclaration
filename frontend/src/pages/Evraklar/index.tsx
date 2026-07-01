@@ -93,14 +93,43 @@ export default function EvraklarPage() {
     });
   }, []);
 
-  // Derive stats from current rules whenever rules change
-  function recalcStats(updated: EvraklarRule[]) {
-    const active  = updated.filter((r) => r.active).length;
-    const allDocs = new Set(updated.flatMap((r) => r.requiredDocuments));
-    setStats({ total: updated.length, active, passive: updated.length - active, docTypes: allDocs.size });
+  async function handleSave(rule: EvraklarRule) {
+    const saved = await evraklarService.save(rule);
+    const isNew = !isMongoId(rule.id);
+    const updated = isNew
+      ? [saved, ...rules]
+      : rules.map((r) => (r.id === saved.id ? saved : r));
+    setRules(updated);
+    const nextStats = await evraklarService.getStats();
+    setStats(nextStats);
+    closeDrawer();
+    toast(isNew ? 'Yeni kural oluşturuldu' : 'Kural güncellendi');
   }
 
-  // Filtered rules
+  async function handleDelete(id: string) {
+    await evraklarService.delete(id);
+    const updated = rules.filter((r) => r.id !== id);
+    setRules(updated);
+    const nextStats = await evraklarService.getStats();
+    setStats(nextStats);
+    closeDrawer();
+    toast('Kural silindi');
+  }
+
+  async function handleToggle(rule: EvraklarRule, e: React.MouseEvent) {
+    e.stopPropagation();
+    const updated = await evraklarService.toggleActive(rule.id);
+    if (!updated) return;
+    const next = rules.map((r) => (r.id === rule.id ? updated : r));
+    setRules(next);
+    const nextStats = await evraklarService.getStats();
+    setStats(nextStats);
+    toast(updated.active ? `"${updated.name}" aktif edildi` : `"${updated.name}" pasif edildi`);
+  }
+
+  function isMongoId(id: string): boolean {
+    return /^[a-f\d]{24}$/i.test(id);
+  }
   const filtered = useMemo(() => {
     return rules.filter((r) => {
       if (search && !r.name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -138,37 +167,6 @@ export default function EvraklarPage() {
   function closeDrawer() {
     setDrawerMode(null);
     setDrawerRule(null);
-  }
-
-  async function handleSave(rule: EvraklarRule) {
-    const isNew = !rules.find((r) => r.id === rule.id);
-    await evraklarService.save(rule);
-    const updated = isNew
-      ? [rule, ...rules]
-      : rules.map((r) => (r.id === rule.id ? rule : r));
-    setRules(updated);
-    recalcStats(updated);
-    closeDrawer();
-    toast(isNew ? 'Yeni kural oluşturuldu' : 'Kural güncellendi');
-  }
-
-  async function handleDelete(id: string) {
-    await evraklarService.delete(id);
-    const updated = rules.filter((r) => r.id !== id);
-    setRules(updated);
-    recalcStats(updated);
-    closeDrawer();
-    toast('Kural silindi');
-  }
-
-  async function handleToggle(rule: EvraklarRule, e: React.MouseEvent) {
-    e.stopPropagation();
-    const updated = await evraklarService.toggleActive(rule.id);
-    if (!updated) return;
-    const next = rules.map((r) => (r.id === rule.id ? updated : r));
-    setRules(next);
-    recalcStats(next);
-    toast(updated.active ? `"${updated.name}" aktif edildi` : `"${updated.name}" pasif edildi`);
   }
 
   const hasFilters = search !== '' || filterDoc !== '' || filterStatus !== '';
