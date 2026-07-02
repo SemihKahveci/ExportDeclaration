@@ -1,6 +1,6 @@
-import type { EvrakRuleDoc } from "./evrakRule.model.js";
+import type { DocumentRuleDoc } from "./documentRule.model.js";
 
-export interface EvrakRuleDto {
+export interface DocumentRuleDto {
   id: string;
   name: string;
   conditions: Array<{
@@ -14,14 +14,14 @@ export interface EvrakRuleDto {
   createdAt: string;
 }
 
-export interface EvrakRulePageStatsDto {
+export interface DocumentRulePageStatsDto {
   total: number;
   active: number;
   passive: number;
   docTypes: number;
 }
 
-export function toEvrakRuleDto(doc: EvrakRuleDoc): EvrakRuleDto {
+export function toDocumentRuleDto(doc: DocumentRuleDoc): DocumentRuleDto {
   return {
     id: String(doc._id),
     name: doc.name,
@@ -37,7 +37,7 @@ export function toEvrakRuleDto(doc: EvrakRuleDoc): EvrakRuleDto {
   };
 }
 
-export function calcStatsFromRules(rules: EvrakRuleDto[]): EvrakRulePageStatsDto {
+export function calcStatsFromRules(rules: DocumentRuleDto[]): DocumentRulePageStatsDto {
   const active = rules.filter((r) => r.active).length;
   const allDocs = new Set(rules.flatMap((r) => r.requiredDocuments));
   return {

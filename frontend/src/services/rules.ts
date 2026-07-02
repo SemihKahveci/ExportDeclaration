@@ -1,13 +1,13 @@
 import type { Rule, EvraklarRule, EvraklarPageStats } from '../types';
 import {
-  createEvrakRule,
-  deleteEvrakRule,
-  getEvrakRuleStats,
-  listEvrakRules,
-  toggleEvrakRule,
-  updateEvrakRule,
-  type CreateEvrakRulePayload,
-} from '../api/evrakRuleApi';
+  createDocumentRule,
+  deleteDocumentRule,
+  getDocumentRuleStats,
+  listDocumentRules,
+  toggleDocumentRule,
+  updateDocumentRule,
+  type CreateDocumentRulePayload,
+} from '../api/documentRuleApi';
 import { delay } from './utils';
 
 const MOCK: Rule[] = [
@@ -91,7 +91,7 @@ function isMongoId(id: string): boolean {
   return /^[a-f\d]{24}$/i.test(id);
 }
 
-function toCreatePayload(rule: EvraklarRule): CreateEvrakRulePayload {
+function toCreatePayload(rule: EvraklarRule): CreateDocumentRulePayload {
   return {
     name: rule.name,
     conditions: rule.conditions,
@@ -102,10 +102,10 @@ function toCreatePayload(rule: EvraklarRule): CreateEvrakRulePayload {
 
 export const evraklarService = {
   getStats: async (): Promise<EvraklarPageStats> => {
-    return getEvrakRuleStats();
+    return getDocumentRuleStats();
   },
   getRules: async (): Promise<EvraklarRule[]> => {
-    return listEvrakRules();
+    return listDocumentRules();
   },
   getCountries: async (): Promise<string[]> => {
     return [...EVRAKLAR_COUNTRIES];
@@ -116,14 +116,14 @@ export const evraklarService = {
   save: async (rule: EvraklarRule): Promise<EvraklarRule> => {
     const payload = toCreatePayload(rule);
     if (isMongoId(rule.id)) {
-      return updateEvrakRule(rule.id, payload);
+      return updateDocumentRule(rule.id, payload);
     }
-    return createEvrakRule(payload);
+    return createDocumentRule(payload);
   },
   delete: async (id: string): Promise<void> => {
-    return deleteEvrakRule(id);
+    return deleteDocumentRule(id);
   },
   toggleActive: async (id: string): Promise<EvraklarRule | null> => {
-    return toggleEvrakRule(id);
+    return toggleDocumentRule(id);
   },
 };

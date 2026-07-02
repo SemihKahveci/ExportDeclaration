@@ -308,13 +308,17 @@ export default function MaillerPage() {
   }
 
   async function handleSave(t: MailTemplate) {
-    const isNew = !templates.find((x) => x.id === t.id);
-    await mailTemplatesService.save(t);
+    const saved = await mailTemplatesService.save(t);
+    const isNew = !isMongoId(t.id);
     setTemplates((prev) =>
-      isNew ? [t, ...prev] : prev.map((x) => (x.id === t.id ? t : x))
+      isNew ? [saved, ...prev] : prev.map((x) => (x.id === saved.id ? saved : x))
     );
     closeDrawer();
     toast('Mail şablonu kaydedildi');
+  }
+
+  function isMongoId(id: string): boolean {
+    return /^[a-f\d]{24}$/i.test(id);
   }
 
   async function handleDelete(id: string) {

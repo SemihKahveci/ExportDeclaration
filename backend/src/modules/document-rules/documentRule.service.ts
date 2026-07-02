@@ -1,22 +1,22 @@
 import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import {
-  EVRAK_CONDITION_FIELDS,
-  EVRAK_CONDITION_OPERATORS,
-  EvrakRuleModel,
-  type EvrakRuleCondition
-} from "./evrakRule.model.js";
+  DOCUMENT_RULE_CONDITION_FIELDS,
+  DOCUMENT_RULE_CONDITION_OPERATORS,
+  DocumentRuleModel,
+  type DocumentRuleCondition
+} from "./documentRule.model.js";
 import {
   calcStatsFromRules,
-  toEvrakRuleDto,
-  type EvrakRuleDto,
-  type EvrakRulePageStatsDto
-} from "./evrakRule.mapper.js";
+  toDocumentRuleDto,
+  type DocumentRuleDto,
+  type DocumentRulePageStatsDto
+} from "./documentRule.mapper.js";
 
-export type CreateEvrakRuleInput = Omit<EvrakRuleDto, "id" | "createdAt">;
-export type UpdateEvrakRuleInput = Partial<CreateEvrakRuleInput>;
+export type CreateDocumentRuleInput = Omit<DocumentRuleDto, "id" | "createdAt">;
+export type UpdateDocumentRuleInput = Partial<CreateDocumentRuleInput>;
 
-function assertConditions(conditions: unknown): EvrakRuleCondition[] {
+function assertConditions(conditions: unknown): DocumentRuleCondition[] {
   if (!Array.isArray(conditions)) {
     throw new HttpError(400, "Koşullar dizi olmalıdır.");
   }
@@ -31,20 +31,22 @@ function assertConditions(conditions: unknown): EvrakRuleCondition[] {
 
     if (
       typeof field !== "string" ||
-      !EVRAK_CONDITION_FIELDS.includes(field as (typeof EVRAK_CONDITION_FIELDS)[number])
+      !DOCUMENT_RULE_CONDITION_FIELDS.includes(field as (typeof DOCUMENT_RULE_CONDITION_FIELDS)[number])
     ) {
       throw new HttpError(400, `Geçersiz koşul alanı: ${String(field)}`);
     }
     if (
       typeof operator !== "string" ||
-      !EVRAK_CONDITION_OPERATORS.includes(operator as (typeof EVRAK_CONDITION_OPERATORS)[number])
+      !DOCUMENT_RULE_CONDITION_OPERATORS.includes(
+        operator as (typeof DOCUMENT_RULE_CONDITION_OPERATORS)[number]
+      )
     ) {
       throw new HttpError(400, `Geçersiz koşul operatörü: ${String(operator)}`);
     }
 
     return {
-      field: field as EvrakRuleCondition["field"],
-      operator: operator as EvrakRuleCondition["operator"],
+      field: field as DocumentRuleCondition["field"],
+      operator: operator as DocumentRuleCondition["operator"],
       value: typeof item.value === "string" ? item.value.trim() : String(item.value ?? "").trim(),
       enabled: Boolean(item.enabled)
     };
@@ -64,7 +66,11 @@ function assertRequiredDocuments(docs: unknown): string[] {
   return cleaned;
 }
 
-function validateRulePayload(name: unknown, conditions: EvrakRuleCondition[], requiredDocuments: string[]) {
+function validateRulePayload(
+  name: unknown,
+  conditions: DocumentRuleCondition[],
+  requiredDocuments: string[]
+) {
   const trimmedName = typeof name === "string" ? name.trim() : "";
   if (!trimmedName) throw new HttpError(400, "Kural adı gerekli.");
 
@@ -80,45 +86,48 @@ function validateRulePayload(name: unknown, conditions: EvrakRuleCondition[], re
   return trimmedName;
 }
 
-export async function listEvrakRules(companyId: mongoose.Types.ObjectId): Promise<EvrakRuleDto[]> {
-  const rows = await EvrakRuleModel.find({ companyId }).sort({ createdAt: -1 });
-  return rows.map(toEvrakRuleDto);
+export async function listDocumentRules(companyId: mongoose.Types.ObjectId): Promise<DocumentRuleDto[]> {
+  const rows = await DocumentRuleModel.find({ companyId }).sort({ createdAt: -1 });
+  return rows.map(toDocumentRuleDto);
 }
 
-export async function getEvrakRuleStats(companyId: mongoose.Types.ObjectId): Promise<EvrakRulePageStatsDto> {
-  const rules = await listEvrakRules(companyId);
+export async function getDocumentRuleStats(
+  companyId: mongoose.Types.ObjectId
+): Promise<DocumentRulePageStatsDto> {
+  const rules = await listDocumentRules(companyId);
   return calcStatsFromRules(rules);
 }
 
-export async function createEvrakRule(
+export async function createDocumentRule(
   companyId: mongoose.Types.ObjectId,
-  body: CreateEvrakRuleInput
-): Promise<EvrakRuleDto> {
+  body: CreateDocumentRuleInput
+): Promise<DocumentRuleDto> {
   const conditions = assertConditions(body.conditions);
   const requiredDocuments = assertRequiredDocuments(body.requiredDocuments);
   const name = validateRulePayload(body.name, conditions, requiredDocuments);
 
-  const created = await EvrakRuleModel.create({
+  const created = await DocumentRuleModel.create({
     companyId,
     name,
     conditions,
     requiredDocuments,
     active: body.active !== false
   });
-  return toEvrakRuleDto(created);
+  return toDocumentRuleDto(created);
 }
 
-export async function updateEvrakRule(
+export async function updateDocumentRule(
   companyId: mongoose.Types.ObjectId,
   id: string,
-  body: UpdateEvrakRuleInput
-): Promise<EvrakRuleDto> {
+  body: UpdateDocumentRuleInput
+): Promise<DocumentRuleDto> {
   if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz kural id.");
 
-  const existing = await EvrakRuleModel.findOne({ _id: id, companyId });
+  const existing = await DocumentRuleModel.findOne({ _id: id, companyId });
   if (!existing) throw new HttpError(404, "Kural bulunamadı.");
 
-  const conditions = body.conditions !== undefined ? assertConditions(body.conditions) : existing.conditions;
+  const conditions =
+    body.conditions !== undefined ? assertConditions(body.conditions) : existing.conditions;
   const requiredDocuments =
     body.requiredDocuments !== undefined
       ? assertRequiredDocuments(body.requiredDocuments)
@@ -138,25 +147,28 @@ export async function updateEvrakRule(
   if (body.active !== undefined) existing.active = Boolean(body.active);
 
   await existing.save();
-  return toEvrakRuleDto(existing);
+  return toDocumentRuleDto(existing);
 }
 
-export async function toggleEvrakRuleActive(
+export async function toggleDocumentRuleActive(
   companyId: mongoose.Types.ObjectId,
   id: string
-): Promise<EvrakRuleDto> {
+): Promise<DocumentRuleDto> {
   if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz kural id.");
 
-  const existing = await EvrakRuleModel.findOne({ _id: id, companyId });
+  const existing = await DocumentRuleModel.findOne({ _id: id, companyId });
   if (!existing) throw new HttpError(404, "Kural bulunamadı.");
 
   existing.active = !existing.active;
   await existing.save();
-  return toEvrakRuleDto(existing);
+  return toDocumentRuleDto(existing);
 }
 
-export async function deleteEvrakRule(companyId: mongoose.Types.ObjectId, id: string): Promise<void> {
+export async function deleteDocumentRule(
+  companyId: mongoose.Types.ObjectId,
+  id: string
+): Promise<void> {
   if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz kural id.");
-  const deleted = await EvrakRuleModel.findOneAndDelete({ _id: id, companyId });
+  const deleted = await DocumentRuleModel.findOneAndDelete({ _id: id, companyId });
   if (!deleted) throw new HttpError(404, "Kural bulunamadı.");
 }
