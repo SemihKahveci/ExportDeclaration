@@ -3,6 +3,12 @@ import type {
   EvrakFile, EvrakDocRow, EvrakConflictRow, DocPreviewData, EvrakPageStats,
   DocumentFieldRegion, DeclarationFieldMapping,
 } from '../types';
+import {
+  createDocumentProcess,
+  listDocumentProcesses,
+  updateDocumentProcess,
+  type CreateDocumentProcessPayload,
+} from '../api/documentProcessApi';
 import { delay } from './utils';
 
 // ─── Legacy Document list (used by other screens) ────────────────────────────
@@ -15,65 +21,11 @@ const MOCK_DOCUMENTS: Document[] = [
   { id: 'doc-005', name: 'Navlun Faturası',     type: 'freight-invoice',      status: 'uploaded', fileRef: 'IHR-2024-003', uploadedAt: '2024-05-09T14:30:00Z' },
 ];
 
-// ─── Ayarlar screen – document process definitions ────────────────────────────
+// ─── Ayarlar screen – document process definitions (API) ─────────────────────
 
-const DOC_PROCESSES: DocProcess[] = [
-  {
-    id: 'dp-001',
-    name: 'Fatura',
-    process: 'GTİP Hazırlık',
-    format: 'XML / PDF / JPG',
-    parseable: 'Evet',
-    testResult: 'Başarılı',
-    successRate: '%96',
-    supportNote: 'Destek gerekmiyor',
-    status: 'Aktif',
-  },
-  {
-    id: 'dp-002',
-    name: 'CMR',
-    process: 'Evrak Hazırlık',
-    format: 'PDF / JPG',
-    parseable: 'Evet',
-    testResult: 'Kısmi Başarılı',
-    successRate: '%78',
-    supportNote: 'Kap ve kilo alanları kontrol edilmeli',
-    status: 'Aktif',
-  },
-  {
-    id: 'dp-003',
-    name: 'Konşimento',
-    process: 'Evrak Hazırlık',
-    format: 'PDF',
-    parseable: 'Evet',
-    testResult: 'Test Bekliyor',
-    successRate: '—',
-    supportNote: 'Örnek dosya bekleniyor',
-    status: 'Aktif',
-  },
-  {
-    id: 'dp-004',
-    name: 'AWB',
-    process: 'Evrak Hazırlık',
-    format: 'PDF',
-    parseable: 'Evet',
-    testResult: 'Başarılı',
-    successRate: '%89',
-    supportNote: 'Destek gerekmiyor',
-    status: 'Aktif',
-  },
-  {
-    id: 'dp-005',
-    name: 'Tesellüm Tutanağı',
-    process: 'Kapanış',
-    format: 'JPG / PNG',
-    parseable: 'Hayır',
-    testResult: 'Başarısız',
-    successRate: '—',
-    supportNote: 'Manuel kontrol ile ilerler',
-    status: 'Aktif',
-  },
-];
+function isMongoId(id: string): boolean {
+  return /^[a-f\d]{24}$/i.test(id);
+}
 
 export const documentsService = {
   list: async (): Promise<Document[]> => {
@@ -85,8 +37,19 @@ export const documentsService = {
     return MOCK_DOCUMENTS.find((d) => d.id === id) ?? null;
   },
   getDocProcesses: async (): Promise<DocProcess[]> => {
-    await delay(80);
-    return DOC_PROCESSES.map((d) => ({ ...d }));
+    return listDocumentProcesses();
+  },
+  createDocProcess: async (data: CreateDocumentProcessPayload): Promise<DocProcess> => {
+    return createDocumentProcess(data);
+  },
+  updateDocProcess: async (id: string, data: Partial<CreateDocumentProcessPayload>): Promise<DocProcess> => {
+    return updateDocumentProcess(id, data);
+  },
+  saveDocProcess: async (id: string | undefined, data: CreateDocumentProcessPayload): Promise<DocProcess> => {
+    if (id && isMongoId(id)) {
+      return updateDocumentProcess(id, data);
+    }
+    return createDocumentProcess(data);
   },
 };
 

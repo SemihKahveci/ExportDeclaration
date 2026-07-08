@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import type { AppUser, DocProcess, OperationType, ApproverLevel, ScreenPermission, DeclarationApprovalRules } from '../../types';
 import { usersService } from '../../services/users';
 import { documentsService } from '../../services/documents';
+import { declarationApprovalRulesService, DEFAULT_DECLARATION_APPROVAL_RULES } from '../../services/declarationApprovalRules';
 import { useToast } from '../../components/ui/Toast';
 import { ApiError } from '../../api/apiClient';
 import { deriveAuthFromScreenPermissions } from '../../permissions/deriveUserAuth';
@@ -22,12 +23,9 @@ const TABS = [
 
 type LocalPerms = UsersTabLocalPerms;
 
-const DEFAULT_APPROVAL_RULES: DeclarationApprovalRules = {
-  ithalat: 1,
-  ihracat: 1,
-  transit: 1,
-  antrepo: 1,
-};
+function isMongoId(id: string): boolean {
+  return /^[a-f\d]{24}$/i.test(id);
+}
 
 function deriveScreenPerms(user: AppUser): Record<string, ScreenPermission> {
   if (user.screenPermissions) return user.screenPermissions;
@@ -67,7 +65,7 @@ export default function AyarlarPage() {
     approverLevel:     'none' as ApproverLevel,
   });
 
-  const [approvalRules, setApprovalRules] = useState<DeclarationApprovalRules>(DEFAULT_APPROVAL_RULES);
+  const [approvalRules, setApprovalRules] = useState<DeclarationApprovalRules>(DEFAULT_DECLARATION_APPROVAL_RULES);
   const [docs, setDocs] = useState<DocProcess[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,9 +79,11 @@ export default function AyarlarPage() {
     Promise.all([
       usersService.getAppUsers(),
       documentsService.getDocProcesses(),
-    ]).then(([appUsers, docProcs]) => {
+      declarationApprovalRulesService.get(),
+    ]).then(([appUsers, docProcs, rules]) => {
       setUsers(appUsers);
       setDocs(docProcs);
+      setApprovalRules(rules);
       if (appUsers.length > 0) setLocalPerms(defaultPerms(appUsers[0]));
       setLoading(false);
     }).catch((err) => {
@@ -167,18 +167,49 @@ export default function AyarlarPage() {
     setDocDrawerOpen(true);
   }
 
-  function handleSaveDoc(data: Omit<DocProcess, 'id'>) {
-    if (editDocIdx !== null) {
-      setDocs((prev) => prev.map((d, i) => i === editDocIdx ? { ...d, ...data } : d));
-    } else {
-      setDocs((prev) => [{ id: `dp-${Date.now()}`, ...data }, ...prev]);
+  async function handleSaveDoc(data: Omit<DocProcess, 'id'>) {
+    setSaving(true);
+    try {
+      const existingId = editDocIdx !== null ? docs[editDocIdx]?.id : undefined;
+      const saved = await documentsService.saveDocProcess(
+        existingId && isMongoId(existingId) ? existingId : undefined,
+        data
+      );
+      if (editDocIdx !== null) {
+        setDocs((prev) => prev.map((d, i) => (i === editDocIdx ? saved : d)));
+      } else {
+        setDocs((prev) => [saved, ...prev]);
+      }
+      setDocDrawerOpen(false);
+      toast('Evrak tipi kaydedildi');
+    } catch (err) {
+      toast(errorMessage(err, 'Evrak tipi kaydedilemedi'));
+    } finally {
+      setSaving(false);
     }
-    setDocDrawerOpen(false);
-    toast('Evrak tipi kaydedildi');
   }
 
-  function handleDocUpdated(id: string, patch: Partial<DocProcess>) {
-    setDocs((prev) => prev.map((d) => d.id === id ? { ...d, ...patch } : d));
+  async function handleDocUpdated(id: string, patch: Partial<DocProcess>) {
+    if (!isMongoId(id)) return;
+    try {
+      const saved = await documentsService.updateDocProcess(id, patch);
+      setDocs((prev) => prev.map((d) => (d.id === id ? saved : d)));
+    } catch (err) {
+      toast(errorMessage(err, 'Test sonucu kaydedilemedi'));
+    }
+  }
+
+  async function handleSaveApprovalRules(rules: DeclarationApprovalRules) {
+    setSaving(true);
+    try {
+      const saved = await declarationApprovalRulesService.save(rules);
+      setApprovalRules(saved);
+      toast('Beyanname onay kuralları güncellendi');
+    } catch (err) {
+      toast(errorMessage(err, 'Onay kuralları kaydedilemedi'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   const editUser = editUserIdx !== null ? users[editUserIdx] : undefined;
@@ -231,7 +262,8 @@ export default function AyarlarPage() {
           {activeTab === 'approval-rules' && (
             <ApprovalRulesTab
               rules={approvalRules}
-              onChange={setApprovalRules}
+              saving={saving}
+              onSave={handleSaveApprovalRules}
             />
           )}
         </>

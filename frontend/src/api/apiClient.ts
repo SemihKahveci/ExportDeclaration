@@ -63,6 +63,19 @@ export async function apiPatchJson<T>(path: string, body: unknown): Promise<T> {
   return (data as { data: T }).data;
 }
 
+export async function apiPutJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body)
+  });
+  const data = await parseJson<{ ok?: boolean; error?: string; data?: T }>(res);
+  if (!res.ok) {
+    throw new ApiError((data as { error?: string }).error ?? res.statusText, res.status, data);
+  }
+  return (data as { data: T }).data;
+}
+
 export async function apiPostMultipart<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`${apiBaseUrl()}${path}`, {
     method: "POST",

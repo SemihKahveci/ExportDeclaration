@@ -10,6 +10,8 @@ import { userRouter } from "./modules/users/user.routes.js";
 import { materialRecordRouter } from "./modules/material-records/materialRecord.routes.js";
 import { documentRuleRouter } from "./modules/document-rules/documentRule.routes.js";
 import { mailTemplateRouter } from "./modules/mail-templates/mailTemplate.routes.js";
+import { documentProcessRouter } from "./modules/document-processes/documentProcess.routes.js";
+import { declarationApprovalRulesRouter } from "./modules/declaration-approval-rules/declarationApprovalRules.routes.js";
 
 const app = express();
 
@@ -26,6 +28,8 @@ app.use("/api/users", authContextMiddleware, userRouter);
 app.use("/api/material-records", authContextMiddleware, materialRecordRouter);
 app.use("/api/document-rules", authContextMiddleware, documentRuleRouter);
 app.use("/api/mail-templates", authContextMiddleware, mailTemplateRouter);
+app.use("/api/document-processes", authContextMiddleware, documentProcessRouter);
+app.use("/api/declaration-approval-rules", authContextMiddleware, declarationApprovalRulesRouter);
 
 app.use(errorHandler);
 

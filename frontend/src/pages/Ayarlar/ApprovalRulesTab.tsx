@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Save } from 'lucide-react';
 import type { DeclarationApprovalRules } from '../../types';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import { useToast } from '../../components/ui/Toast';
 
 const DECLARATION_TYPES: { key: keyof DeclarationApprovalRules; label: string }[] = [
   { key: 'ithalat', label: 'İthalat Beyannamesi' },
@@ -14,20 +13,23 @@ const DECLARATION_TYPES: { key: keyof DeclarationApprovalRules; label: string }[
 
 interface ApprovalRulesTabProps {
   rules: DeclarationApprovalRules;
-  onChange: (rules: DeclarationApprovalRules) => void;
+  saving?: boolean;
+  onSave: (rules: DeclarationApprovalRules) => Promise<void>;
 }
 
-export default function ApprovalRulesTab({ rules, onChange }: ApprovalRulesTabProps) {
-  const { toast } = useToast();
+export default function ApprovalRulesTab({ rules, saving = false, onSave }: ApprovalRulesTabProps) {
   const [local, setLocal] = useState<DeclarationApprovalRules>({ ...rules });
+
+  useEffect(() => {
+    setLocal({ ...rules });
+  }, [rules]);
 
   function setLevel(key: keyof DeclarationApprovalRules, level: 1 | 2) {
     setLocal((prev) => ({ ...prev, [key]: level }));
   }
 
-  function handleSave() {
-    onChange(local);
-    toast('Beyanname onay kuralları güncellendi');
+  async function handleSave() {
+    await onSave(local);
   }
 
   return (
@@ -88,8 +90,8 @@ export default function ApprovalRulesTab({ rules, onChange }: ApprovalRulesTabPr
       </Card>
 
       <div className="flex">
-        <Button variant="primary" icon={Save} onClick={handleSave}>
-          Onay Kurallarını Kaydet
+        <Button variant="primary" icon={Save} onClick={handleSave} disabled={saving}>
+          {saving ? 'Kaydediliyor…' : 'Onay Kurallarını Kaydet'}
         </Button>
       </div>
     </div>
