@@ -14,6 +14,7 @@ import { customersService } from '../../services/customers';
 import { usersService } from '../../services/users';
 import { declarationFieldRulesService } from '../../services/declarationFieldRules';
 import { useToast } from '../../components/ui/Toast';
+import { ApiError } from '../../api/apiClient';
 import Tabs from '../../components/ui/Tabs';
 import CustomerSidePanel from './CustomerSidePanel';
 import AddressTab from './AddressTab';
@@ -25,8 +26,6 @@ import DeclFieldRuleDrawer from './DeclFieldRuleDrawer';
 import CustomerDrawer, { type DrawerMode, type DrawerPayload } from './CustomerDrawer';
 import MtAssignmentCard from './MtAssignmentCard';
 
-// ─── Tab definitions ──────────────────────────────────────────────────────────
-
 const TABS = [
   { key: 'addr',       label: 'Adresler'                  },
   { key: 'mail',       label: 'Müşteri Mailleri'          },
@@ -35,23 +34,25 @@ const TABS = [
   { key: 'declfields', label: 'Beyanname Alan Kuralları'  },
 ];
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
 
 export default function MusterilerPage() {
   const { toast } = useToast();
 
-  // ── Panel state ──────────────────────────────────────────────────────────
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [custSearch, setCustSearch] = useState('');
-  const [selectedId, setSelectedId] = useState('valeo');
+  const [selectedId, setSelectedId] = useState('');
   const [activeTab, setActiveTab] = useState('addr');
 
-  // ── MT users ─────────────────────────────────────────────────────────────
   const [mtUsers, setMtUsers] = useState<AppUser[]>([]);
   const [mtManagerUsers, setMtManagerUsers] = useState<AppUser[]>([]);
 
-  // ── Data state ───────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [selectedAddrIdx, setSelectedAddrIdx] = useState(0);
   const [domains, setDomains] = useState<MailDomain[]>([]);
@@ -60,7 +61,6 @@ export default function MusterilerPage() {
   const [notifyRules, setNotifyRules] = useState<NotificationRule[]>([]);
   const [declFieldRules, setDeclFieldRules] = useState<DeclarationFieldRule[]>([]);
 
-  // ── Drawer state ─────────────────────────────────────────────────────────
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('addr');
   const [editAddrIdx, setEditAddrIdx] = useState<number | null>(null);
@@ -69,27 +69,48 @@ export default function MusterilerPage() {
   const [editRuleIdx, setEditRuleIdx] = useState<number | null>(null);
   const [editNotifyIdx, setEditNotifyIdx] = useState<number | null>(null);
 
-  // ── Declaration field rule drawer ─────────────────────────────────────────
-  const [dfrDrawerOpen,  setDfrDrawerOpen]  = useState(false);
-  const [editDfrId,      setEditDfrId]      = useState<string | null>(null);
-  const [dfrInitGroup,   setDfrInitGroup]   = useState<string | undefined>(undefined);
-  const [dfrInitField,   setDfrInitField]   = useState<string | undefined>(undefined);
+  const [dfrDrawerOpen, setDfrDrawerOpen] = useState(false);
+  const [editDfrId, setEditDfrId] = useState<string | null>(null);
+  const [dfrInitGroup, setDfrInitGroup] = useState<string | undefined>(undefined);
+  const [dfrInitField, setDfrInitField] = useState<string | undefined>(undefined);
 
-  // ── Load customers + MT users once ──────────────────────────────────────
+  async function refreshCustomers(preferId?: string) {
+    const list = await customersService.getCustomerList();
+    setCustomers(list);
+    setSelectedId((prev) => preferId || prev || list[0]?.id || '');
+    return list;
+  }
+
   useEffect(() => {
     Promise.all([
       customersService.getCustomerList(),
       usersService.getMtUsers(),
       usersService.getMtManagerUsers(),
-    ]).then(([list, mt, mtMgr]) => {
-      setCustomers(list);
-      setMtUsers(mt);
-      setMtManagerUsers(mtMgr);
-    });
-  }, []);
+    ])
+      .then(([list, mt, mtMgr]) => {
+        setCustomers(list);
+        setMtUsers(mt);
+        setMtManagerUsers(mtMgr);
+        setSelectedId((prev) => prev || list[0]?.id || '');
+        if (!list.length) setLoading(false);
+      })
+      .catch((err) => {
+        toast(errorMessage(err, 'Müşteriler yüklenemedi'));
+        setLoading(false);
+      });
+  }, [toast]);
 
-  // ── Reload all data on customer change ───────────────────────────────────
   useEffect(() => {
+    if (!selectedId) {
+      setAddresses([]);
+      setDomains([]);
+      setMails([]);
+      setDocRules([]);
+      setNotifyRules([]);
+      setDeclFieldRules([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setSelectedAddrIdx(0);
     setActiveTab('addr');
@@ -100,27 +121,30 @@ export default function MusterilerPage() {
       customersService.getDocRules(selectedId),
       customersService.getNotifyRules(selectedId),
       declarationFieldRulesService.getRules(selectedId),
-    ]).then(([addrs, doms, mls, rules, nrules, dfrules]) => {
-      setAddresses(addrs);
-      setDomains(doms);
-      setMails(mls);
-      setDocRules(rules);
-      setNotifyRules(nrules);
-      setDeclFieldRules(dfrules);
-      setLoading(false);
-    });
-  }, [selectedId]);
+    ])
+      .then(([addrs, doms, mls, rules, nrules, dfrules]) => {
+        setAddresses(addrs);
+        setDomains(doms);
+        setMails(mls);
+        setDocRules(rules);
+        setNotifyRules(nrules);
+        setDeclFieldRules(dfrules);
+        setLoading(false);
+      })
+      .catch((err) => {
+        toast(errorMessage(err, 'Müşteri verileri yüklenemedi'));
+        setLoading(false);
+      });
+  }, [selectedId, toast]);
 
-  // ── Derived ──────────────────────────────────────────────────────────────
   const selectedCustomer = customers.find((c) => c.id === selectedId);
 
-  // ── Drawer helpers ───────────────────────────────────────────────────────
   function openDrawer(mode: DrawerMode, editIdx: number | null = null) {
     setDrawerMode(mode);
-    if (mode === 'addr')   setEditAddrIdx(editIdx);
+    if (mode === 'addr') setEditAddrIdx(editIdx);
     if (mode === 'domain') setEditDomainIdx(editIdx);
-    if (mode === 'mail')   setEditMailIdx(editIdx);
-    if (mode === 'rule')   setEditRuleIdx(editIdx);
+    if (mode === 'mail') setEditMailIdx(editIdx);
+    if (mode === 'rule') setEditRuleIdx(editIdx);
     if (mode === 'notify') setEditNotifyIdx(editIdx);
     setDrawerOpen(true);
   }
@@ -134,65 +158,98 @@ export default function MusterilerPage() {
     setEditNotifyIdx(null);
   }
 
-  // ── Save dispatcher ──────────────────────────────────────────────────────
-  function handleSave(payload: DrawerPayload) {
-    const newId = () => `${payload.mode}-${Date.now()}`;
-
-    if (payload.mode === 'addr') {
-      const item: CustomerAddress = { ...payload.data, id: newId(), customerId: selectedId };
-      if (editAddrIdx !== null) {
-        setAddresses((prev) => prev.map((a, i) => (i === editAddrIdx ? { ...a, ...item } : a)));
-        toast('Adres güncellendi · Sisteme gönderilebilir');
-      } else {
-        setAddresses((prev) => [item, ...prev]);
-        setSelectedAddrIdx(0);
-        toast('Adres kaydedildi · Sisteme gönderilebilir');
-      }
-    } else if (payload.mode === 'domain') {
-      const item: MailDomain = { ...payload.data, id: newId(), customerId: selectedId };
-      if (editDomainIdx !== null) {
-        setDomains((prev) => prev.map((d, i) => (i === editDomainIdx ? item : d)));
-      } else {
-        setDomains((prev) => [item, ...prev]);
-      }
-      toast('Domain kaydedildi');
-    } else if (payload.mode === 'mail') {
-      const item: CustomerMail = { ...payload.data, id: newId(), customerId: selectedId };
-      if (editMailIdx !== null) {
-        setMails((prev) => prev.map((m, i) => (i === editMailIdx ? item : m)));
-      } else {
-        setMails((prev) => [item, ...prev]);
-      }
-      toast('Mail tanımı kaydedildi');
-    } else if (payload.mode === 'rule') {
-      const item: DocumentRule = { ...payload.data, id: newId(), customerId: selectedId };
-      if (editRuleIdx !== null) {
-        setDocRules((prev) => prev.map((r, i) => (i === editRuleIdx ? item : r)));
-      } else {
-        setDocRules((prev) => [item, ...prev]);
-      }
-      toast('Evrak kuralı kaydedildi');
-    } else if (payload.mode === 'notify') {
-      const item: NotificationRule = { ...payload.data, id: newId(), customerId: selectedId };
-      if (editNotifyIdx !== null) {
-        setNotifyRules((prev) => prev.map((r, i) => (i === editNotifyIdx ? item : r)));
-      } else {
-        setNotifyRules((prev) => [item, ...prev]);
-      }
-      toast('Bildirim kuralı kaydedildi');
+  async function handleCreateCustomer(name: string) {
+    setSaving(true);
+    try {
+      const created = await customersService.createCustomer({ name });
+      await refreshCustomers(created.id);
+      toast('Müşteri eklendi');
+    } catch (err) {
+      toast(errorMessage(err, 'Müşteri eklenemedi'));
+    } finally {
+      setSaving(false);
     }
-
-    closeDrawer();
   }
 
-  // ── Address actions ──────────────────────────────────────────────────────
-  function handleSendEvrim() {
-    setAddresses((prev) =>
-      prev.map((a, i) =>
-        i === selectedAddrIdx ? { ...a, evrimStatus: 'sent', changed: false } : a
-      )
-    );
-    toast('Adres sisteme gönderildi');
+  async function handleSave(payload: DrawerPayload) {
+    if (!selectedId) return;
+    setSaving(true);
+    try {
+      if (payload.mode === 'addr') {
+        const existingId = editAddrIdx !== null ? addresses[editAddrIdx]?.id : undefined;
+        const saved = await customersService.saveAddress(selectedId, existingId, payload.data);
+        if (editAddrIdx !== null) {
+          setAddresses((prev) => prev.map((a, i) => (i === editAddrIdx ? saved : a)));
+          toast('Adres güncellendi · Sisteme gönderilebilir');
+        } else {
+          setAddresses((prev) => [saved, ...prev]);
+          setSelectedAddrIdx(0);
+          toast('Adres kaydedildi · Sisteme gönderilebilir');
+        }
+        await refreshCustomers(selectedId);
+      } else if (payload.mode === 'domain') {
+        const existingId = editDomainIdx !== null ? domains[editDomainIdx]?.id : undefined;
+        const saved = await customersService.saveDomain(selectedId, existingId, payload.data);
+        if (editDomainIdx !== null) {
+          setDomains((prev) => prev.map((d, i) => (i === editDomainIdx ? saved : d)));
+        } else {
+          setDomains((prev) => [saved, ...prev]);
+        }
+        toast('Domain kaydedildi');
+      } else if (payload.mode === 'mail') {
+        const existingId = editMailIdx !== null ? mails[editMailIdx]?.id : undefined;
+        const saved = await customersService.saveMail(selectedId, existingId, payload.data);
+        if (editMailIdx !== null) {
+          setMails((prev) => prev.map((m, i) => (i === editMailIdx ? saved : m)));
+        } else {
+          setMails((prev) => [saved, ...prev]);
+        }
+        toast('Mail tanımı kaydedildi');
+      } else if (payload.mode === 'rule') {
+        const existingId = editRuleIdx !== null ? docRules[editRuleIdx]?.id : undefined;
+        const saved = await customersService.saveDocRule(selectedId, existingId, payload.data);
+        if (editRuleIdx !== null) {
+          setDocRules((prev) => prev.map((r, i) => (i === editRuleIdx ? saved : r)));
+        } else {
+          setDocRules((prev) => [saved, ...prev]);
+        }
+        toast('Evrak kuralı kaydedildi');
+      } else if (payload.mode === 'notify') {
+        const existingId = editNotifyIdx !== null ? notifyRules[editNotifyIdx]?.id : undefined;
+        const saved = await customersService.saveNotifyRule(selectedId, existingId, payload.data);
+        if (editNotifyIdx !== null) {
+          setNotifyRules((prev) => prev.map((r, i) => (i === editNotifyIdx ? saved : r)));
+        } else {
+          setNotifyRules((prev) => [saved, ...prev]);
+        }
+        toast('Bildirim kuralı kaydedildi');
+      }
+      closeDrawer();
+    } catch (err) {
+      toast(errorMessage(err, 'Kayıt başarısız'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSendEvrim() {
+    const addr = addresses[selectedAddrIdx];
+    if (!addr) return;
+    try {
+      const saved = await customersService.saveAddress(selectedId, addr.id, {
+        company: addr.company,
+        addressLines: addr.addressLines,
+        city: addr.city,
+        country: addr.country,
+        taxNo: addr.taxNo,
+        evrimStatus: 'sent',
+        changed: false,
+      });
+      setAddresses((prev) => prev.map((a, i) => (i === selectedAddrIdx ? saved : a)));
+      toast('Adres sisteme gönderildi');
+    } catch (err) {
+      toast(errorMessage(err, 'Gönderim başarısız'));
+    }
   }
 
   function handleCopyAddress() {
@@ -203,20 +260,20 @@ export default function MusterilerPage() {
     toast('Adres kopyalandı');
   }
 
-  // ── MT assignment save ────────────────────────────────────────────────────
   async function handleMtSave(mtUserId: string | undefined, mtManagerUserId: string | undefined) {
-    await customersService.updateMtAssignment(selectedId, mtUserId, mtManagerUserId);
-    setCustomers((prev) =>
-      prev.map((c) =>
-        c.id === selectedId
-          ? { ...c, assignedMtUserId: mtUserId, assignedMtManagerUserId: mtManagerUserId }
-          : c
-      )
-    );
-    toast('Müşteri MT bilgileri güncellendi');
+    try {
+      const updated = await customersService.updateMtAssignment(
+        selectedId,
+        mtUserId,
+        mtManagerUserId
+      );
+      setCustomers((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+      toast('Müşteri MT bilgileri güncellendi');
+    } catch (err) {
+      toast(errorMessage(err, 'MT bilgileri kaydedilemedi'));
+    }
   }
 
-  // ── Declaration field rule actions ────────────────────────────────────────
   function openDfrDrawer(id?: string) {
     setEditDfrId(id ?? null);
     setDfrInitGroup(undefined);
@@ -231,42 +288,48 @@ export default function MusterilerPage() {
     setDfrDrawerOpen(true);
   }
 
-  function handleDfrSave(data: Omit<DeclarationFieldRule, 'id' | 'customerId'>) {
-    if (editDfrId) {
-      setDeclFieldRules((prev) =>
-        prev.map((r) => r.id === editDfrId ? { ...r, ...data } : r)
+  async function handleDfrSave(data: Omit<DeclarationFieldRule, 'id' | 'customerId'>) {
+    if (!selectedId) return;
+    try {
+      const saved = await declarationFieldRulesService.save(
+        selectedId,
+        editDfrId ?? undefined,
+        data
       );
-      toast('Alan kuralı güncellendi');
-    } else {
-      const newRule: DeclarationFieldRule = {
-        ...data,
-        id: `dfr-${Date.now()}`,
-        customerId: selectedId,
-      };
-      setDeclFieldRules((prev) => [newRule, ...prev]);
-      toast('Alan kuralı kaydedildi');
+      if (editDfrId) {
+        setDeclFieldRules((prev) => prev.map((r) => (r.id === editDfrId ? saved : r)));
+        toast('Alan kuralı güncellendi');
+      } else {
+        setDeclFieldRules((prev) => [saved, ...prev]);
+        toast('Alan kuralı kaydedildi');
+      }
+      setDfrDrawerOpen(false);
+      setEditDfrId(null);
+      setDfrInitGroup(undefined);
+      setDfrInitField(undefined);
+    } catch (err) {
+      toast(errorMessage(err, 'Alan kuralı kaydedilemedi'));
     }
-    setDfrDrawerOpen(false);
-    setEditDfrId(null);
-    setDfrInitGroup(undefined);
-    setDfrInitField(undefined);
   }
 
-  function handleDfrDelete(id: string) {
-    setDeclFieldRules((prev) => prev.filter((r) => r.id !== id));
-    toast('Alan kuralı silindi');
+  async function handleDfrDelete(id: string) {
+    try {
+      await declarationFieldRulesService.delete(id);
+      setDeclFieldRules((prev) => prev.filter((r) => r.id !== id));
+      toast('Alan kuralı silindi');
+    } catch (err) {
+      toast(errorMessage(err, 'Alan kuralı silinemedi'));
+    }
   }
 
-  // ── Derived initial values for drawer ────────────────────────────────────
-  const initAddr   = editAddrIdx   !== null ? addresses[editAddrIdx]   : undefined;
-  const initDomain = editDomainIdx !== null ? domains[editDomainIdx]   : undefined;
-  const initMail   = editMailIdx   !== null ? mails[editMailIdx]       : undefined;
-  const initRule   = editRuleIdx   !== null ? docRules[editRuleIdx]    : undefined;
+  const initAddr = editAddrIdx !== null ? addresses[editAddrIdx] : undefined;
+  const initDomain = editDomainIdx !== null ? domains[editDomainIdx] : undefined;
+  const initMail = editMailIdx !== null ? mails[editMailIdx] : undefined;
+  const initRule = editRuleIdx !== null ? docRules[editRuleIdx] : undefined;
   const initNotify = editNotifyIdx !== null ? notifyRules[editNotifyIdx] : undefined;
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Side panel */}
       <div className="w-[260px] shrink-0 flex flex-col" style={{ height: 'calc(100vh - 60px)' }}>
         <CustomerSidePanel
           customers={customers}
@@ -274,105 +337,109 @@ export default function MusterilerPage() {
           onSelect={setSelectedId}
           search={custSearch}
           onSearch={setCustSearch}
+          onCreate={handleCreateCustomer}
+          creating={saving}
         />
       </div>
 
-      {/* Detail area */}
       <div className="flex-1 min-w-0 overflow-y-auto px-7 pt-6 pb-12">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <h1 className="text-[22px] font-extrabold text-text-strong tracking-tight leading-snug">
-              {selectedCustomer?.name ?? '—'}
-            </h1>
-            <p className="text-[12.5px] text-muted mt-1">
-              Müşteri adres defteri, mail tanımları, evrak ve bildirim kuralları
-            </p>
-          </div>
-          {activeTab === 'addr' && (
-            <button
-              onClick={() => openDrawer('addr')}
-              className="inline-flex items-center gap-2 bg-accent text-white font-semibold text-[13px] px-4 h-9 rounded border border-transparent hover:bg-accent-d transition-colors shrink-0"
-            >
-              <span className="text-lg leading-none">+</span>
-              Yeni Adres
-            </button>
-          )}
-        </div>
-
-        {/* MT Assignment card */}
-        {selectedCustomer && (
-          <MtAssignmentCard
-            customer={selectedCustomer}
-            mtUsers={mtUsers}
-            mtManagerUsers={mtManagerUsers}
-            onSave={handleMtSave}
-          />
-        )}
-
-        {/* Tabs */}
-        <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} className="mb-5" />
-
-        {/* Loading */}
-        {loading ? (
-          <div className="flex items-center justify-center py-20 gap-3 text-muted">
-            <Loader2 size={20} className="animate-spin" />
-            <span className="text-[13px]">Yükleniyor…</span>
+        {!selectedId ? (
+          <div className="py-20 text-center text-[13px] text-muted">
+            Henüz müşteri yok. Soldan yeni müşteri ekleyin.
           </div>
         ) : (
           <>
-            {activeTab === 'addr' && (
-              <AddressTab
-                addresses={addresses}
-                selectedIdx={selectedAddrIdx}
-                onSelect={setSelectedAddrIdx}
-                onSendEvrim={handleSendEvrim}
-                onCopy={handleCopyAddress}
-                onNew={() => openDrawer('addr')}
-                onEdit={() => openDrawer('addr', selectedAddrIdx)}
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div>
+                <h1 className="text-[22px] font-extrabold text-text-strong tracking-tight leading-snug">
+                  {selectedCustomer?.name ?? '—'}
+                </h1>
+                <p className="text-[12.5px] text-muted mt-1">
+                  Müşteri adres defteri, mail tanımları, evrak ve bildirim kuralları
+                </p>
+              </div>
+              {activeTab === 'addr' && (
+                <button
+                  onClick={() => openDrawer('addr')}
+                  className="inline-flex items-center gap-2 bg-accent text-white font-semibold text-[13px] px-4 h-9 rounded border border-transparent hover:bg-accent-d transition-colors shrink-0"
+                >
+                  <span className="text-lg leading-none">+</span>
+                  Yeni Adres
+                </button>
+              )}
+            </div>
+
+            {selectedCustomer && (
+              <MtAssignmentCard
+                customer={selectedCustomer}
+                mtUsers={mtUsers}
+                mtManagerUsers={mtManagerUsers}
+                onSave={handleMtSave}
               />
             )}
-            {activeTab === 'mail' && (
-              <MailTab
-                domains={domains}
-                mails={mails}
-                onNewDomain={() => openDrawer('domain')}
-                onEditDomain={(i) => openDrawer('domain', i)}
-                onNewMail={() => openDrawer('mail')}
-                onEditMail={(i) => openDrawer('mail', i)}
-              />
-            )}
-            {activeTab === 'rule' && (
-              <DocRulesTab
-                rules={docRules}
-                onNew={() => openDrawer('rule')}
-                onEdit={(i) => openDrawer('rule', i)}
-              />
-            )}
-            {activeTab === 'notify' && (
-              <NotifyRulesTab
-                rules={notifyRules}
-                onNew={() => openDrawer('notify')}
-                onEdit={(i) => openDrawer('notify', i)}
-              />
-            )}
-            {activeTab === 'declfields' && (
-              <DeclFieldRulesTab
-                rules={declFieldRules}
-                onNew={(groupLabel, fieldName) =>
-                  groupLabel && fieldName
-                    ? openDfrDrawerForField(groupLabel, fieldName)
-                    : openDfrDrawer()
-                }
-                onEdit={(id) => openDfrDrawer(id)}
-                onDelete={handleDfrDelete}
-              />
+
+            <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} className="mb-5" />
+
+            {loading ? (
+              <div className="flex items-center justify-center py-20 gap-3 text-muted">
+                <Loader2 size={20} className="animate-spin" />
+                <span className="text-[13px]">Yükleniyor…</span>
+              </div>
+            ) : (
+              <>
+                {activeTab === 'addr' && (
+                  <AddressTab
+                    addresses={addresses}
+                    selectedIdx={selectedAddrIdx}
+                    onSelect={setSelectedAddrIdx}
+                    onSendEvrim={handleSendEvrim}
+                    onCopy={handleCopyAddress}
+                    onNew={() => openDrawer('addr')}
+                    onEdit={() => openDrawer('addr', selectedAddrIdx)}
+                  />
+                )}
+                {activeTab === 'mail' && (
+                  <MailTab
+                    domains={domains}
+                    mails={mails}
+                    onNewDomain={() => openDrawer('domain')}
+                    onEditDomain={(i) => openDrawer('domain', i)}
+                    onNewMail={() => openDrawer('mail')}
+                    onEditMail={(i) => openDrawer('mail', i)}
+                  />
+                )}
+                {activeTab === 'rule' && (
+                  <DocRulesTab
+                    rules={docRules}
+                    onNew={() => openDrawer('rule')}
+                    onEdit={(i) => openDrawer('rule', i)}
+                  />
+                )}
+                {activeTab === 'notify' && (
+                  <NotifyRulesTab
+                    rules={notifyRules}
+                    onNew={() => openDrawer('notify')}
+                    onEdit={(i) => openDrawer('notify', i)}
+                  />
+                )}
+                {activeTab === 'declfields' && (
+                  <DeclFieldRulesTab
+                    rules={declFieldRules}
+                    onNew={(groupLabel, fieldName) =>
+                      groupLabel && fieldName
+                        ? openDfrDrawerForField(groupLabel, fieldName)
+                        : openDfrDrawer()
+                    }
+                    onEdit={(id) => openDfrDrawer(id)}
+                    onDelete={handleDfrDelete}
+                  />
+                )}
+              </>
             )}
           </>
         )}
       </div>
 
-      {/* Drawer */}
       <CustomerDrawer
         open={drawerOpen}
         mode={drawerMode}
@@ -385,14 +452,18 @@ export default function MusterilerPage() {
         onClose={closeDrawer}
         onSave={handleSave}
       />
-      {/* Declaration field rule drawer */}
       <DeclFieldRuleDrawer
         open={dfrDrawerOpen}
         initial={editDfrId ? declFieldRules.find((r) => r.id === editDfrId) : undefined}
         initialGroup={dfrInitGroup}
         initialField={dfrInitField}
         customerName={selectedCustomer?.name ?? '—'}
-        onClose={() => { setDfrDrawerOpen(false); setEditDfrId(null); setDfrInitGroup(undefined); setDfrInitField(undefined); }}
+        onClose={() => {
+          setDfrDrawerOpen(false);
+          setEditDfrId(null);
+          setDfrInitGroup(undefined);
+          setDfrInitField(undefined);
+        }}
         onSave={handleDfrSave}
       />
     </div>

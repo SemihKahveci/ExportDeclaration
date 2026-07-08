@@ -1,5 +1,10 @@
 import type { DeclarationFieldRule } from '../types';
-import { delay } from './utils';
+import {
+  createDeclarationFieldRule,
+  deleteDeclarationFieldRule,
+  listDeclarationFieldRules,
+  updateDeclarationFieldRule,
+} from '../api/customerApi';
 
 export const FIELD_GROUPS: { label: string; fields: string[] }[] = [
   {
@@ -134,102 +139,24 @@ export const CONFLICT_ACTION_OPTIONS: string[] = [
   'Manuel karar iste',
 ];
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const DECL_FIELD_RULES: DeclarationFieldRule[] = [
-  {
-    id: 'dfr-001',
-    customerId: 'valeo',
-    fieldGroup: 'Taraf Bilgileri',
-    fieldName: 'Gönderici / İhracatçı Ünvanı',
-    primarySource: 'Fatura',
-    fallbackSource: 'Müşteri Kartı',
-    conflictAction: 'Kullanıcıya göster',
-    status: 'Aktif',
-    description: 'Faturadaki gönderici ünvanı önceliklidir; eksikse müşteri kartına bakılır.',
-  },
-  {
-    id: 'dfr-002',
-    customerId: 'valeo',
-    fieldGroup: 'Taraf Bilgileri',
-    fieldName: 'Alıcı / İthalatçı Adresi',
-    primarySource: 'Müşteri Adres Kaydı',
-    fallbackSource: 'Fatura',
-    conflictAction: 'Ana kaynak öncelikli',
-    status: 'Aktif',
-    description: '',
-  },
-  {
-    id: 'dfr-003',
-    customerId: 'valeo',
-    fieldGroup: 'Taşıma Bilgileri',
-    fieldName: 'CMR No',
-    primarySource: 'CMR',
-    fallbackSource: 'Fatura',
-    conflictAction: 'Ana kaynak öncelikli',
-    status: 'Aktif',
-    description: 'CMR numarası CMR belgesinden okunur.',
-  },
-  {
-    id: 'dfr-004',
-    customerId: 'valeo',
-    fieldGroup: 'Kalem / Malzeme Bilgileri',
-    fieldName: 'GTİP No',
-    primarySource: 'GTİP Veri Tabanı',
-    fallbackSource: 'Fatura',
-    conflictAction: 'Kullanıcıya göster',
-    status: 'Aktif',
-    description: 'GTİP numarası önce veri tabanından alınır, bulunamazsa faturaya bakılır.',
-  },
-  {
-    id: 'dfr-005',
-    customerId: 'valeo',
-    fieldGroup: 'Fatura ve Kıymet Bilgileri',
-    fieldName: 'Toplam Fatura Bedeli',
-    primarySource: 'Fatura',
-    fallbackSource: 'Manuel Giriş',
-    conflictAction: 'Manuel karar iste',
-    status: 'Aktif',
-    description: '',
-  },
-  {
-    id: 'dfr-006',
-    customerId: 'valeo',
-    fieldGroup: 'Kap ve Ağırlık Bilgileri',
-    fieldName: 'Brüt Kilo',
-    primarySource: 'Çeki Listesi',
-    fallbackSource: 'CMR',
-    conflictAction: 'Kullanıcıya göster',
-    status: 'Pasif',
-    description: 'Çeki listesi yoksa CMR kullanılır.',
-  },
-  {
-    id: 'dfr-007',
-    customerId: 'valeo',
-    fieldGroup: 'Genel Beyan Bilgileri',
-    fieldName: 'Referans No',
-    primarySource: 'Müşteri Kartı',
-    fallbackSource: 'Fatura',
-    conflictAction: 'Ana kaynak öncelikli',
-    status: 'Aktif',
-    description: '',
-  },
-  {
-    id: 'dfr-008',
-    customerId: 'valeo',
-    fieldGroup: 'Ülke ve Teslimat Bilgileri',
-    fieldName: 'Teslim Şekli',
-    primarySource: 'Fatura',
-    fallbackSource: '',
-    conflictAction: 'Ana kaynak öncelikli',
-    status: 'Aktif',
-    description: '',
-  },
-];
+function isMongoId(id: string): boolean {
+  return /^[a-f\d]{24}$/i.test(id);
+}
 
 export const declarationFieldRulesService = {
   getRules: async (customerId: string): Promise<DeclarationFieldRule[]> => {
-    await delay(70);
-    return DECL_FIELD_RULES.filter((r) => r.customerId === customerId).map((r) => ({ ...r }));
+    if (!customerId) return [];
+    return listDeclarationFieldRules(customerId);
+  },
+  save: async (
+    customerId: string,
+    id: string | undefined,
+    data: Omit<DeclarationFieldRule, 'id' | 'customerId'>
+  ): Promise<DeclarationFieldRule> => {
+    if (id && isMongoId(id)) return updateDeclarationFieldRule(id, data);
+    return createDeclarationFieldRule(customerId, data);
+  },
+  delete: async (id: string): Promise<void> => {
+    return deleteDeclarationFieldRule(id);
   },
 };

@@ -12,6 +12,7 @@ import { documentRuleRouter } from "./modules/document-rules/documentRule.routes
 import { mailTemplateRouter } from "./modules/mail-templates/mailTemplate.routes.js";
 import { documentProcessRouter } from "./modules/document-processes/documentProcess.routes.js";
 import { declarationApprovalRulesRouter } from "./modules/declaration-approval-rules/declarationApprovalRules.routes.js";
+import { customerRouter } from "./modules/customers/customer.routes.js";
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use("/api/document-rules", authContextMiddleware, documentRuleRouter);
 app.use("/api/mail-templates", authContextMiddleware, mailTemplateRouter);
 app.use("/api/document-processes", authContextMiddleware, documentProcessRouter);
 app.use("/api/declaration-approval-rules", authContextMiddleware, declarationApprovalRulesRouter);
+app.use("/api/customers", authContextMiddleware, customerRouter);
 
 app.use(errorHandler);
 
