@@ -63,7 +63,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
     <Card>
       <CardHead
         title="Müşteri Evrak Kuralları"
-        sub="İşlem tipi, taşıma şekli ve senaryoya göre müşteriden istenecek evrak setleri."
+        sub="İşlem tipi ve taşıma şekline göre müşteriden istenecek evrak setleri."
         actions={
           <Button variant="primary" size="sm" icon={Plus} onClick={onNew}>
             Yeni Evrak Kuralı
@@ -107,7 +107,6 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
           <tr>
             <Th>İşlem Tipi</Th>
             <Th>Taşıma</Th>
-            <Th>Senaryo</Th>
             <Th>Gerekli Evraklar</Th>
             <Th>Hatırlatma</Th>
             <Th>Sıklık</Th>
@@ -118,7 +117,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
         <tbody>
           {visible.length === 0 ? (
             <tr>
-              <td colSpan={8} className="py-10 text-center text-muted text-[13px]">
+              <td colSpan={7} className="py-10 text-center text-muted text-[13px]">
                 Bu kriterlere uyan evrak kuralı bulunamadı.
               </td>
             </tr>
@@ -129,7 +128,6 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
                 <Tr key={r.id}>
                   <Td><span className="font-semibold text-text-strong">{r.transactionType}</span></Td>
                   <Td><span className="text-[13px]">{r.transportMode}</span></Td>
-                  <Td><span className="text-[13px]">{r.scenario}</span></Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
                       {r.requiredDocs.map((d) => (

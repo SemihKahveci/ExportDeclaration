@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { Plus, Search, Pencil, Trash2, Loader2, X, AlertTriangle, Copy } from 'lucide-react';
 import type { MailTemplate } from '../../types';
 import { mailTemplatesService, MAIL_PROCESS_OPTIONS, MAIL_VARIABLES } from '../../services/mails';
@@ -18,6 +18,9 @@ const PROCESS_LABEL: Record<string, string> = Object.fromEntries(
 );
 
 type MailProcessStep = (typeof MAIL_PROCESS_OPTIONS)[number]['value'];
+type InsertTarget = 'subject' | 'body';
+
+const SELECT_PLACEHOLDER = '';
 
 function VariablePills({ vars }: { vars: string[] }) {
   if (vars.length === 0) return <span className="text-muted-2 text-[12px]">—</span>;
@@ -47,11 +50,13 @@ interface TemplateDrawerProps {
 
 function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateDrawerProps) {
   const [name,       setName]       = useState('');
-  const [process,    setProcess]    = useState<MailProcessStep>(MAIL_PROCESS_OPTIONS[0].value);
+  const [process,    setProcess]    = useState<MailProcessStep | typeof SELECT_PLACEHOLDER>(SELECT_PLACEHOLDER);
   const [subject,    setSubject]    = useState('');
   const [body,       setBody]       = useState('');
   const [active,     setActive]     = useState(true);
   const [bodyRef,    setBodyRef]    = useState<HTMLTextAreaElement | null>(null);
+  const [insertTarget, setInsertTarget] = useState<InsertTarget>('body');
+  const subjectSelection = useRef({ start: 0, end: 0 });
 
   useEffect(() => {
     if (mode === 'edit' && template) {
@@ -62,14 +67,16 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
       setActive(template.active);
     } else if (mode === 'new') {
       setName('');
-      setProcess(MAIL_PROCESS_OPTIONS[0].value);
+      setProcess(SELECT_PLACEHOLDER);
       setSubject('');
       setBody('');
       setActive(true);
+      setInsertTarget('body');
     }
   }, [mode, template]);
 
   function handleSave() {
+    if (process === SELECT_PLACEHOLDER) return;
     const usedVars = MAIL_VARIABLES.filter(
       (v) => body.includes(v) || subject.includes(v)
     );
@@ -85,17 +92,25 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
   }
 
   function insertVariable(v: string) {
+    if (insertTarget === 'subject') {
+      const { start, end } = subjectSelection.current;
+      const next = subject.slice(0, start) + v + subject.slice(end);
+      setSubject(next);
+      subjectSelection.current = { start: start + v.length, end: start + v.length };
+      return;
+    }
     if (!bodyRef) return;
     const start = bodyRef.selectionStart ?? body.length;
     const end   = bodyRef.selectionEnd   ?? body.length;
     const next  = body.slice(0, start) + v + body.slice(end);
     setBody(next);
-    // Restore cursor after insertion
     requestAnimationFrame(() => {
       bodyRef.focus();
       bodyRef.setSelectionRange(start + v.length, start + v.length);
     });
   }
+
+  const canSave = name.trim() !== '' && process !== SELECT_PLACEHOLDER && subject.trim() !== '';
 
   const isDelete = mode === 'delete';
 
@@ -124,7 +139,7 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
         ) : (
           <>
             <Button onClick={onClose}>Vazgeç</Button>
-            <Button variant="primary" onClick={handleSave} disabled={!name.trim() || !subject.trim()}>
+            <Button variant="primary" onClick={handleSave} disabled={!canSave}>
               Kaydet
             </Button>
           </>
@@ -153,18 +168,19 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
           </Field>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Süreç" htmlFor="mt-process">
+            <Field label="Süreç" htmlFor="mt-process" required>
               <Select
                 id="mt-process"
                 value={process}
-                onChange={(e) => setProcess(e.target.value as MailProcessStep)}
+                onChange={(e) => setProcess(e.target.value as MailProcessStep | typeof SELECT_PLACEHOLDER)}
               >
+                <option value={SELECT_PLACEHOLDER}>Seçiniz</option>
                 {MAIL_PROCESS_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </Select>
             </Field>
-            <Field label="Durum" htmlFor="mt-status">
+            <Field label="Durum" htmlFor="mt-status" required>
               <Select
                 id="mt-status"
                 value={active ? 'aktif' : 'pasif'}
@@ -181,6 +197,21 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
               id="mt-subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
+              onFocus={() => setInsertTarget('subject')}
+              onSelect={(e) => {
+                const t = e.target as HTMLInputElement;
+                subjectSelection.current = {
+                  start: t.selectionStart ?? subject.length,
+                  end: t.selectionEnd ?? subject.length,
+                };
+              }}
+              onClick={(e) => {
+                const t = e.target as HTMLInputElement;
+                subjectSelection.current = {
+                  start: t.selectionStart ?? subject.length,
+                  end: t.selectionEnd ?? subject.length,
+                };
+              }}
               placeholder="Örn. [{referans}] Eksik Evrak Bildirimi"
             />
           </Field>
@@ -190,15 +221,19 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
               id="mt-body"
               value={body}
               onChange={(e) => setBody(e.target.value)}
+              onFocus={() => setInsertTarget('body')}
               ref={(el) => setBodyRef(el)}
               rows={9}
-              placeholder="Mail içeriğini buraya yazın. Değişken eklemek için aşağıdaki düğmeleri kullanın."
+              placeholder="Mail içeriğini buraya yazın. Değişken eklemek için alana tıklayın, ardından aşağıdaki düğmeleri kullanın."
             />
           </Field>
 
           <div>
             <p className="text-[12px] font-medium text-text-strong mb-2">Kullanılabilir Değişkenler</p>
-            <p className="text-[11.5px] text-muted mb-2">Tıklayarak konu veya içeriğe ekleyin.</p>
+            <p className="text-[11.5px] text-muted mb-2">
+              Konu veya içerik alanına tıklayın, ardından değişkeni seçerek ekleyin.
+              {insertTarget === 'subject' ? ' Hedef: Mail Konusu' : ' Hedef: Mail İçeriği'}
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {MAIL_VARIABLES.map((v) => {
                 const used = body.includes(v) || subject.includes(v);
@@ -213,7 +248,7 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
                         ? 'bg-accent/10 border-accent/30 text-accent'
                         : 'bg-surface-2 border-line text-muted hover:border-accent/40 hover:text-text hover:bg-surface',
                     ].join(' ')}
-                    title="İçeriğe ekle"
+                    title={insertTarget === 'subject' ? 'Konuya ekle' : 'İçeriğe ekle'}
                   >
                     <Copy size={10} strokeWidth={2} />
                     {v}

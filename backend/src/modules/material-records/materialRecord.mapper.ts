@@ -7,7 +7,7 @@ export interface MaterialRecordDto {
   description: string;
   gtipNo: string;
   transactionTypes: string[];
-  status: "verified" | "pending";
+  status: "verified" | "pending" | "rejected";
   source: "manuel" | "fatura";
   updatedAt: string;
 }

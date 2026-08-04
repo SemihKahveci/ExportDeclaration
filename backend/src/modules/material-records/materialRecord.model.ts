@@ -1,7 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 
 export const TRANSACTION_TYPES = ["ithalat", "ihracat", "transit", "antrepo"] as const;
-export const RECORD_STATUSES = ["verified", "pending"] as const;
+export const RECORD_STATUSES = ["verified", "pending", "rejected"] as const;
 export const RECORD_SOURCES = ["manuel", "fatura"] as const;
 
 export interface MaterialRecordDoc extends mongoose.Document {

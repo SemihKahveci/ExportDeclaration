@@ -27,7 +27,7 @@ function assertTransactionTypes(types: unknown): string[] {
 }
 
 function assertStatus(v: unknown): MaterialRecordDoc["status"] {
-  if (v === "verified" || v === "pending") return v;
+  if (v === "verified" || v === "pending" || v === "rejected") return v;
   return "pending";
 }
 

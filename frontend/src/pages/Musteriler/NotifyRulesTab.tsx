@@ -9,15 +9,21 @@ import Button from '../../components/ui/Button';
 const MODE_STYLES: Record<NotifyWorkingMode, string> = {
   Otomatik:  'bg-ok-tint text-ok',
   Kontrollü: 'bg-[#e8f0f8] text-[var(--hat-blue)]',
-  Manuel:    'bg-warn-tint text-warn',
+  Manuel:    'bg-surface-2 text-muted border border-line',
   Kapalı:    'bg-surface-2 text-muted border border-line',
 };
 
+function displayWorkingMode(mode: NotifyWorkingMode): string {
+  return mode === 'Manuel' ? 'Kapalı' : mode;
+}
+
 function ModeBadge({ mode }: { mode: NotifyWorkingMode }) {
+  const label = displayWorkingMode(mode);
+  const cls = MODE_STYLES[mode === 'Manuel' ? 'Kapalı' : mode] ?? 'bg-surface-2 text-muted';
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[12px] font-bold px-[10px] py-[4px] rounded-full ${MODE_STYLES[mode]}`}>
+    <span className={`inline-flex items-center gap-1.5 text-[12px] font-bold px-[10px] py-[4px] rounded-full ${cls}`}>
       <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
-      {mode}
+      {label}
     </span>
   );
 }
@@ -59,21 +65,17 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
   const counts = {
     auto:       rules.filter((r) => r.workingMode === 'Otomatik').length,
     controlled: rules.filter((r) => r.workingMode === 'Kontrollü').length,
-    manual:     rules.filter((r) => r.workingMode === 'Manuel').length,
-    closed:     rules.filter((r) => r.workingMode === 'Kapalı').length,
+    closed:     rules.filter((r) => r.workingMode === 'Kapalı' || r.workingMode === 'Manuel').length,
   };
 
   return (
     <div className="space-y-4">
-      {/* Summary tiles */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <SummaryTile count={counts.auto}       label="Otomatik"  />
         <SummaryTile count={counts.controlled} label="Kontrollü" />
-        <SummaryTile count={counts.manual}     label="Manuel"    />
         <SummaryTile count={counts.closed}     label="Kapalı"    />
       </div>
 
-      {/* Table */}
       <Card>
         <CardHead
           title="Bildirim Kuralları"
@@ -91,7 +93,6 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
               <Th>Çalışma Şekli</Th>
               <Th>Kanal</Th>
               <Th>Alıcı Kuralı</Th>
-              <Th>Onay Gerekir</Th>
               <Th>Durum</Th>
               <Th />
             </tr>
@@ -99,7 +100,7 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
           <tbody>
             {rules.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-muted text-[13px]">
+                <td colSpan={6} className="py-10 text-center text-muted text-[13px]">
                   Bildirim kuralı tanımlı değil.
                 </td>
               </tr>
@@ -122,7 +123,6 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
                     </div>
                   </Td>
                   <Td><span className="text-muted text-[12.5px]">{r.recipientRule}</span></Td>
-                  <Td><span className="text-[13px]">{r.requiresApproval ? 'Evet' : 'Hayır'}</span></Td>
                   <Td><StatusBadge status={r.status} /></Td>
                   <Td className="w-px">
                     <button
@@ -138,7 +138,7 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
           </tbody>
         </Table>
         <div className="px-5 py-3 text-[12px] text-muted-2 leading-relaxed border-t border-line">
-          Otomatik: sistem tetikler. Kontrollü: sistem hazırlar, operatör onaylar. Manuel: operatör zamanlar ve gönderir. Kapalı: bu süreç için müşteriye bildirim gitmez.
+          Otomatik: sistem tetikler. Kontrollü: sistem hazırlar, operatör onaylar. Kapalı: bu süreç için müşteriye bildirim gitmez.
         </div>
       </Card>
     </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import Drawer from '../../components/ui/Drawer';
 import Button from '../../components/ui/Button';
@@ -9,8 +9,10 @@ import type { TransactionType, RecordSource, MaterialRecord } from '../../types'
 interface NewRecordDrawerProps {
   open: boolean;
   customerName: string;
+  initialRecord?: MaterialRecord | null;
   onClose: () => void;
   onSave: (record: Omit<MaterialRecord, 'id' | 'customerId'>) => void;
+  onUpdate?: (id: string, record: Omit<MaterialRecord, 'id' | 'customerId'>) => void;
 }
 
 const ALL_TYPES: TransactionType[] = ['ithalat', 'ihracat', 'transit', 'antrepo'];
@@ -34,13 +36,36 @@ function today(): string {
 export default function NewRecordDrawer({
   open,
   customerName,
+  initialRecord,
   onClose,
   onSave,
+  onUpdate,
 }: NewRecordDrawerProps) {
+  const isEdit = Boolean(initialRecord?.id);
+
   const [materialNo, setMaterialNo] = useState('');
   const [description, setDescription] = useState('');
   const [gtipNo, setGtipNo] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<TransactionType[]>(ALL_TYPES);
+
+  useEffect(() => {
+    if (!open) return;
+    if (initialRecord) {
+      setMaterialNo(initialRecord.materialNo);
+      setDescription(initialRecord.description);
+      setGtipNo(initialRecord.gtipNo);
+      setSelectedTypes(
+        initialRecord.transactionTypes.length > 0
+          ? initialRecord.transactionTypes
+          : ALL_TYPES
+      );
+    } else {
+      setMaterialNo('');
+      setDescription('');
+      setGtipNo('');
+      setSelectedTypes(ALL_TYPES);
+    }
+  }, [open, initialRecord]);
 
   function toggleType(t: TransactionType) {
     setSelectedTypes((prev) =>
@@ -49,40 +74,51 @@ export default function NewRecordDrawer({
   }
 
   function handleSave() {
-    const source: RecordSource = 'manuel';
+    const source: RecordSource = initialRecord?.source ?? 'manuel';
     const types = selectedTypes.length === 0 ? [...ALL_TYPES] : selectedTypes;
-    onSave({
+    const payload: Omit<MaterialRecord, 'id' | 'customerId'> = {
       materialNo: materialNo.trim() || `MLZ-${Math.floor(100000 + Math.random() * 900000)}`,
       description: description.trim() || '(tanımsız malzeme)',
       gtipNo: gtipNo.trim() || '0000.00.00.00.00',
       transactionTypes: types,
-      status: 'pending',
+      status: initialRecord?.status === 'rejected' ? 'pending' : (initialRecord?.status ?? 'pending'),
       source,
       updatedAt: today(),
-    });
-    setMaterialNo('');
-    setDescription('');
-    setGtipNo('');
-    setSelectedTypes(ALL_TYPES);
+    };
+
+    if (isEdit && initialRecord && onUpdate) {
+      onUpdate(initialRecord.id, payload);
+    } else {
+      onSave(payload);
+    }
   }
 
   const allSelected = ALL_TYPES.every((t) => selectedTypes.includes(t));
+  const canSave = materialNo.trim() !== '' && description.trim() !== '' && gtipNo.trim() !== '';
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      title="Yeni Kayıt"
+      title={isEdit ? 'Kaydı Düzenle' : 'Yeni Kayıt'}
       subtitle={`${customerName} · malzeme ↔ GTİP eşlemesi`}
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave}>Kaydet</Button>
+          <Button variant="primary" onClick={handleSave} disabled={!canSave}>
+            {isEdit ? 'Güncelle' : 'Kaydet'}
+          </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Malzeme Numarası" htmlFor="nr-mlz">
+        {initialRecord?.status === 'rejected' && (
+          <Note variant="warn">
+            Bu kayıt reddedildi. Düzenleyip güncellediğinizde tekrar <strong>Onay Bekleyen</strong> kuyruğuna alınır.
+          </Note>
+        )}
+
+        <Field label="Malzeme Numarası" htmlFor="nr-mlz" required>
           <Input
             id="nr-mlz"
             value={materialNo}
@@ -92,7 +128,7 @@ export default function NewRecordDrawer({
           />
         </Field>
 
-        <Field label="Malzeme Tanımı" htmlFor="nr-tanim">
+        <Field label="Malzeme Tanımı" htmlFor="nr-tanim" required>
           <Input
             id="nr-tanim"
             value={description}
@@ -101,7 +137,7 @@ export default function NewRecordDrawer({
           />
         </Field>
 
-        <Field label="GTİP Numarası" htmlFor="nr-gtip">
+        <Field label="GTİP Numarası" htmlFor="nr-gtip" required>
           <Input
             id="nr-gtip"
             value={gtipNo}
@@ -149,9 +185,11 @@ export default function NewRecordDrawer({
           </p>
         </Field>
 
-        <Note variant="warn">
-          Yeni kayıt <strong>Onay Bekleyen</strong> olarak eklenir; doğrulandıktan sonra beyannamede kullanılabilir.
-        </Note>
+        {!isEdit && (
+          <Note variant="warn">
+            Yeni kayıt <strong>Onay Bekleyen</strong> olarak eklenir; doğrulandıktan sonra beyannamede kullanılabilir.
+          </Note>
+        )}
       </div>
     </Drawer>
   );

@@ -134,7 +134,7 @@ export interface GtipEntry {
 
 export type TransactionType = 'ithalat' | 'ihracat' | 'transit' | 'antrepo';
 
-export type RecordStatus = 'verified' | 'pending';
+export type RecordStatus = 'verified' | 'pending' | 'rejected';
 
 export type RecordSource = 'manuel' | 'fatura';
 

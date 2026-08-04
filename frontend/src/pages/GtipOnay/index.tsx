@@ -52,14 +52,26 @@ function ScopeTag({ transactionType }: { transactionType: ActiveTransactionType 
 // ─── Status cell ──────────────────────────────────────────────────────────────
 
 function StatusCell({ status }: { status: MaterialRecord['status'] }) {
-  const ok = status === 'verified';
+  if (status === 'verified') {
+    return (
+      <span className="inline-flex items-center gap-2 font-semibold text-[12.5px] text-ok">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--ok)' }} />
+        Doğrulanmış
+      </span>
+    );
+  }
+  if (status === 'rejected') {
+    return (
+      <span className="inline-flex items-center gap-2 font-semibold text-[12.5px] text-[var(--hat-red)]">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--hat-red)' }} />
+        Reddedildi
+      </span>
+    );
+  }
   return (
-    <span className={`inline-flex items-center gap-2 font-semibold text-[12.5px] ${ok ? 'text-ok' : 'text-warn'}`}>
-      <span
-        className="w-2 h-2 rounded-full shrink-0"
-        style={{ background: ok ? 'var(--ok)' : 'var(--warn)' }}
-      />
-      {ok ? 'Doğrulanmış' : 'Onay Bekleyen'}
+    <span className="inline-flex items-center gap-2 font-semibold text-[12.5px] text-warn">
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--warn)' }} />
+      Onay Bekleyen
     </span>
   );
 }
@@ -128,6 +140,7 @@ export default function GtipOnayPage() {
   const [search, setSearch] = useState('');
 
   const [newRecordOpen, setNewRecordOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<MaterialRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
 
   // load customers once
@@ -155,13 +168,13 @@ export default function GtipOnayPage() {
   // counts are based on the raw records (before status filter / search)
   const total = records.length;
   const verified = records.filter((r) => r.status === 'verified').length;
-  const pending = records.filter((r) => r.status === 'pending').length;
+  const pending = records.filter((r) => r.status === 'pending' || r.status === 'rejected').length;
 
   // filtered view
   const visible = useMemo(() => {
     return records.filter((r) => {
       if (statusFilter === 'verified' && r.status !== 'verified') return false;
-      if (statusFilter === 'pending' && r.status !== 'pending') return false;
+      if (statusFilter === 'pending' && r.status !== 'pending' && r.status !== 'rejected') return false;
       if (transactionType !== 'tumu') {
         const tt = transactionType as TransactionType;
         const allFour: TransactionType[] = ['ithalat', 'ihracat', 'transit', 'antrepo'];
@@ -200,10 +213,9 @@ export default function GtipOnayPage() {
   async function handleReject(id: string) {
     const rec = records.find((r) => r.id === id);
     try {
-      await gtipService.rejectRecord(id);
-      setRecords((prev) => prev.filter((r) => r.id !== id));
-      await refreshCustomers();
-      toast(`${rec?.materialNo ?? 'Kayıt'} reddedildi · kayıt listeden çıkarıldı`);
+      const updated = await gtipService.rejectRecord(id);
+      setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      toast(`${rec?.materialNo ?? 'Kayıt'} reddedildi · düzenleyip tekrar işlem yapabilirsiniz`);
     } catch {
       toast('Reddetme başarısız · lütfen tekrar dene');
     }
@@ -220,6 +232,46 @@ export default function GtipOnayPage() {
     } catch {
       toast('Kayıt eklenemedi · lütfen tekrar dene');
     }
+  }
+
+  async function handleUpdateRecord(
+    id: string,
+    record: Omit<MaterialRecord, 'id' | 'customerId'>
+  ) {
+    try {
+      const updated = await gtipService.updateRecord(id, {
+        materialNo: record.materialNo,
+        description: record.description,
+        gtipNo: record.gtipNo,
+        transactionTypes: record.transactionTypes,
+        status: record.status,
+      });
+      setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      setEditingRecord(null);
+      setNewRecordOpen(false);
+      toast(
+        record.status === 'pending' && records.find((r) => r.id === id)?.status === 'rejected'
+          ? 'Kayıt güncellendi · tekrar Onay Bekleyen kuyruğuna alındı'
+          : 'Kayıt güncellendi'
+      );
+    } catch {
+      toast('Güncelleme başarısız · lütfen tekrar dene');
+    }
+  }
+
+  function openNewRecord() {
+    setEditingRecord(null);
+    setNewRecordOpen(true);
+  }
+
+  function openEditRecord(rec: MaterialRecord) {
+    setEditingRecord(rec);
+    setNewRecordOpen(true);
+  }
+
+  function closeRecordDrawer() {
+    setNewRecordOpen(false);
+    setEditingRecord(null);
   }
 
   async function handleImport(file: File) {
@@ -280,7 +332,7 @@ export default function GtipOnayPage() {
             <Button icon={Download} onClick={() => setImportOpen(true)}>
               İçe Aktar
             </Button>
-            <Button variant="primary" icon={Plus} onClick={() => setNewRecordOpen(true)}>
+            <Button variant="primary" icon={Plus} onClick={openNewRecord}>
               Yeni Kayıt
             </Button>
           </div>
@@ -387,7 +439,7 @@ export default function GtipOnayPage() {
                       </Td>
                       <Td className="w-px">
                         <div className="flex items-center gap-1.5 justify-end">
-                          {rec.status === 'pending' && (
+                          {(rec.status === 'pending' || rec.status === 'rejected') && (
                             <>
                               <button
                                 onClick={() => handleApprove(rec.id)}
@@ -396,17 +448,19 @@ export default function GtipOnayPage() {
                                 <Check size={12} strokeWidth={2.4} />
                                 Onayla
                               </button>
-                              <button
-                                onClick={() => handleReject(rec.id)}
-                                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white"
-                              >
-                                <X size={12} strokeWidth={2.4} />
-                                Reddet
-                              </button>
+                              {rec.status === 'pending' && (
+                                <button
+                                  onClick={() => handleReject(rec.id)}
+                                  className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white"
+                                >
+                                  <X size={12} strokeWidth={2.4} />
+                                  Reddet
+                                </button>
+                              )}
                             </>
                           )}
                           <button
-                            onClick={() => setNewRecordOpen(true)}
+                            onClick={() => openEditRecord(rec)}
                             className="text-muted-2 hover:text-accent transition-colors"
                           >
                             <Pencil size={16} strokeWidth={2} />
@@ -426,8 +480,10 @@ export default function GtipOnayPage() {
       <NewRecordDrawer
         open={newRecordOpen}
         customerName={selectedCustomer?.name ?? '—'}
-        onClose={() => setNewRecordOpen(false)}
+        initialRecord={editingRecord}
+        onClose={closeRecordDrawer}
         onSave={handleNewRecord}
+        onUpdate={handleUpdateRecord}
       />
 
       <ImportModal

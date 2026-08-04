@@ -7,7 +7,6 @@ import { parseInvoiceForGtipQuery } from '../api/gtipQueryApi';
 import {
   bulkCreateMaterialRecords,
   createMaterialRecord,
-  deleteMaterialRecord,
   downloadMaterialRecordTemplate,
   getCustomerRecordCounts,
   importMaterialRecordsExcel,
@@ -243,8 +242,14 @@ export const gtipService = {
   approveRecord: async (id: string): Promise<MaterialRecord> => {
     return patchMaterialRecord(id, { status: 'verified' });
   },
-  rejectRecord: async (id: string): Promise<void> => {
-    return deleteMaterialRecord(id);
+  updateRecord: async (
+    id: string,
+    patch: Partial<Pick<MaterialRecord, 'status' | 'materialNo' | 'description' | 'gtipNo' | 'transactionTypes'>>
+  ): Promise<MaterialRecord> => {
+    return patchMaterialRecord(id, patch);
+  },
+  rejectRecord: async (id: string): Promise<MaterialRecord> => {
+    return patchMaterialRecord(id, { status: 'rejected' });
   },
   downloadMaterialRecordTemplate: async (): Promise<void> => {
     return downloadMaterialRecordTemplate();

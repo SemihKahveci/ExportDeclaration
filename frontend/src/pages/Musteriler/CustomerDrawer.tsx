@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check } from 'lucide-react';
 import Drawer from '../../components/ui/Drawer';
 import Button from '../../components/ui/Button';
 import { Field, Input, Select, Textarea } from '../../components/ui/Fields';
+import { useToast } from '../../components/ui/Toast';
 import type {
   CustomerAddress,
   MailDomain,
   CustomerMail,
   DocumentRule,
   NotificationRule,
+  NotifyWorkingMode,
 } from '../../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,7 +37,7 @@ interface CustomerDrawerProps {
   onSave: (payload: DrawerPayload) => void;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+const SELECT_PLACEHOLDER = '';
 
 const NOTIFICATION_PROCESS_LIST = [
   'GTİP Eksik · Kontrollü',
@@ -61,7 +63,34 @@ const NOTIFY_PROCESS_LIST = [
   'Kapanış Evrakları Gönderimi', 'Para Talep / Ödeme Bildirimi',
 ];
 
-// ─── Toggle checkbox grid ──────────────────────────────────────────────────────
+const NOTIFY_MODE_OPTIONS = ['Otomatik', 'Kontrollü', 'Kapalı'] as const;
+const RECIPIENT_RULE_OPTIONS = ['Mail', 'Domain', 'Mail + Domain', 'Kullanıcı seçimi'] as const;
+
+function normalizeRecipientRule(value: string): string {
+  const map: Record<string, string> = {
+    'Mail tanımlarından': 'Mail',
+    'Domain eşleşmesine göre': 'Domain',
+    'Operatör seçer': 'Kullanıcı seçimi',
+  };
+  if (value.startsWith('—')) return SELECT_PLACEHOLDER;
+  return map[value] ?? value;
+}
+
+function normalizeWorkingMode(mode: NotifyWorkingMode): string {
+  if (mode === 'Manuel') return 'Kapalı';
+  return mode;
+}
+
+const TRANSACTION_TYPES = ['İhracat', 'İthalat', 'Transit', 'Antrepo'];
+const TRANSPORT_MODES = ['Karayolu', 'Denizyolu', 'Havayolu'];
+const REMINDER_TYPES = ['Otomatik', 'Kontrollü', 'Manuel'] as const;
+const FREQUENCY_OPTIONS = [
+  'Her 2 saatte bir',
+  'Günde 1 kez',
+  'Günde 2 kez',
+  "Cut-off'a göre dinamik",
+  'Manuel takip',
+];
 
 function CheckGrid({
   items,
@@ -80,7 +109,7 @@ function CheckGrid({
     );
   }
   return (
-    <div className={`grid gap-2`} style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
       {items.map((item) => {
         const on = selected.includes(item);
         return (
@@ -108,7 +137,9 @@ function CheckGrid({
   );
 }
 
-// ─── Main drawer ──────────────────────────────────────────────────────────────
+function PlaceholderOption() {
+  return <option value={SELECT_PLACEHOLDER}>Seçiniz</option>;
+}
 
 export default function CustomerDrawer({
   open,
@@ -122,19 +153,17 @@ export default function CustomerDrawer({
   onClose,
   onSave,
 }: CustomerDrawerProps) {
-  // ── Address state ──────────────────────────────────────────────────────────
-  const [aCompany, setACompany]     = useState('');
+  const { toast } = useToast();
+
   const [aAddrLines, setAAddrLines] = useState('');
   const [aCity, setACity]           = useState('');
   const [aCountry, setACountry]     = useState('');
   const [aTaxNo, setATaxNo]         = useState('');
 
-  // ── Domain state ───────────────────────────────────────────────────────────
   const [dDomain, setDDomain]       = useState('');
   const [dMatch, setDMatch]         = useState<'active' | 'passive'>('active');
   const [dNote, setDNote]           = useState('');
 
-  // ── Mail state ─────────────────────────────────────────────────────────────
   const [mEmail, setMEmail]         = useState('');
   const [mDomain, setMDomain]       = useState('');
   const [mOwner, setMOwner]         = useState('');
@@ -142,81 +171,216 @@ export default function CustomerDrawer({
   const [mProcesses, setMProcesses] = useState<string[]>([]);
   const [mStatus, setMStatus]       = useState<'active' | 'passive'>('active');
 
-  // ── Doc rule state ─────────────────────────────────────────────────────────
-  const [rTip, setRTip]             = useState('İhracat');
-  const [rTas, setRTas]             = useState('Karayolu');
-  const [rScenario, setRScenario]   = useState('');
+  const [rTip, setRTip]             = useState(SELECT_PLACEHOLDER);
+  const [rTas, setRTas]             = useState(SELECT_PLACEHOLDER);
   const [rDocs, setRDocs]           = useState<string[]>([]);
-  const [rReminder, setRReminder]   = useState<'Otomatik' | 'Kontrollü' | 'Manuel'>('Otomatik');
-  const [rFreq, setRFreq]           = useState('Her 2 saatte bir');
-  const [rStatus, setRStatus]       = useState<'Aktif' | 'Pasif'>('Aktif');
+  const [rReminder, setRReminder]   = useState<string>(SELECT_PLACEHOLDER);
+  const [rFreq, setRFreq]           = useState(SELECT_PLACEHOLDER);
+  const [rStatus, setRStatus]       = useState<string>(SELECT_PLACEHOLDER);
 
-  // ── Notify rule state ──────────────────────────────────────────────────────
-  const [nProcess, setNProcess]     = useState(NOTIFY_PROCESS_LIST[0]);
-  const [nMode, setNMode]           = useState<'Otomatik' | 'Kontrollü' | 'Manuel' | 'Kapalı'>('Otomatik');
+  const [nProcess, setNProcess]     = useState(SELECT_PLACEHOLDER);
+  const [nMode, setNMode]           = useState(SELECT_PLACEHOLDER);
   const [nChannels, setNChannels]   = useState<string[]>(['E-posta']);
-  const [nRecipient, setNRecipient] = useState('Mail tanımlarından');
-  const [nApproval, setNApproval]   = useState(false);
-  const [nStatus, setNStatus]       = useState<'Aktif' | 'Pasif'>('Aktif');
+  const [nRecipient, setNRecipient] = useState(SELECT_PLACEHOLDER);
+  const [nStatus, setNStatus]       = useState<string>(SELECT_PLACEHOLDER);
 
-  // Populate from initial values when drawer opens
   useEffect(() => {
     if (!open) return;
     if (mode === 'addr' && initialAddress) {
-      setACompany(initialAddress.company);
       setAAddrLines(initialAddress.addressLines);
       setACity(initialAddress.city);
       setACountry(initialAddress.country);
       setATaxNo(initialAddress.taxNo);
     } else if (mode === 'addr') {
-      setACompany(''); setAAddrLines(''); setACity(''); setACountry(''); setATaxNo('');
+      setAAddrLines('');
+      setACity('');
+      setACountry('');
+      setATaxNo('');
     }
     if (mode === 'domain' && initialDomain) {
-      setDDomain(initialDomain.domain); setDMatch(initialDomain.matchStatus); setDNote(initialDomain.note);
+      setDDomain(initialDomain.domain);
+      setDMatch(initialDomain.matchStatus);
+      setDNote(initialDomain.note);
     } else if (mode === 'domain') {
-      setDDomain(''); setDMatch('active'); setDNote('');
+      setDDomain('');
+      setDMatch('active');
+      setDNote('');
     }
     if (mode === 'mail' && initialMail) {
-      setMEmail(initialMail.email); setMDomain(initialMail.domain); setMOwner(initialMail.owner);
-      setMMatch(initialMail.matchStatus); setMProcesses(initialMail.notificationProcesses); setMStatus(initialMail.status);
+      setMEmail(initialMail.email);
+      setMDomain(initialMail.domain);
+      setMOwner(initialMail.owner);
+      setMMatch(initialMail.matchStatus);
+      setMProcesses(initialMail.notificationProcesses);
+      setMStatus(initialMail.status);
     } else if (mode === 'mail') {
-      setMEmail(''); setMDomain(''); setMOwner(''); setMMatch('active'); setMProcesses([]); setMStatus('active');
+      setMEmail('');
+      setMDomain('');
+      setMOwner('');
+      setMMatch('active');
+      setMProcesses([]);
+      setMStatus('active');
     }
     if (mode === 'rule' && initialRule) {
-      setRTip(initialRule.transactionType); setRTas(initialRule.transportMode); setRScenario(initialRule.scenario);
-      setRDocs(initialRule.requiredDocs); setRReminder(initialRule.reminderType); setRFreq(initialRule.frequency); setRStatus(initialRule.status);
+      setRTip(initialRule.transactionType);
+      setRTas(initialRule.transportMode);
+      setRDocs(initialRule.requiredDocs);
+      setRReminder(initialRule.reminderType);
+      setRFreq(initialRule.frequency);
+      setRStatus(initialRule.status);
     } else if (mode === 'rule') {
-      setRTip('İhracat'); setRTas('Karayolu'); setRScenario(''); setRDocs([]); setRReminder('Otomatik'); setRFreq('Her 2 saatte bir'); setRStatus('Aktif');
+      setRTip(SELECT_PLACEHOLDER);
+      setRTas(SELECT_PLACEHOLDER);
+      setRDocs([]);
+      setRReminder(SELECT_PLACEHOLDER);
+      setRFreq(SELECT_PLACEHOLDER);
+      setRStatus(SELECT_PLACEHOLDER);
     }
     if (mode === 'notify' && initialNotify) {
-      setNProcess(initialNotify.process); setNMode(initialNotify.workingMode); setNChannels(initialNotify.channels);
-      setNRecipient(initialNotify.recipientRule); setNApproval(initialNotify.requiresApproval); setNStatus(initialNotify.status);
+      setNProcess(initialNotify.process);
+      setNMode(normalizeWorkingMode(initialNotify.workingMode));
+      setNChannels(initialNotify.channels.length > 0 ? initialNotify.channels : ['E-posta']);
+      setNRecipient(normalizeRecipientRule(initialNotify.recipientRule));
+      setNStatus(initialNotify.status);
     } else if (mode === 'notify') {
-      setNProcess(NOTIFY_PROCESS_LIST[0]); setNMode('Otomatik'); setNChannels(['E-posta']);
-      setNRecipient('Mail tanımlarından'); setNApproval(false); setNStatus('Aktif');
+      setNProcess(SELECT_PLACEHOLDER);
+      setNMode(SELECT_PLACEHOLDER);
+      setNChannels(['E-posta']);
+      setNRecipient(SELECT_PLACEHOLDER);
+      setNStatus(SELECT_PLACEHOLDER);
     }
   }, [open, mode, initialAddress, initialDomain, initialMail, initialRule, initialNotify]);
 
-  function handleSave() {
+  useEffect(() => {
+    if (mode !== 'notify') return;
+    if (nMode === 'Otomatik' && nRecipient === 'Kullanıcı seçimi') {
+      setNRecipient(SELECT_PLACEHOLDER);
+    }
+  }, [mode, nMode, nRecipient]);
+
+  const companyName = customerName.trim();
+
+  const canSave = useMemo(() => {
     if (mode === 'addr') {
-      onSave({ mode: 'addr', data: { company: aCompany, addressLines: aAddrLines, city: aCity, country: aCountry, taxNo: aTaxNo, evrimStatus: 'local', changed: true } });
+      return (
+        !!companyName &&
+        aAddrLines.trim() !== '' &&
+        aCity.trim() !== '' &&
+        aCountry.trim() !== '' &&
+        aTaxNo.trim() !== ''
+      );
+    }
+    if (mode === 'domain') return dDomain.trim() !== '';
+    if (mode === 'mail') {
+      return (
+        mEmail.trim() !== '' &&
+        mDomain.trim() !== '' &&
+        mOwner.trim() !== '' &&
+        mProcesses.length > 0
+      );
+    }
+    if (mode === 'rule') {
+      return (
+        rTip !== SELECT_PLACEHOLDER &&
+        rTas !== SELECT_PLACEHOLDER &&
+        rDocs.length > 0 &&
+        rReminder !== SELECT_PLACEHOLDER &&
+        rFreq !== SELECT_PLACEHOLDER &&
+        rStatus !== SELECT_PLACEHOLDER
+      );
+    }
+    if (mode === 'notify') {
+      return (
+        nProcess !== SELECT_PLACEHOLDER &&
+        nMode !== SELECT_PLACEHOLDER &&
+        nRecipient !== SELECT_PLACEHOLDER &&
+        nStatus !== SELECT_PLACEHOLDER
+      );
+    }
+    return true;
+  }, [
+    mode, companyName, aAddrLines, aCity, aCountry, aTaxNo,
+    dDomain, mEmail, mDomain, mOwner, mProcesses,
+    rTip, rTas, rDocs, rReminder, rFreq, rStatus,
+    nProcess, nMode, nRecipient, nStatus,
+  ]);
+
+  function handleSave() {
+    if (!canSave) {
+      if (mode === 'mail' && mProcesses.length === 0) {
+        toast('En az bir bildirim süreci seçilmelidir');
+      } else if (mode === 'rule' && rDocs.length === 0) {
+        toast('En az bir gerekli evrak seçilmelidir');
+      } else {
+        toast('Lütfen zorunlu alanları doldurun');
+      }
+      return;
+    }
+
+    if (mode === 'addr') {
+      onSave({
+        mode: 'addr',
+        data: {
+          company: companyName,
+          addressLines: aAddrLines.trim(),
+          city: aCity.trim(),
+          country: aCountry.trim(),
+          taxNo: aTaxNo.trim(),
+          evrimStatus: initialAddress?.evrimStatus ?? 'local',
+          changed: true,
+        },
+      });
     } else if (mode === 'domain') {
-      onSave({ mode: 'domain', data: { domain: dDomain, matchStatus: dMatch, note: dNote } });
+      onSave({
+        mode: 'domain',
+        data: { domain: dDomain.trim(), matchStatus: dMatch, note: dNote.trim() },
+      });
     } else if (mode === 'mail') {
-      onSave({ mode: 'mail', data: { email: mEmail, domain: mDomain, owner: mOwner, matchStatus: mMatch, notificationProcesses: mProcesses, status: mStatus } });
+      onSave({
+        mode: 'mail',
+        data: {
+          email: mEmail.trim(),
+          domain: mDomain.trim(),
+          owner: mOwner.trim(),
+          matchStatus: mMatch,
+          notificationProcesses: mProcesses,
+          status: mStatus,
+        },
+      });
     } else if (mode === 'rule') {
-      onSave({ mode: 'rule', data: { transactionType: rTip, transportMode: rTas, scenario: rScenario, requiredDocs: rDocs, reminderType: rReminder, frequency: rFreq, status: rStatus } });
+      onSave({
+        mode: 'rule',
+        data: {
+          transactionType: rTip,
+          transportMode: rTas,
+          scenario: '',
+          requiredDocs: rDocs,
+          reminderType: rReminder as DocumentRule['reminderType'],
+          frequency: rFreq,
+          status: rStatus as DocumentRule['status'],
+        },
+      });
     } else if (mode === 'notify') {
-      onSave({ mode: 'notify', data: { process: nProcess, workingMode: nMode, channels: nChannels, recipientRule: nRecipient, requiresApproval: nApproval, status: nStatus } });
+      onSave({
+        mode: 'notify',
+        data: {
+          process: nProcess,
+          workingMode: nMode as NotifyWorkingMode,
+          channels: nChannels,
+          recipientRule: nRecipient,
+          requiresApproval: nMode === 'Kontrollü',
+          status: nStatus as NotificationRule['status'],
+        },
+      });
     }
   }
 
   const titleMap: Record<DrawerMode, string> = {
-    addr:   initialAddress ? 'Adresi Düzenle'         : 'Yeni Adres',
-    domain: initialDomain  ? 'Domain Düzenle'         : 'Yeni Mail Domain',
-    mail:   initialMail    ? 'Mail Tanımı Düzenle'    : 'Yeni Mail Tanımı',
+    addr:   initialAddress ? 'Adresi Düzenle'          : 'Yeni Adres',
+    domain: initialDomain  ? 'Domain Düzenle'          : 'Yeni Mail Domain',
+    mail:   initialMail    ? 'Mail Tanımı Düzenle'     : 'Yeni Mail Tanımı',
     rule:   initialRule    ? 'Evrak Kuralı Düzenle'   : 'Yeni Evrak Kuralı',
-    notify: initialNotify  ? 'Bildirim Kuralı Düzenle': 'Yeni Bildirim Kuralı',
+    notify: initialNotify  ? 'Bildirim Kuralı Düzenle' : 'Yeni Bildirim Kuralı',
   };
 
   return (
@@ -228,38 +392,59 @@ export default function CustomerDrawer({
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave}>Kaydet</Button>
+          <Button variant="primary" onClick={handleSave} disabled={!canSave}>
+            Kaydet
+          </Button>
         </>
       }
     >
-      {/* ── ADDRESS ── */}
       {mode === 'addr' && (
         <div className="space-y-4">
           <Field label="Firma Ünvanı" htmlFor="a-company">
-            <Input id="a-company" value={aCompany} onChange={(e) => setACompany(e.target.value)} />
+            <Input
+              id="a-company"
+              value={companyName}
+              readOnly
+              className="bg-surface-2 text-muted cursor-not-allowed"
+            />
           </Field>
-          <Field label="Adres Satırları" htmlFor="a-addr">
-            <Textarea id="a-addr" value={aAddrLines} onChange={(e) => setAAddrLines(e.target.value)} rows={3} placeholder="Her satır ayrı" />
+          <Field label="Adres Satırları" htmlFor="a-addr" required>
+            <Textarea
+              id="a-addr"
+              value={aAddrLines}
+              onChange={(e) => setAAddrLines(e.target.value)}
+              rows={3}
+              placeholder="Her satır ayrı"
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Şehir / Bölge" htmlFor="a-city">
+            <Field label="Şehir / Bölge" htmlFor="a-city" required>
               <Input id="a-city" value={aCity} onChange={(e) => setACity(e.target.value)} />
             </Field>
-            <Field label="Ülke" htmlFor="a-country">
+            <Field label="Ülke" htmlFor="a-country" required>
               <Input id="a-country" value={aCountry} onChange={(e) => setACountry(e.target.value)} />
             </Field>
           </div>
-          <Field label="VKN / Tax No" htmlFor="a-taxno">
-            <Input id="a-taxno" value={aTaxNo} onChange={(e) => setATaxNo(e.target.value)} className="font-mono" />
+          <Field label="VKN / Tax No" htmlFor="a-taxno" required>
+            <Input
+              id="a-taxno"
+              value={aTaxNo}
+              onChange={(e) => setATaxNo(e.target.value)}
+              className="font-mono"
+            />
           </Field>
         </div>
       )}
 
-      {/* ── DOMAIN ── */}
       {mode === 'domain' && (
         <div className="space-y-4">
-          <Field label="Mail Domain / Uzantısı" htmlFor="d-domain">
-            <Input id="d-domain" value={dDomain} onChange={(e) => setDDomain(e.target.value)} placeholder="@firma.com" />
+          <Field label="Mail Domain / Uzantısı" htmlFor="d-domain" required>
+            <Input
+              id="d-domain"
+              value={dDomain}
+              onChange={(e) => setDDomain(e.target.value)}
+              placeholder="@firma.com"
+            />
           </Field>
           <Field label="Gelen Mail Eşleştirme" htmlFor="d-match">
             <Select
@@ -277,16 +462,26 @@ export default function CustomerDrawer({
         </div>
       )}
 
-      {/* ── MAIL ── */}
       {mode === 'mail' && (
         <div className="space-y-4">
-          <Field label="Mail Adresi" htmlFor="m-email">
-            <Input id="m-email" value={mEmail} onChange={(e) => setMEmail(e.target.value)} placeholder="ad@firma.com" />
+          <Field label="Mail Adresi" htmlFor="m-email" required>
+            <Input
+              id="m-email"
+              value={mEmail}
+              onChange={(e) => setMEmail(e.target.value)}
+              placeholder="ad@firma.com"
+            />
           </Field>
-          <Field label="Mail Domain" htmlFor="m-domain">
-            <Input id="m-domain" value={mDomain} onChange={(e) => setMDomain(e.target.value)} placeholder="@firma.com" className="font-mono" />
+          <Field label="Mail Domain" htmlFor="m-domain" required>
+            <Input
+              id="m-domain"
+              value={mDomain}
+              onChange={(e) => setMDomain(e.target.value)}
+              placeholder="@firma.com"
+              className="font-mono"
+            />
           </Field>
-          <Field label="Kişi / Birim" htmlFor="m-owner">
+          <Field label="Kişi / Birim" htmlFor="m-owner" required>
             <Input id="m-owner" value={mOwner} onChange={(e) => setMOwner(e.target.value)} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
@@ -303,121 +498,137 @@ export default function CustomerDrawer({
               </Select>
             </Field>
           </div>
-          <Field label="Bildirim Alacağı Süreçler">
+          <Field
+            label="Bildirim Alacağı Süreçler"
+            required
+            hint={mProcesses.length === 0 ? 'En az bir süreç seçilmelidir.' : undefined}
+          >
             <CheckGrid items={NOTIFICATION_PROCESS_LIST} selected={mProcesses} onChange={setMProcesses} cols={2} />
           </Field>
         </div>
       )}
 
-      {/* ── DOCUMENT RULE ── */}
       {mode === 'rule' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="İşlem Tipi" htmlFor="r-tip">
+            <Field label="İşlem Tipi" htmlFor="r-tip" required>
               <Select id="r-tip" value={rTip} onChange={(e) => setRTip(e.target.value)}>
-                <option>İhracat</option>
-                <option>İthalat</option>
-                <option>Transit</option>
-                <option>Antrepo</option>
+                <PlaceholderOption />
+                {TRANSACTION_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
               </Select>
             </Field>
-            <Field label="Taşıma Şekli" htmlFor="r-tas">
+            <Field label="Taşıma Şekli" htmlFor="r-tas" required>
               <Select id="r-tas" value={rTas} onChange={(e) => setRTas(e.target.value)}>
-                <option>Karayolu</option>
-                <option>Denizyolu</option>
-                <option>Havayolu</option>
+                <PlaceholderOption />
+                {TRANSPORT_MODES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
               </Select>
             </Field>
           </div>
-          <Field label="Senaryo / Koşul" htmlFor="r-scenario">
-            <Input id="r-scenario" value={rScenario} onChange={(e) => setRScenario(e.target.value)} placeholder="Ör. Standart ihracat, bildirimli işlem" />
-          </Field>
-          <Field label="Gerekli Evraklar" hint="Fatura her zaman zorunludur; buradan seçilmese bile sisteme dahildir.">
+          <Field
+            label="Gerekli Evraklar"
+            required
+            hint={rDocs.length === 0 ? 'En az bir evrak seçilmelidir.' : 'Fatura temel belgedir; diğer evraklar buradan seçilir.'}
+          >
             <div className="mt-1">
               <CheckGrid items={DOCUMENT_LIST} selected={rDocs} onChange={setRDocs} cols={2} />
             </div>
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Hatırlatma Tipi" htmlFor="r-reminder">
+            <Field label="Hatırlatma Tipi" htmlFor="r-reminder" required>
               <Select
                 id="r-reminder"
                 value={rReminder}
-                onChange={(e) => setRReminder(e.target.value as typeof rReminder)}
+                onChange={(e) => setRReminder(e.target.value)}
               >
-                <option>Otomatik</option>
-                <option>Kontrollü</option>
-                <option>Manuel</option>
+                <PlaceholderOption />
+                {REMINDER_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
               </Select>
             </Field>
-            <Field label="Sıklık" htmlFor="r-freq">
+            <Field label="Sıklık" htmlFor="r-freq" required>
               <Select id="r-freq" value={rFreq} onChange={(e) => setRFreq(e.target.value)}>
-                <option>Her 2 saatte bir</option>
-                <option>Günde 1 kez</option>
-                <option>Günde 2 kez</option>
-                <option>Cut-off'a göre dinamik</option>
-                <option>Manuel takip</option>
+                <PlaceholderOption />
+                {FREQUENCY_OPTIONS.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
               </Select>
             </Field>
           </div>
-          <Field label="Durum" htmlFor="r-status">
-            <Select id="r-status" value={rStatus} onChange={(e) => setRStatus(e.target.value as 'Aktif' | 'Pasif')}>
-              <option>Aktif</option>
-              <option>Pasif</option>
+          <Field label="Durum" htmlFor="r-status" required>
+            <Select id="r-status" value={rStatus} onChange={(e) => setRStatus(e.target.value)}>
+              <PlaceholderOption />
+              <option value="Aktif">Aktif</option>
+              <option value="Pasif">Pasif</option>
             </Select>
           </Field>
         </div>
       )}
 
-      {/* ── NOTIFICATION RULE ── */}
       {mode === 'notify' && (
         <div className="space-y-4">
-          <Field label="İşlem / Bildirim Süreci" htmlFor="n-process">
+          <Field label="İşlem / Bildirim Süreci" htmlFor="n-process" required>
             <Select id="n-process" value={nProcess} onChange={(e) => setNProcess(e.target.value)}>
-              {NOTIFY_PROCESS_LIST.map((p) => <option key={p}>{p}</option>)}
+              <PlaceholderOption />
+              {NOTIFY_PROCESS_LIST.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
             </Select>
           </Field>
-          <Field label="Çalışma Şekli" htmlFor="n-mode" hint="Otomatik: sistem tetikler · Kontrollü: operatör onaylar · Manuel: operatör gönderir · Kapalı: bildirim gitmez">
-            <Select id="n-mode" value={nMode} onChange={(e) => setNMode(e.target.value as typeof nMode)}>
-              <option>Otomatik</option>
-              <option>Kontrollü</option>
-              <option>Manuel</option>
-              <option>Kapalı</option>
+          <Field
+            label="Çalışma Şekli"
+            htmlFor="n-mode"
+            required
+            hint="Otomatik: sistem tetikler · Kontrollü: operatör onaylar · Kapalı: bildirim gitmez"
+          >
+            <Select
+              id="n-mode"
+              value={nMode}
+              onChange={(e) => setNMode(e.target.value)}
+            >
+              <PlaceholderOption />
+              {NOTIFY_MODE_OPTIONS.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
             </Select>
           </Field>
-        <Field label="Bildirim Kanalı">
-          <div className="mt-1">
-            <div className="flex items-center gap-2 text-[13px] font-medium px-2.5 py-2 border rounded-[7px] border-accent bg-accent-tint text-accent w-fit">
-              <span className="w-[15px] h-[15px] rounded-[4px] border border-accent bg-accent flex items-center justify-center shrink-0">
-                <Check size={10} strokeWidth={3} className="text-white" />
-              </span>
-              E-posta
+          <Field label="Bildirim Kanalı" required>
+            <div className="mt-1">
+              <div className="flex items-center gap-2 text-[13px] font-medium px-2.5 py-2 border rounded-[7px] border-accent bg-accent-tint text-accent w-fit">
+                <span className="w-[15px] h-[15px] rounded-[4px] border border-accent bg-accent flex items-center justify-center shrink-0">
+                  <Check size={10} strokeWidth={3} className="text-white" />
+                </span>
+                E-posta
+              </div>
             </div>
-          </div>
-        </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Alıcı Kuralı" htmlFor="n-recipient">
-              <Select id="n-recipient" value={nRecipient} onChange={(e) => setNRecipient(e.target.value)}>
-                <option>Mail tanımlarından</option>
-                <option>Domain eşleşmesine göre</option>
-                <option>Operatör seçer</option>
-                <option>— (göndermez)</option>
-              </Select>
-            </Field>
-            <Field label="Onay Gerekir mi?" htmlFor="n-approval">
-              <Select
-                id="n-approval"
-                value={nApproval ? 'Evet' : 'Hayır'}
-                onChange={(e) => setNApproval(e.target.value === 'Evet')}
-              >
-                <option>Hayır</option>
-                <option>Evet</option>
-              </Select>
-            </Field>
-          </div>
-          <Field label="Durum" htmlFor="n-status">
-            <Select id="n-status" value={nStatus} onChange={(e) => setNStatus(e.target.value as 'Aktif' | 'Pasif')}>
-              <option>Aktif</option>
-              <option>Pasif</option>
+          </Field>
+          <Field label="Alıcı Kuralı" htmlFor="n-recipient" required>
+            <Select
+              id="n-recipient"
+              value={nRecipient}
+              onChange={(e) => setNRecipient(e.target.value)}
+            >
+              <PlaceholderOption />
+              {RECIPIENT_RULE_OPTIONS.filter(
+                (opt) => nMode !== 'Otomatik' || opt !== 'Kullanıcı seçimi'
+              ).map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Durum" htmlFor="n-status" required>
+            <Select
+              id="n-status"
+              value={nStatus}
+              onChange={(e) => setNStatus(e.target.value)}
+            >
+              <PlaceholderOption />
+              <option value="Aktif">Aktif</option>
+              <option value="Pasif">Pasif</option>
             </Select>
           </Field>
         </div>
