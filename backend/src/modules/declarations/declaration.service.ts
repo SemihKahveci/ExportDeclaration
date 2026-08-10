@@ -13,8 +13,49 @@ import {
 } from "../validation/declarationValidator.service.js";
 import { generateEvrimXmlDraft } from "../xml/evrimXml.generator.js";
 import { extractFromUploaded } from "../extraction/extraction.service.js";
-import { DeclarationModel, type DeclarationDoc } from "./declaration.model.js";
+import { DeclarationModel, type DeclarationDoc, type OperationMetaDoc } from "./declaration.model.js";
 import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.model.js";
+import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
+import type { OperationTypeValue } from "../../common/enums/operationMeta.js";
+
+const REF_PREFIX: Record<string, string> = {
+  ihracat: "IHR",
+  ithalat: "ITH",
+  transit: "TRN",
+  antrepo: "ANT"
+};
+
+async function generateOperationRef(
+  companyId: mongoose.Types.ObjectId,
+  operationType: string
+): Promise<string> {
+  const prefix = REF_PREFIX[operationType] ?? "DCL";
+  const year = new Date().getFullYear();
+  const count = await DeclarationModel.countDocuments({
+    companyId,
+    "operation.ref": new RegExp(`^${prefix}-${year}-`)
+  });
+  return `${prefix}-${year}-${String(count + 1).padStart(4, "0")}`;
+}
+
+export type CreateDeclarationInput = {
+  operation?: Partial<Omit<OperationMetaDoc, "ref" | "receivedAt">> & {
+    customerName?: string;
+    customerCity?: string;
+    customerId?: string;
+    operationType?: OperationTypeValue | string;
+    fileStatus?: string;
+    transportMode?: string | null;
+    assigneeName?: string | null;
+    lastActivity?: string;
+  };
+};
+
+export type PatchDeclarationInput = {
+  normalizedData?: NormalizedDeclaration;
+  status?: string;
+  operation?: Partial<OperationMetaDoc>;
+};
 
 function toPlainNormalized(doc: DeclarationDoc): NormalizedDeclaration {
   const raw = doc.normalizedData;
@@ -31,41 +72,105 @@ function toPlainNormalized(doc: DeclarationDoc): NormalizedDeclaration {
   };
 }
 
-export async function createDeclaration(companyId: mongoose.Types.ObjectId, createdBy?: mongoose.Types.ObjectId) {
-  return DeclarationModel.create({
+export async function createDeclaration(
+  companyId: mongoose.Types.ObjectId,
+  createdBy?: mongoose.Types.ObjectId,
+  body?: CreateDeclarationInput
+): Promise<DeclarationDto> {
+  const opType = body?.operation?.operationType ?? "ihracat";
+  const ref = await generateOperationRef(companyId, opType);
+  const now = new Date();
+
+  const operation: OperationMetaDoc = {
+    ref,
+    customerId: body?.operation?.customerId,
+    customerName: body?.operation?.customerName?.trim() || "—",
+    customerCity: body?.operation?.customerCity?.trim() || "—",
+    fileStatus: body?.operation?.fileStatus ?? "yeni-talep",
+    operationType: opType,
+    isArchived: false,
+    transportMode: body?.operation?.transportMode ?? null,
+    line: body?.operation?.line ?? null,
+    declarationNo: body?.operation?.declarationNo ?? null,
+    tescilNo: body?.operation?.tescilNo ?? null,
+    assigneeName: body?.operation?.assigneeName ?? null,
+    escalation: Boolean(body?.operation?.escalation),
+    missingDocuments: body?.operation?.missingDocuments ?? [],
+    lastActivity: body?.operation?.lastActivity?.trim() || "Yeni talep oluşturuldu",
+    closedAt: null,
+    receivedAt: now,
+    tescilStatus: null,
+    tescilRisk: "",
+    hasSecondNotif: false,
+    tescilDays: 0,
+    kapanisStatus: null,
+    tescilDurumu: "",
+    kapanicDurumu: "",
+    mailRecipient: "",
+    mailSubject: "",
+    mailBody: ""
+  };
+
+  const created = await DeclarationModel.create({
     companyId,
     createdBy,
-    status: DeclarationStatus.DRAFT
+    status: DeclarationStatus.DRAFT,
+    operation
   });
+  return toDeclarationDto(created);
 }
 
-export async function listDeclarations(companyId: mongoose.Types.ObjectId) {
-  return DeclarationModel.find({ companyId }).sort({ updatedAt: -1 }).lean();
+export async function listDeclarations(companyId: mongoose.Types.ObjectId): Promise<DeclarationDto[]> {
+  const rows = await DeclarationModel.find({ companyId }).sort({ updatedAt: -1 }).lean();
+  return rows.map((row) => toDeclarationDto(row as unknown as DeclarationDoc));
 }
 
-export async function getDeclaration(companyId: mongoose.Types.ObjectId, id: string) {
+export async function getDeclaration(companyId: mongoose.Types.ObjectId, id: string): Promise<DeclarationDto> {
   if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz beyanname id.");
   const d = await DeclarationModel.findOne({ _id: id, companyId }).lean();
   if (!d) throw new HttpError(404, "Beyanname bulunamadı.");
-  return d;
+  return toDeclarationDto(d as unknown as DeclarationDoc);
 }
 
 export async function patchDeclaration(
   companyId: mongoose.Types.ObjectId,
   id: string,
-  body: { normalizedData?: NormalizedDeclaration; status?: string }
-) {
+  body: PatchDeclarationInput
+): Promise<DeclarationDto> {
   if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz beyanname id.");
-  const updated = await DeclarationModel.findOneAndUpdate(
-    { _id: id, companyId },
-    {
-      ...(body.normalizedData !== undefined ? { normalizedData: body.normalizedData } : {}),
-      ...(body.status !== undefined ? { status: body.status } : {})
-    },
-    { new: true }
-  );
-  if (!updated) throw new HttpError(404, "Beyanname bulunamadı.");
-  return updated;
+
+  const existing = await DeclarationModel.findOne({ _id: id, companyId });
+  if (!existing) throw new HttpError(404, "Beyanname bulunamadı.");
+
+  if (body.normalizedData !== undefined) {
+    existing.normalizedData = body.normalizedData as DeclarationDoc["normalizedData"];
+  }
+  if (body.status !== undefined) {
+    if (!Object.values(DeclarationStatus).includes(body.status as (typeof DeclarationStatus)[keyof typeof DeclarationStatus])) {
+      throw new HttpError(400, "Geçersiz durum.");
+    }
+    existing.status = body.status;
+  }
+  if (body.operation !== undefined) {
+    const current = existing.operation
+      ? (typeof (existing.operation as { toObject?: () => OperationMetaDoc }).toObject === "function"
+          ? (existing.operation as { toObject: () => OperationMetaDoc }).toObject()
+          : { ...existing.operation })
+      : ({} as Partial<OperationMetaDoc>);
+    existing.operation = { ...current, ...body.operation } as OperationMetaDoc;
+    existing.markModified("operation");
+  }
+
+  if (
+    body.normalizedData === undefined &&
+    body.status === undefined &&
+    body.operation === undefined
+  ) {
+    throw new HttpError(400, "Güncellenecek alan yok.");
+  }
+
+  await existing.save();
+  return toDeclarationDto(existing);
 }
 
 async function loadDocuments(companyId: mongoose.Types.ObjectId, declarationId: mongoose.Types.ObjectId) {

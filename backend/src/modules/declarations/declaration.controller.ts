@@ -14,7 +14,7 @@ import fs from "node:fs/promises";
 
 export async function postDeclaration(req: Request, res: Response): Promise<void> {
   const companyId = req.auth!.companyId;
-  const created = await createDeclaration(companyId, req.auth!.userId);
+  const created = await createDeclaration(companyId, req.auth!.userId, req.body ?? {});
   res.status(201).json({ ok: true, data: created });
 }
 

@@ -1,19 +1,22 @@
 import { apiGetBlob, apiGetJson, apiPatchJson, apiPostJson } from "./apiClient";
-import type { Declaration, ValidationResult } from "@/api/types/declaration.types";
+import type { Declaration, OperationMeta, ValidationResult } from "@/api/types/declaration.types";
 
 export async function listDeclarations(): Promise<Declaration[]> {
   return apiGetJson<Declaration[]>("/api/declarations");
 }
 
-export async function createDeclaration(): Promise<Declaration> {
-  return apiPostJson<Declaration>("/api/declarations");
+export async function createDeclaration(body?: { operation?: Partial<OperationMeta> }): Promise<Declaration> {
+  return apiPostJson<Declaration>("/api/declarations", body);
 }
 
 export async function getDeclaration(id: string): Promise<Declaration> {
   return apiGetJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}`);
 }
 
-export async function patchDeclaration(id: string, body: Partial<Pick<Declaration, "normalizedData" | "status">>) {
+export async function patchDeclaration(
+  id: string,
+  body: Partial<Pick<Declaration, "normalizedData" | "status">> & { operation?: Partial<OperationMeta> }
+) {
   return apiPatchJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}`, body);
 }
 

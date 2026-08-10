@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Download, Filter, ChevronRight, Loader2 } from 'lucide-react';
 
 import type { CustomsFile, FileStatus } from '../../types';
-import { filesService, STAT_SUMMARY, STATUS_COUNTS } from '../../services/files';
+import { filesService, buildStatusCounts, buildStatSummary } from '../../services/files';
 
 import Button from '../../components/ui/Button';
 import StatCard from '../../components/ui/StatCard';
@@ -31,17 +31,6 @@ interface ChipDef {
   label: string;
   count: number;
 }
-
-const CHIPS: ChipDef[] = [
-  { key: 'all',               label: 'Tümü',               count: STATUS_COUNTS.total },
-  { key: 'yeni-talep',        label: 'Yeni Talep',          count: STATUS_COUNTS.yeniTalep },
-  { key: 'gtip-hazirlik',     label: 'GTİP Hazırlıkta',    count: STATUS_COUNTS.gtipHazirlik },
-  { key: 'evrak-bekleniyor',  label: 'Evrak Bekleniyor',   count: STATUS_COUNTS.evrakBekleniyor },
-  { key: 'beyanname-yazim',   label: 'Beyanname Yazımda',  count: STATUS_COUNTS.beyanname },
-  { key: 'ic-kontrol',        label: 'İç Kontrolde',       count: STATUS_COUNTS.icKontrol },
-  { key: 'tescil',            label: 'Tescilde',            count: STATUS_COUNTS.tescil },
-  { key: 'kapanis-bekleyen',  label: 'Kapanış Bekleyen',   count: STATUS_COUNTS.kapanisBekleyen },
-];
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
@@ -97,11 +86,25 @@ export default function DosyaTakipPage() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [detailFile, setDetailFile] = useState<CustomsFile | null>(null);
 
+  const statusCounts = useMemo(() => buildStatusCounts(files), [files]);
+  const statSummary = useMemo(() => buildStatSummary(files), [files]);
+
+  const chips = useMemo((): ChipDef[] => [
+    { key: 'all',               label: 'Tümü',               count: statusCounts.total },
+    { key: 'yeni-talep',        label: 'Yeni Talep',          count: statusCounts.yeniTalep },
+    { key: 'gtip-hazirlik',     label: 'GTİP Hazırlıkta',    count: statusCounts.gtipHazirlik },
+    { key: 'evrak-bekleniyor',  label: 'Evrak Bekleniyor',   count: statusCounts.evrakBekleniyor },
+    { key: 'beyanname-yazim',   label: 'Beyanname Yazımda',  count: statusCounts.beyanname },
+    { key: 'ic-kontrol',        label: 'İç Kontrolde',       count: statusCounts.icKontrol },
+    { key: 'tescil',            label: 'Tescilde',            count: statusCounts.tescil },
+    { key: 'kapanis-bekleyen',  label: 'Kapanış Bekleyen',   count: statusCounts.kapanisBekleyen },
+  ], [statusCounts]);
+
   useEffect(() => {
     filesService.list().then((data) => {
       setFiles(data);
       setLoading(false);
-    });
+    }).catch(() => setLoading(false));
   }, []);
 
   const filtered = useMemo(() => {
@@ -138,9 +141,16 @@ export default function DosyaTakipPage() {
     setPage(1);
   }
 
-  function handleNewRequestSave() {
-    setNewRequestOpen(false);
-    toast('Yeni talep oluşturuldu · Yeni Talep statüsüyle eklendi');
+  async function handleNewRequestSave(payload: import('./NewRequestDrawer').NewRequestPayload) {
+    try {
+      await filesService.create(payload);
+      setNewRequestOpen(false);
+      const data = await filesService.list();
+      setFiles(data);
+      toast('Yeni talep oluşturuldu · Yeni Talep statüsüyle eklendi');
+    } catch {
+      toast('Talep kaydedilemedi · lütfen tekrar deneyin');
+    }
   }
 
   const hasActiveFilters = Object.values(activeFilters).some(Boolean);
@@ -174,27 +184,27 @@ export default function DosyaTakipPage() {
       {/* ── Stat cards ──────────────────────────────────────────── */}
       <div className="grid grid-cols-5 gap-3.5">
         <StatCard
-          value={STAT_SUMMARY.aktifDosya}
+          value={statSummary.aktifDosya}
           label="Aktif Dosya"
           className="[border-left:3px_solid_var(--accent)]"
         />
         <StatCard
-          value={STAT_SUMMARY.evrakBekleyen}
+          value={statSummary.evrakBekleyen}
           label="Evrak Bekleyen"
           className="[border-left:3px_solid_var(--warn)]"
         />
         <StatCard
-          value={STAT_SUMMARY.beyannamedYazim}
+          value={statSummary.beyannamedYazim}
           label="Beyanname Yazımda"
           className="[border-left:3px_solid_var(--hat-blue)]"
         />
         <StatCard
-          value={STAT_SUMMARY.eskalasyon}
+          value={statSummary.eskalasyon}
           label="Eskalasyon"
           className="[border-left:3px_solid_var(--hat-red)]"
         />
         <StatCard
-          value={STAT_SUMMARY.tescilde}
+          value={statSummary.tescilde}
           label="Tescilde"
           className="[border-left:3px_solid_var(--hat-blue)]"
         />
@@ -202,7 +212,7 @@ export default function DosyaTakipPage() {
 
       {/* ── Filter toolbar ──────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
-        {CHIPS.map((chip) => {
+        {chips.map((chip) => {
           const active = chipFilter === chip.key;
           return (
             <button
@@ -314,7 +324,7 @@ export default function DosyaTakipPage() {
           {/* Pagination footer */}
           <div className="flex items-center px-4 py-3 border-t border-line bg-surface-2 text-[12.5px] text-muted">
             <span>
-              {STATUS_COUNTS.total} dosyadan{' '}
+              {filtered.length} dosyadan{' '}
               {Math.min((page - 1) * PAGE_SIZE + 1, filtered.length)}–
               {Math.min(page * PAGE_SIZE, filtered.length)} arası gösteriliyor
             </span>

@@ -45,9 +45,12 @@ const STATUS_LABELS: Record<string, string> = {
   ERROR: "Hata"
 };
 
-export function refFromId(id: string): string {
-  const tail = id.replace(/[^a-f0-9]/gi, "").slice(-6).toUpperCase();
-  return tail ? `DCL-${tail}` : "DCL-000";
+export function refFromId(d: BackendDeclaration | string): string {
+  if (typeof d === "string") {
+    const tail = d.replace(/[^a-f0-9]/gi, "").slice(-6).toUpperCase();
+    return tail ? `DCL-${tail}` : "DCL-000";
+  }
+  return d.operation?.ref ?? refFromId(d._id);
 }
 
 function formatDate(iso?: string): string {
@@ -178,37 +181,45 @@ export function toDocCheckItems(docs: UploadedDocument[]): BeyannameDocCheckItem
 
 export function toBeyannameListeItem(d: BackendDeclaration, docCount = 0): BeyannameListeItem {
   const norm = mergeNormalizedFromApi(d.normalizedData);
+  const op = d.operation;
+  const islemLabels: Record<string, string> = {
+    ihracat: "İhracat",
+    ithalat: "İthalat",
+    transit: "Transit",
+    antrepo: "Antrepo",
+  };
   return {
     id: d._id,
-    ref: refFromId(d._id),
-    date: formatDate(d.createdAt),
-    customer: norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
-    customerCity: norm.parties.buyer?.country ?? norm.parties.seller?.country ?? "—",
-    islemTipi: "İhracat",
+    ref: refFromId(d),
+    date: formatDate(op?.receivedAt ?? d.createdAt),
+    customer: op?.customerName ?? norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
+    customerCity: op?.customerCity ?? norm.parties.buyer?.country ?? norm.parties.seller?.country ?? "—",
+    islemTipi: islemLabels[op?.operationType ?? ""] ?? "İhracat",
     status: STATUS_TO_LISTE[d.status] ?? "yazim-bekliyor",
-    transportMode: mapTransportMode(norm.transport.mode),
+    transportMode: mapTransportMode(op?.transportMode ?? norm.transport.mode),
     lineCount: norm.goodsLines.length,
     docCount,
     totalDocCount: docCount,
     warningCount: d.status === "ERROR" ? 1 : 0,
-    missingDocuments: [],
+    missingDocuments: op?.missingDocuments ?? [],
     gtipStatus: d.status === "ERROR" ? "uyumsuz" : "uygun",
-    assignee: "—",
+    assignee: op?.assigneeName ?? "—",
     updatedAt: formatRelative(d.updatedAt ?? d.createdAt)
   };
 }
 
 export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[]): BeyannameRecord {
   const norm = mergeNormalizedFromApi(d.normalizedData);
+  const op = d.operation;
   const received = docs.filter((doc) => doc.extractionStatus === "SUCCESS").length;
   const formFields = toFormFields(norm);
   const fields = toWritingFields(norm, d.sourceTrace);
   return {
     id: d._id,
-    ref: refFromId(d._id),
-    tescilNo: d.generatedXmlPath ? refFromId(d._id) : "—",
-    customer: norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
-    customerId: d.companyId,
+    ref: refFromId(d),
+    tescilNo: op?.tescilNo ?? (d.generatedXmlPath ? refFromId(d) : "—"),
+    customer: op?.customerName ?? norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
+    customerId: op?.customerId ?? d.companyId,
     rejim: (norm.evrimHeader?.rejim as string) ?? "10 — İhracat",
     durumLabel: STATUS_LABELS[d.status] ?? d.status,
     status: STATUS_TO_BEYANNAME[d.status] ?? "taslak",
@@ -288,12 +299,13 @@ export function toSourceCards(d: BackendDeclaration): ParsedSourceCard[] {
 
 export function toPanelDeclaration(d: BackendDeclaration) {
   const norm = mergeNormalizedFromApi(d.normalizedData);
+  const op = d.operation;
   return {
     id: d._id,
-    ref: refFromId(d._id),
-    customer: norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
+    ref: refFromId(d),
+    customer: op?.customerName ?? norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
     status: STATUS_TO_BEYANNAME[d.status] ?? "taslak",
-    tescilNo: d.generatedXmlPath ? refFromId(d._id) : undefined,
+    tescilNo: op?.tescilNo ?? (d.generatedXmlPath ? refFromId(d) : undefined),
     createdAt: d.createdAt ?? new Date().toISOString()
   };
 }

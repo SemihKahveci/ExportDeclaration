@@ -9,17 +9,35 @@ import { customersService } from '../../services/customers';
 import { usersService } from '../../services/users';
 import type { CustomerListItem, AppUser } from '../../types';
 
+export interface NewRequestPayload {
+  customerId: string;
+  customerName: string;
+  customerCity: string;
+  operationType: string;
+  transportMode: string;
+  assigneeName: string | null;
+}
+
 interface NewRequestDrawerProps {
   open: boolean;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (payload: NewRequestPayload) => void | Promise<void>;
+}
+
+function parseCityFromMeta(meta?: string): string {
+  if (!meta) return '—';
+  return meta.split(' · ')[0]?.trim() || '—';
 }
 
 export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDrawerProps) {
-  const [customers,       setCustomers]       = useState<CustomerListItem[]>([]);
-  const [allMtUsers,      setAllMtUsers]      = useState<AppUser[]>([]);
-  const [allMtMgrUsers,   setAllMtMgrUsers]   = useState<AppUser[]>([]);
-  const [selectedCustId,  setSelectedCustId]  = useState('');
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
+  const [allMtUsers, setAllMtUsers] = useState<AppUser[]>([]);
+  const [allMtMgrUsers, setAllMtMgrUsers] = useState<AppUser[]>([]);
+  const [selectedCustId, setSelectedCustId] = useState('');
+  const [operationType, setOperationType] = useState('İhracat');
+  const [transportMode, setTransportMode] = useState('Karayolu');
+  const [assigneeName, setAssigneeName] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -33,35 +51,56 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
     });
   }, []);
 
-  // Reset form when drawer opens
   useEffect(() => {
-    if (open) setSelectedCustId('');
+    if (!open) return;
+    setSelectedCustId('');
+    setOperationType('İhracat');
+    setTransportMode('Karayolu');
+    setAssigneeName('');
+    setSaving(false);
   }, [open]);
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustId) ?? null;
-
-  const assignedMt    = allMtUsers.find((u) => u.id === selectedCustomer?.assignedMtUserId);
+  const assignedMt = allMtUsers.find((u) => u.id === selectedCustomer?.assignedMtUserId);
   const assignedMtMgr = allMtMgrUsers.find((u) => u.id === selectedCustomer?.assignedMtManagerUserId);
-
   const noMtAssigned = selectedCustId && selectedCustomer && !selectedCustomer.assignedMtUserId;
+
+  async function handleSave() {
+    if (!selectedCustomer) return;
+    setSaving(true);
+    try {
+      await onSave({
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        customerCity: parseCityFromMeta(selectedCustomer.meta),
+        operationType,
+        transportMode,
+        assigneeName: assigneeName.trim() || assignedMt?.name || null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
       title="Yeni Talep"
-      subtitle="Yeni bir ihracat dosyası oluştur"
+      subtitle="Yeni bir operasyon dosyası oluştur"
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={onSave}>Talebi Kaydet</Button>
+          <Button variant="primary" onClick={handleSave} disabled={!selectedCustId || saving}>
+            {saving ? 'Kaydediliyor…' : 'Talebi Kaydet'}
+          </Button>
         </>
       }
     >
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <Field label="İşlem Tipi" htmlFor="nr-islem">
-            <Select id="nr-islem">
+          <Field label="İşlem Tipi" htmlFor="nr-islem" required>
+            <Select id="nr-islem" value={operationType} onChange={(e) => setOperationType(e.target.value)}>
               <option>İhracat</option>
               <option>İthalat</option>
               <option>Transit</option>
@@ -69,7 +108,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
             </Select>
           </Field>
           <Field label="Taşıma Şekli" htmlFor="nr-tasima">
-            <Select id="nr-tasima">
+            <Select id="nr-tasima" value={transportMode} onChange={(e) => setTransportMode(e.target.value)}>
               <option>Karayolu</option>
               <option>Denizyolu</option>
               <option>Havayolu</option>
@@ -90,7 +129,6 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
           </Select>
         </Field>
 
-        {/* MT fields — auto-filled from customer, always read-only */}
         <div className="grid grid-cols-2 gap-4">
           <Field label="MT" htmlFor="nr-mt">
             <Input
@@ -114,7 +152,6 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
           </Field>
         </div>
 
-        {/* Warning when selected customer has no MT assigned */}
         {noMtAssigned && (
           <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border text-[12px]" style={{ background: 'var(--warn-tint)', borderColor: '#e8d0a2', color: '#7a5a16' }}>
             <AlertTriangle size={14} strokeWidth={1.75} className="shrink-0 mt-0.5" />
@@ -122,30 +159,12 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Talep Tarihi" htmlFor="nr-talep-tarih">
-            <Input id="nr-talep-tarih" type="date" defaultValue="2026-05-25" />
-          </Field>
-          <Field label="Cut-off Tarihi" htmlFor="nr-cutoff">
-            <Input id="nr-cutoff" type="date" />
-          </Field>
-        </div>
-
         <Field label="Sorumlu Operatör" htmlFor="nr-sorumlu">
-          <Select id="nr-sorumlu">
+          <Select id="nr-sorumlu" value={assigneeName} onChange={(e) => setAssigneeName(e.target.value)}>
             <option value="">— Seç —</option>
-            <option>M. Demir</option>
-            <option>S. Kaya</option>
-            <option>A. Yılmaz</option>
-          </Select>
-        </Field>
-
-        <Field label="Talep Kanalı" htmlFor="nr-kanal">
-          <Select id="nr-kanal">
-            <option>E-posta</option>
-            <option>WhatsApp</option>
-            <option>Telefon</option>
-            <option>Sistem içi</option>
+            <option value="M. Demir">M. Demir</option>
+            <option value="S. Kaya">S. Kaya</option>
+            <option value="A. Yılmaz">A. Yılmaz</option>
           </Select>
         </Field>
 
@@ -163,7 +182,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
         </Field>
 
         <Note variant="info">
-          Kaydedilince dosya <strong>Yeni Talep</strong> statüsüyle tabloya eklenir ve ilgili operatöre atanır.
+          Kaydedilince dosya <strong>Yeni Talep</strong> statüsüyle tabloya eklenir.
         </Note>
       </div>
     </Drawer>
