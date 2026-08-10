@@ -1,0 +1,96 @@
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: export-declaration-mongo
+    restart: unless-stopped
+
+    volumes:
+      - mongo_data:/data/db
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping').ok"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+    networks:
+      - export_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+
+    container_name: export-declaration-backend
+    restart: unless-stopped
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+
+      MONGODB_URI: mongodb://mongo:27017/export_declaration
+
+      LICENSE_ENABLED: "true"
+      LICENSE_FILE_PATH: /app/licenses/license.json
+      LICENSE_PUBLIC_KEY_PATH: /app/backend/license/public-key.pem
+      INSTALLATION_ID_PATH: /app/license-data/installation-id.txt
+
+      UPLOAD_DIR: /app/uploads
+      JSON_BODY_LIMIT: 20mb
+
+      CORS_ORIGIN: http://localhost:5173
+
+      INVOICE_PARSER_ENABLED: "true"
+      INVOICE_PARSER_PYTHON: /opt/venv/bin/python
+      INVOICE_PARSER_DIR: /app/backend/scripts/invoice_parser
+      INVOICE_PARSER_TIMEOUT_MS: 600000
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - ./uploads:/app/uploads
+      - ./licenses:/app/licenses:ro
+      - ./license-data:/app/license-data:ro
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+    networks:
+      - export_network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_COMPANY_ID: ${VITE_COMPANY_ID}
+
+    container_name: export-declaration-frontend
+    restart: unless-stopped
+
+    ports:
+      - "5173:80"
+
+    depends_on:
+      - backend
+
+    networks:
+      - export_network
+
+volumes:
+  mongo_data:
+
+networks:
+  export_network:
+    driver: bridge

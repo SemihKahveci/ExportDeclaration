@@ -43,5 +43,18 @@ export const env = {
   invoiceParserEnabled: bool(process.env.INVOICE_PARSER_ENABLED),
   invoiceParserPython: process.env.INVOICE_PARSER_PYTHON ?? defaultPythonBin(),
   invoiceParserDir: process.env.INVOICE_PARSER_DIR ?? defaultParserDir,
-  invoiceParserTimeoutMs: num(process.env.INVOICE_PARSER_TIMEOUT_MS, 10 * 60 * 1000)
+  invoiceParserTimeoutMs: num(process.env.INVOICE_PARSER_TIMEOUT_MS, 10 * 60 * 1000),
+  licenseEnabled: bool(process.env.LICENSE_ENABLED, true),
+
+  licenseFilePath:
+    process.env.LICENSE_FILE_PATH ??
+    path.join(process.cwd(), "licenses", "license.json"),
+
+  licensePublicKeyPath:
+    process.env.LICENSE_PUBLIC_KEY_PATH ??
+    path.join(process.cwd(), "backend", "license", "public-key.pem"),
+
+  installationIdPath:
+    process.env.INSTALLATION_ID_PATH ??
+    path.join(process.cwd(), "license-data", "installation-id.txt"),
 } as const;

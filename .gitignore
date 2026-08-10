@@ -4,3 +4,21 @@ dist/
 uploads/
 *.log
 .DS_Store
+# License secrets
+license-tools/keys/private-key.pem
+
+# Generated customer licenses
+licenses/
+license.json
+license-data/
+
+generated-licenses/
+
+# Generated releases
+releases/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

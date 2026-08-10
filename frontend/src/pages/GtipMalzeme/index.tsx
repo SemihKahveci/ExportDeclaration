@@ -117,7 +117,8 @@ export default function GtipMalzemePage() {
 
   const [customers, setCustomers] = useState<MaterialCustomer[]>([]);
   const [records, setRecords] = useState<MaterialRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initLoading, setInitLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [custSearch, setCustSearch] = useState('');
@@ -130,23 +131,45 @@ export default function GtipMalzemePage() {
 
   // load customers once
   useEffect(() => {
-    gtipService.getCustomers().then((data) => {
-      setCustomers(data);
-      setSelectedCustomerId((prev) => prev || data[0]?.id || '');
-    });
-  }, []);
+    let cancelled = false;
+    gtipService.getCustomers()
+      .then((data) => {
+        if (cancelled) return;
+        setCustomers(data);
+        setSelectedCustomerId((prev) => prev || data[0]?.id || '');
+      })
+      .catch(() => {
+        if (!cancelled) toast('Müşteri listesi yüklenemedi');
+      })
+      .finally(() => {
+        if (!cancelled) setInitLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [toast]);
 
   // reload records when customer changes
   useEffect(() => {
-    if (!selectedCustomerId) return;
+    if (!selectedCustomerId) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
     setLoading(true);
     setStatusFilter('all');
     setSearch('');
-    gtipService.getRecords(selectedCustomerId).then((data) => {
-      setRecords(data);
-      setLoading(false);
-    });
-  }, [selectedCustomerId]);
+    gtipService.getRecords(selectedCustomerId)
+      .then((data) => {
+        if (!cancelled) setRecords(data);
+      })
+      .catch(() => {
+        if (!cancelled) toast('Kayıtlar yüklenemedi');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedCustomerId, toast]);
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustomerId);
 
@@ -303,7 +326,19 @@ export default function GtipMalzemePage() {
         </div>
 
         {/* Table */}
-        {loading ? (
+        {initLoading ? (
+          <div className="flex items-center justify-center py-20 gap-3 text-muted">
+            <Loader2 size={20} className="animate-spin" />
+            <span className="text-[13px]">Müşteriler yükleniyor…</span>
+          </div>
+        ) : customers.length === 0 ? (
+          <Card className="overflow-hidden">
+            <div className="py-16 px-6 text-center text-[13px] text-muted leading-relaxed">
+              Henüz müşteri tanımlı değil. GTİP malzeme kayıtları için önce{' '}
+              <strong className="text-text-strong">Müşteriler</strong> sayfasından en az bir müşteri ekleyin.
+            </div>
+          </Card>
+        ) : loading ? (
           <div className="flex items-center justify-center py-20 gap-3 text-muted">
             <Loader2 size={20} className="animate-spin" />
             <span className="text-[13px]">Kayıtlar yükleniyor…</span>

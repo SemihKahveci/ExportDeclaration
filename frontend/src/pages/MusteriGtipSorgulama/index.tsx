@@ -44,16 +44,25 @@ export default function MusteriGtipSorgulamaPage() {
   const [drawerTarget, setDrawerTarget]   = useState<GtipQueryResult | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       gtipService.getCustomerQueryResults(),
       gtipService.getCustomers(),
-    ]).then(([r, c]) => {
-      setResults(r);
-      setCustomers(c);
-      if (c.length > 0) setCustomer(c[0].name);
-      setLoading(false);
-    });
-  }, []);
+    ])
+      .then(([r, c]) => {
+        if (cancelled) return;
+        setResults(r);
+        setCustomers(c);
+        if (c.length > 0) setCustomer(c[0].name);
+      })
+      .catch(() => {
+        if (!cancelled) toast('Sayfa verileri yüklenemedi');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [toast]);
 
   function openDrawer() {
     const target = results.find((r) => r.approvalStatus === 'Giriş Bekliyor')

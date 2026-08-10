@@ -13,6 +13,8 @@ import { mailTemplateRouter } from "./modules/mail-templates/mailTemplate.routes
 import { documentProcessRouter } from "./modules/document-processes/documentProcess.routes.js";
 import { declarationApprovalRulesRouter } from "./modules/declaration-approval-rules/declarationApprovalRules.routes.js";
 import { customerRouter } from "./modules/customers/customer.routes.js";
+import { licenseMiddleware } from "./common/middlewares/licenseMiddleware.js";
+import { licenseRouter } from "./modules/license/license.routes.js";
 
 const app = express();
 
@@ -22,6 +24,10 @@ app.use(express.json({ limit: env.jsonBodyLimit }));
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
+
+app.use("/api/license", licenseRouter);
+// Bu satırdan sonraki bütün API endpointleri geçerli lisans ister.
+app.use("/api", licenseMiddleware);
 
 app.use("/api/declarations", authContextMiddleware, declarationRouter);
 app.use("/api/gtip-query", authContextMiddleware, gtipQueryRouter);

@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Node dependencies
+node_modules
+frontend/node_modules
+
+# Build çıktıları
+dist
+frontend/dist
+
+# Ortam değişkenleri
+.env
+frontend/.env
+.env.*
+frontend/.env.*
+
+# Ortam değişkeni örnekleri image'a girebilir
+!.env.example
+!env.example
+!frontend/.env.example
+
+# Yüklenen ve oluşturulan dosyalar
+uploads
+outputs
+temp
+tmp
+
+# Python cache
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+
+# IDE
+.vscode
+.idea
+
+# İşletim sistemi dosyaları
+.DS_Store
+Thumbs.db
+
+# Loglar
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Arşivler ve büyük test dosyaları
+*.zip
+*.rar

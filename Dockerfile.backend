@@ -1,0 +1,57 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+# Python parser ve PaddleOCR için gerekli sistem paketleri
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+    python3-pip \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python'u izole bir sanal ortamda kur
+RUN python3 -m venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+
+# Önce bağımlılık dosyalarını kopyala.
+# Böylece kod değişikliklerinde tüm paketler yeniden kurulmaz.
+COPY package.json package-lock.json ./
+COPY backend/scripts/invoice_parser/requirements.txt \
+    backend/scripts/invoice_parser/requirements.txt
+
+# Node bağımlılıklarını kur
+RUN npm ci
+
+# Python bağımlılıklarını kur
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir \
+       -r backend/scripts/invoice_parser/requirements.txt
+
+# Proje kaynak kodunu kopyala
+COPY backend ./backend
+COPY tsconfig.json ./
+
+# TypeScript backend'i derle
+RUN npm run build
+
+# Upload klasörü
+RUN mkdir -p /app/uploads
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV UPLOAD_DIR=/app/uploads
+
+# Docker içindeki Python executable
+ENV INVOICE_PARSER_PYTHON=/opt/venv/bin/python
+ENV INVOICE_PARSER_DIR=/app/backend/scripts/invoice_parser
+ENV INVOICE_PARSER_ENABLED=true
+ENV INVOICE_PARSER_TIMEOUT_MS=600000
+
+EXPOSE 3000
+
+CMD ["node", "dist/index.js"]
