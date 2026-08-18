@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Info } from 'lucide-react';
 import Drawer from '../../components/ui/Drawer';
 import Button from '../../components/ui/Button';
@@ -10,7 +10,7 @@ interface NewRecordDrawerProps {
   open: boolean;
   customerName: string;
   onClose: () => void;
-  onSave: (record: Omit<MaterialRecord, 'id' | 'customerId'>) => void;
+  onSave: (record: Omit<MaterialRecord, 'id' | 'customerId'>) => void | Promise<void>;
 }
 
 const ALL_TYPES: TransactionType[] = ['ithalat', 'ihracat', 'transit', 'antrepo'];
@@ -41,6 +41,16 @@ export default function NewRecordDrawer({
   const [description, setDescription] = useState('');
   const [gtipNo, setGtipNo] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<TransactionType[]>(ALL_TYPES);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setMaterialNo('');
+    setDescription('');
+    setGtipNo('');
+    setSelectedTypes(ALL_TYPES);
+    setSaving(false);
+  }, [open]);
 
   function toggleType(t: TransactionType) {
     setSelectedTypes((prev) =>
@@ -48,22 +58,24 @@ export default function NewRecordDrawer({
     );
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (saving) return;
     const source: RecordSource = 'manuel';
     const types = selectedTypes.length === 0 ? [...ALL_TYPES] : selectedTypes;
-    onSave({
-      materialNo: materialNo.trim() || `MLZ-${Math.floor(100000 + Math.random() * 900000)}`,
-      description: description.trim() || '(tanımsız malzeme)',
-      gtipNo: gtipNo.trim() || '0000.00.00.00.00',
-      transactionTypes: types,
-      status: 'pending',
-      source,
-      updatedAt: today(),
-    });
-    setMaterialNo('');
-    setDescription('');
-    setGtipNo('');
-    setSelectedTypes(ALL_TYPES);
+    setSaving(true);
+    try {
+      await onSave({
+        materialNo: materialNo.trim() || `MLZ-${Math.floor(100000 + Math.random() * 900000)}`,
+        description: description.trim() || '(tanımsız malzeme)',
+        gtipNo: gtipNo.trim() || '0000.00.00.00.00',
+        transactionTypes: types,
+        status: 'pending',
+        source,
+        updatedAt: today(),
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   const allSelected = ALL_TYPES.every((t) => selectedTypes.includes(t));
@@ -77,7 +89,9 @@ export default function NewRecordDrawer({
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave}>Kaydet</Button>
+          <Button variant="primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Kaydediliyor…' : 'Kaydet'}
+          </Button>
         </>
       }
     >

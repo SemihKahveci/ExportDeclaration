@@ -14,7 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { MaterialCustomer, MaterialRecord, TransactionType } from '../../types';
-import { gtipService } from '../../services/gtip';
+import { gtipService, hasDuplicateMaterialNo } from '../../services/gtip';
 import { ApiError } from '../../api/apiClient';
 import { formatMaterialImportToast } from '../../api/materialRecordApi';
 import { useToast } from '../../components/ui/Toast';
@@ -260,14 +260,20 @@ export default function GtipOnayPage() {
 
   async function handleNewRecord(record: Omit<MaterialRecord, 'id' | 'customerId'>) {
     if (!selectedCustomerId) return;
+    if (hasDuplicateMaterialNo(records, record.materialNo)) {
+      toast(`Bu müşteri için malzeme numarası zaten kayıtlı: ${record.materialNo}`);
+      throw new Error('duplicate-material-no');
+    }
     try {
       const created = await gtipService.createRecord(selectedCustomerId, record);
       setRecords((prev) => [created, ...prev]);
       await refreshCustomers();
       setNewRecordOpen(false);
       toast('Kayıt eklendi · Onay Bekleyen kuyruğuna alındı');
-    } catch {
-      toast('Kayıt eklenemedi · lütfen tekrar dene');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'duplicate-material-no') throw err;
+      toast(err instanceof ApiError ? err.message : 'Kayıt eklenemedi · lütfen tekrar dene');
+      throw err;
     }
   }
 
@@ -275,6 +281,10 @@ export default function GtipOnayPage() {
     id: string,
     record: Omit<MaterialRecord, 'id' | 'customerId'>
   ) {
+    if (hasDuplicateMaterialNo(records, record.materialNo, id)) {
+      toast(`Bu müşteri için malzeme numarası zaten kayıtlı: ${record.materialNo}`);
+      throw new Error('duplicate-material-no');
+    }
     try {
       const updated = await gtipService.updateRecord(id, {
         materialNo: record.materialNo,
@@ -291,8 +301,10 @@ export default function GtipOnayPage() {
           ? 'Kayıt güncellendi · tekrar Onay Bekleyen kuyruğuna alındı'
           : 'Kayıt güncellendi'
       );
-    } catch {
-      toast('Güncelleme başarısız · lütfen tekrar dene');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'duplicate-material-no') throw err;
+      toast(err instanceof ApiError ? err.message : 'Güncelleme başarısız · lütfen tekrar dene');
+      throw err;
     }
   }
 

@@ -35,7 +35,7 @@ const MaterialRecordSchema = new Schema(
   { timestamps: true }
 );
 
-MaterialRecordSchema.index({ companyId: 1, customerId: 1 });
+MaterialRecordSchema.index({ companyId: 1, customerId: 1, materialNo: 1 }, { unique: true });
 
 export const MaterialRecordModel =
   mongoose.models.MaterialRecord ??

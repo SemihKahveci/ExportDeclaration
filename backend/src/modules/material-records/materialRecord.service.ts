@@ -36,6 +36,30 @@ function assertSource(v: unknown): MaterialRecordDoc["source"] {
   return "manuel";
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function assertUniqueMaterialNo(
+  companyId: mongoose.Types.ObjectId,
+  customerId: string,
+  materialNo: string,
+  excludeId?: string
+): Promise<void> {
+  const key = materialNo.trim().toLocaleLowerCase("tr-TR");
+  const rows = await MaterialRecordModel.find({ companyId, customerId }).select("_id materialNo");
+  const duplicate = rows.find((row) => {
+    if (excludeId && String(row._id) === String(excludeId)) return false;
+    return row.materialNo.trim().toLocaleLowerCase("tr-TR") === key;
+  });
+  if (duplicate) {
+    throw new HttpError(
+      409,
+      `Bu müşteri için malzeme numarası zaten kayıtlı: ${materialNo}`
+    );
+  }
+}
+
 export async function listMaterialRecords(
   companyId: mongoose.Types.ObjectId,
   customerId: string
@@ -65,15 +89,24 @@ export async function createMaterialRecord(
   if (!body.description?.trim()) throw new HttpError(400, "Tanım gerekli.");
   if (!body.gtipNo?.trim()) throw new HttpError(400, "GTİP no gerekli.");
 
+  const customerId = body.customerId.trim();
+  const materialNo = body.materialNo.trim();
+  await assertUniqueMaterialNo(companyId, customerId, materialNo);
+
   const created = await MaterialRecordModel.create({
     companyId,
-    customerId: body.customerId.trim(),
-    materialNo: body.materialNo.trim(),
+    customerId,
+    materialNo,
     description: body.description.trim(),
     gtipNo: body.gtipNo.trim(),
     transactionTypes: assertTransactionTypes(body.transactionTypes),
     status: assertStatus(body.status),
     source: assertSource(body.source)
+  }).catch((error: { code?: number }) => {
+    if (error?.code === 11000) {
+      throw new HttpError(409, `Bu müşteri için malzeme numarası zaten kayıtlı: ${materialNo}`);
+    }
+    throw error;
   });
   return toMaterialRecordDto(created);
 }
@@ -85,6 +118,17 @@ export async function bulkCreateMaterialRecords(
 ): Promise<MaterialRecordDto[]> {
   if (!customerId.trim()) throw new HttpError(400, "customerId gerekli.");
   if (!items.length) throw new HttpError(400, "En az bir kayıt gerekli.");
+
+  const seen = new Set<string>();
+  for (const item of items) {
+    const materialNo = item.materialNo.trim();
+    const key = materialNo.toLocaleLowerCase("tr-TR");
+    if (seen.has(key)) {
+      throw new HttpError(409, `Bu müşteri için malzeme numarası zaten kayıtlı: ${materialNo}`);
+    }
+    seen.add(key);
+    await assertUniqueMaterialNo(companyId, customerId.trim(), materialNo);
+  }
 
   const docs = items.map((item) => ({
     companyId,
@@ -124,6 +168,12 @@ export async function updateMaterialRecord(
 
   if (Object.keys(update).length === 0) {
     throw new HttpError(400, "Güncellenecek alan yok.");
+  }
+
+  if (typeof update.materialNo === "string") {
+    const current = await MaterialRecordModel.findOne({ _id: id, companyId }).select("customerId");
+    if (!current) throw new HttpError(404, "Kayıt bulunamadı.");
+    await assertUniqueMaterialNo(companyId, current.customerId, update.materialNo, id);
   }
 
   const updated = await MaterialRecordModel.findOneAndUpdate(
@@ -169,7 +219,7 @@ export async function importMaterialRecordsFromExcel(
     const existing = await MaterialRecordModel.findOne({
       companyId,
       customerId: customerId.trim(),
-      materialNo: item.materialNo
+      materialNo: { $regex: `^${escapeRegex(item.materialNo)}$`, $options: "i" }
     }).select("_id");
 
     if (existing) {

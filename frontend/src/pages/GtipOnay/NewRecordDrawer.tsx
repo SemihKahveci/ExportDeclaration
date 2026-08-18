@@ -11,8 +11,8 @@ interface NewRecordDrawerProps {
   customerName: string;
   initialRecord?: MaterialRecord | null;
   onClose: () => void;
-  onSave: (record: Omit<MaterialRecord, 'id' | 'customerId'>) => void;
-  onUpdate?: (id: string, record: Omit<MaterialRecord, 'id' | 'customerId'>) => void;
+  onSave: (record: Omit<MaterialRecord, 'id' | 'customerId'>) => void | Promise<void>;
+  onUpdate?: (id: string, record: Omit<MaterialRecord, 'id' | 'customerId'>) => void | Promise<void>;
 }
 
 const ALL_TYPES: TransactionType[] = ['ithalat', 'ihracat', 'transit', 'antrepo'];
@@ -47,6 +47,7 @@ export default function NewRecordDrawer({
   const [description, setDescription] = useState('');
   const [gtipNo, setGtipNo] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<TransactionType[]>(ALL_TYPES);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -65,6 +66,7 @@ export default function NewRecordDrawer({
       setGtipNo('');
       setSelectedTypes(ALL_TYPES);
     }
+    setSaving(false);
   }, [open, initialRecord]);
 
   function toggleType(t: TransactionType) {
@@ -73,7 +75,8 @@ export default function NewRecordDrawer({
     );
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (saving) return;
     const source: RecordSource = initialRecord?.source ?? 'manuel';
     const types = selectedTypes.length === 0 ? [...ALL_TYPES] : selectedTypes;
     const payload: Omit<MaterialRecord, 'id' | 'customerId'> = {
@@ -86,10 +89,15 @@ export default function NewRecordDrawer({
       updatedAt: today(),
     };
 
-    if (isEdit && initialRecord && onUpdate) {
-      onUpdate(initialRecord.id, payload);
-    } else {
-      onSave(payload);
+    setSaving(true);
+    try {
+      if (isEdit && initialRecord && onUpdate) {
+        await onUpdate(initialRecord.id, payload);
+      } else {
+        await onSave(payload);
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -105,8 +113,8 @@ export default function NewRecordDrawer({
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave} disabled={!canSave}>
-            {isEdit ? 'Güncelle' : 'Kaydet'}
+          <Button variant="primary" onClick={handleSave} disabled={!canSave || saving}>
+            {saving ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
           </Button>
         </>
       }

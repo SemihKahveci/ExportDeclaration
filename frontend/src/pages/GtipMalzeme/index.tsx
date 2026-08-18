@@ -11,7 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { MaterialCustomer, MaterialRecord, TransactionType } from '../../types';
-import { gtipService } from '../../services/gtip';
+import { gtipService, hasDuplicateMaterialNo } from '../../services/gtip';
 import { ApiError } from '../../api/apiClient';
 import { formatMaterialImportToast } from '../../api/materialRecordApi';
 import { useToast } from '../../components/ui/Toast';
@@ -210,14 +210,20 @@ export default function GtipMalzemePage() {
 
   async function handleNewRecord(record: Omit<MaterialRecord, 'id' | 'customerId'>) {
     if (!selectedCustomerId) return;
+    if (hasDuplicateMaterialNo(records, record.materialNo)) {
+      toast(`Bu müşteri için malzeme numarası zaten kayıtlı: ${record.materialNo}`);
+      throw new Error('duplicate-material-no');
+    }
     try {
       const created = await gtipService.createRecord(selectedCustomerId, record);
       setRecords((prev) => [created, ...prev]);
       await refreshCustomers();
       setNewRecordOpen(false);
       toast('Kayıt eklendi · Onay Bekleyen kuyruğuna alındı');
-    } catch {
-      toast('Kayıt eklenemedi · lütfen tekrar dene');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'duplicate-material-no') throw err;
+      toast(err instanceof ApiError ? err.message : 'Kayıt eklenemedi · lütfen tekrar dene');
+      throw err;
     }
   }
 

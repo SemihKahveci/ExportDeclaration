@@ -35,6 +35,19 @@ function toMaterialCustomer(c: CustomerListItem, recordCount: number): MaterialC
   };
 }
 
+export function hasDuplicateMaterialNo(
+  records: { id: string; materialNo: string }[],
+  materialNo: string,
+  excludeId?: string
+): boolean {
+  const key = materialNo.trim().toLocaleLowerCase('tr-TR');
+  return records.some(
+    (r) =>
+      r.id !== excludeId &&
+      r.materialNo.trim().toLocaleLowerCase('tr-TR') === key
+  );
+}
+
 const GTIP_ENTRIES: GtipEntry[] = [
   {
     code: '6203.42.31',
