@@ -67,6 +67,14 @@ export async function downloadMaterialRecordTemplate(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+export function formatMaterialImportToast(result: MaterialRecordImportResult): string {
+  const added = `Dosya yüklendi · ${result.count} malzeme eklendi`;
+  const errors = result.errors ?? [];
+  if (errors.length === 0) return added;
+  const reasons = errors.map((e) => `Satır ${e.row} — ${e.message}`).join("; ");
+  return `${added}\n${errors.length} satır hatalı, eklenmedi: ${reasons}`;
+}
+
 export async function importMaterialRecordsExcel(
   customerId: string,
   file: File

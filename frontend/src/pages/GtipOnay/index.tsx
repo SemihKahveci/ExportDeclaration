@@ -11,10 +11,12 @@ import {
   X,
   Search,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 import type { MaterialCustomer, MaterialRecord, TransactionType } from '../../types';
 import { gtipService } from '../../services/gtip';
 import { ApiError } from '../../api/apiClient';
+import { formatMaterialImportToast } from '../../api/materialRecordApi';
 import { useToast } from '../../components/ui/Toast';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Card } from '../../components/ui/Card';
@@ -238,9 +240,21 @@ export default function GtipOnayPage() {
     try {
       const updated = await gtipService.rejectRecord(id);
       setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
-      toast(`${rec?.materialNo ?? 'Kayıt'} reddedildi · düzenleyip tekrar işlem yapabilirsiniz`);
+      toast(`${rec?.materialNo ?? 'Kayıt'} reddedildi`);
     } catch {
       toast('Reddetme başarısız · lütfen tekrar dene');
+    }
+  }
+
+  async function handleDelete(id: string) {
+    const rec = records.find((r) => r.id === id);
+    try {
+      await gtipService.deleteRecord(id);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
+      await refreshCustomers();
+      toast(`${rec?.materialNo ?? 'Kayıt'} silindi`);
+    } catch {
+      toast('Silme başarısız · lütfen tekrar dene');
     }
   }
 
@@ -303,10 +317,7 @@ export default function GtipOnayPage() {
       const result = await gtipService.importMaterialRecordsExcel(selectedCustomerId, file);
       setRecords((prev) => [...result.records, ...prev]);
       await refreshCustomers();
-      const skipped = result.errors?.length
-        ? ` · ${result.errors.length} satır atlandı`
-        : '';
-      toast(`Dosya yüklendi · ${result.count} malzeme eklendi${skipped}`);
+      toast(formatMaterialImportToast(result));
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'İçe aktarım başarısız · lütfen tekrar dene';
       toast(msg);
@@ -337,7 +348,7 @@ export default function GtipOnayPage() {
       </div>
 
       {/* Right records area */}
-      <div className="flex-1 min-w-0 overflow-y-auto px-6 pt-5 pb-12">
+      <div className="flex-1 min-w-0 overflow-y-auto px-6 pt-5 pb-12" data-toast-anchor>
         {/* Page heading */}
         <div className="flex items-start gap-4 mb-4">
           <div className="flex-1 min-w-0">
@@ -483,13 +494,21 @@ export default function GtipOnayPage() {
                                 <Check size={12} strokeWidth={2.4} />
                                 Onayla
                               </button>
-                              {rec.status === 'pending' && (
+                              {rec.status === 'pending' ? (
                                 <button
                                   onClick={() => handleReject(rec.id)}
                                   className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white"
                                 >
                                   <X size={12} strokeWidth={2.4} />
                                   Reddet
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleDelete(rec.id)}
+                                  className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white"
+                                >
+                                  <Trash2 size={12} strokeWidth={2.4} />
+                                  Sil
                                 </button>
                               )}
                             </>

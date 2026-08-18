@@ -67,5 +67,5 @@ export async function postImportExcel(req: Request, res: Response): Promise<void
     customerId,
     req.file.buffer
   );
-  res.status(201).json({ ok: true, data });
+  res.status(data.count > 0 ? 201 : 200).json({ ok: true, data });
 }

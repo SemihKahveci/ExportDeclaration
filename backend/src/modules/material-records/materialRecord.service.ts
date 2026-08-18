@@ -161,13 +161,8 @@ export async function importMaterialRecordsFromExcel(
   const errors = [...parsed.errors];
   const records: MaterialRecordDto[] = [];
 
-  if (parsed.items.length === 0) {
-    throw new HttpError(
-      400,
-      errors.length > 0
-        ? "Excel dosyasında geçerli satır bulunamadı."
-        : "Excel dosyasında içe aktarılacak veri yok."
-    );
+  if (parsed.items.length === 0 && errors.length === 0) {
+    throw new HttpError(400, "Excel dosyasında içe aktarılacak veri yok.");
   }
 
   for (const { row, item } of parsed.items) {
@@ -205,7 +200,7 @@ export async function importMaterialRecordsFromExcel(
     }
   }
 
-  if (records.length === 0) {
+  if (records.length === 0 && errors.length === 0) {
     throw new HttpError(400, "Hiçbir malzeme kaydı eklenemedi.");
   }
 

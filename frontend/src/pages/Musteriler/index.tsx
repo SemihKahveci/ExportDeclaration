@@ -342,7 +342,7 @@ export default function MusterilerPage() {
         />
       </div>
 
-      <div className="flex-1 min-w-0 overflow-y-auto px-7 pt-6 pb-12">
+      <div className="flex-1 min-w-0 overflow-y-auto px-7 pt-6 pb-12" data-toast-anchor>
         {!selectedId ? (
           <div className="py-20 text-center text-[13px] text-muted">
             Henüz müşteri yok. Soldan yeni müşteri ekleyin.

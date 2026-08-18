@@ -9,6 +9,7 @@ import {
   createMaterialRecord,
   downloadMaterialRecordTemplate,
   getCustomerRecordCounts,
+  deleteMaterialRecord,
   importMaterialRecordsExcel,
   listMaterialRecords,
   patchMaterialRecord,
@@ -250,6 +251,9 @@ export const gtipService = {
   },
   rejectRecord: async (id: string): Promise<MaterialRecord> => {
     return patchMaterialRecord(id, { status: 'rejected' });
+  },
+  deleteRecord: async (id: string): Promise<void> => {
+    await deleteMaterialRecord(id);
   },
   downloadMaterialRecordTemplate: async (): Promise<void> => {
     return downloadMaterialRecordTemplate();

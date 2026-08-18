@@ -25,6 +25,7 @@ export default function UploadBox({
     const arr = Array.from(files);
     setSelectedNames(arr.map((f) => f.name));
     onFiles(arr);
+    if (inputRef.current) inputRef.current.value = '';
   }
 
   function onDragOver(e: DragEvent) {

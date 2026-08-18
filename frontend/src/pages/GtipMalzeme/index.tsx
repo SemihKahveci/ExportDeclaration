@@ -13,6 +13,7 @@ import {
 import type { MaterialCustomer, MaterialRecord, TransactionType } from '../../types';
 import { gtipService } from '../../services/gtip';
 import { ApiError } from '../../api/apiClient';
+import { formatMaterialImportToast } from '../../api/materialRecordApi';
 import { useToast } from '../../components/ui/Toast';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Card } from '../../components/ui/Card';
@@ -226,10 +227,7 @@ export default function GtipMalzemePage() {
       const result = await gtipService.importMaterialRecordsExcel(selectedCustomerId, file);
       setRecords((prev) => [...result.records, ...prev]);
       await refreshCustomers();
-      const skipped = result.errors?.length
-        ? ` · ${result.errors.length} satır atlandı`
-        : '';
-      toast(`Dosya yüklendi · ${result.count} malzeme eklendi${skipped}`);
+      toast(formatMaterialImportToast(result));
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'İçe aktarım başarısız · lütfen tekrar dene';
       toast(msg);
@@ -260,7 +258,7 @@ export default function GtipMalzemePage() {
       </div>
 
       {/* Right records area */}
-      <div className="flex-1 min-w-0 overflow-y-auto px-6 pt-5 pb-12">
+      <div className="flex-1 min-w-0 overflow-y-auto px-6 pt-5 pb-12" data-toast-anchor>
         {/* Page heading */}
         <div className="flex items-start gap-4 mb-4">
           <div className="flex-1 min-w-0">
