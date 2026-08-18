@@ -311,6 +311,7 @@ export default function MusteriGtipSorgulamaPage() {
       <GtipRecordDrawer
         open={drawerOpen}
         target={drawerTarget}
+        initialCustomer={customer}
         onClose={() => setDrawerOpen(false)}
         onSave={handleSaveRecord}
       />

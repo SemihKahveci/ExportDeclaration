@@ -33,6 +33,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [allMtUsers, setAllMtUsers] = useState<AppUser[]>([]);
   const [allMtMgrUsers, setAllMtMgrUsers] = useState<AppUser[]>([]);
+  const [operators, setOperators] = useState<AppUser[]>([]);
   const [selectedCustId, setSelectedCustId] = useState('');
   const [operationType, setOperationType] = useState('İhracat');
   const [transportMode, setTransportMode] = useState('Karayolu');
@@ -44,10 +45,12 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
       customersService.getCustomerList(),
       usersService.getMtUsers(),
       usersService.getMtManagerUsers(),
-    ]).then(([list, mt, mtMgr]) => {
+      usersService.getOperationUsers(),
+    ]).then(([list, mt, mtMgr, ops]) => {
       setCustomers(list);
       setAllMtUsers(mt);
       setAllMtMgrUsers(mtMgr);
+      setOperators(ops);
     });
   }, []);
 
@@ -162,9 +165,9 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
         <Field label="Sorumlu Operatör" htmlFor="nr-sorumlu">
           <Select id="nr-sorumlu" value={assigneeName} onChange={(e) => setAssigneeName(e.target.value)}>
             <option value="">— Seç —</option>
-            <option value="M. Demir">M. Demir</option>
-            <option value="S. Kaya">S. Kaya</option>
-            <option value="A. Yılmaz">A. Yılmaz</option>
+            {operators.map((u) => (
+              <option key={u.id} value={u.name}>{u.name}</option>
+            ))}
           </Select>
         </Field>
 

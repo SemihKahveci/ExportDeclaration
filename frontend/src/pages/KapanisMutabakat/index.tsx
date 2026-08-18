@@ -144,7 +144,7 @@ export default function KapanisMutabakatPage() {
   const [costs,        setCosts]        = useState<KapanicCostItem[]>([]);
   const [controls,     setControls]     = useState<KapanicControlItem[]>([]);
   const [stats,        setStats]        = useState<KapanicPageStats | null>(null);
-  const [selectedId,   setSelectedId]   = useState<string>('kap-001');
+  const [selectedId,   setSelectedId]   = useState<string>('');
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [activeTab,    setActiveTab]    = useState<ClosingTab>(() => firstPermittedTab(can));
   const [controlState, setControlState] = useState<ControlState>('wait');
@@ -169,8 +169,8 @@ export default function KapanisMutabakatPage() {
       setCosts(c);
       setControls(ctl);
       setStats(s);
-      setLoading(false);
-    });
+      if (f.length) setSelectedId(f[0].id);
+    }).finally(() => setLoading(false));
   }, []);
 
   const selected = files.find((f) => f.id === selectedId) ?? null;

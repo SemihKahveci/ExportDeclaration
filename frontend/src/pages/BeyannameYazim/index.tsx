@@ -50,11 +50,8 @@ export default function BeyannameYazimPage() {
       setListeItems(liste);
       setRecords(recs);
       setMtMappings(mappings);
-      if (recs.length) {
-        setSelectedId(recs[0].id);
-      }
-      setLoading(false);
-    });
+      if (recs.length) setSelectedId(recs[0].id);
+    }).finally(() => setLoading(false));
   }, []);
 
   const selected = records.find((r) => r.id === selectedId) ?? null;

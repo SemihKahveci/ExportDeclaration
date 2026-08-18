@@ -195,6 +195,7 @@ export default function QueryTab({ initialResults }: QueryTabProps) {
       <GtipRecordDrawer
         open={drawerOpen}
         target={drawerTarget}
+        initialCustomer={customer}
         onClose={() => setDrawerOpen(false)}
         onSave={handleSaveGtipRecord}
       />

@@ -4,18 +4,21 @@ import Drawer from '../../components/ui/Drawer';
 import Button from '../../components/ui/Button';
 import { Field, Input, Select, Textarea } from '../../components/ui/Fields';
 import Note from '../../components/ui/Note';
-import type { GtipQueryResult } from '../../types';
+import { customersService } from '../../services/customers';
+import type { CustomerListItem, GtipQueryResult } from '../../types';
 
 interface GtipRecordDrawerProps {
   open: boolean;
   target: GtipQueryResult | null;
+  initialCustomer?: string;
   onClose: () => void;
   onSave: (materialNo: string, description: string, gtipNo: string, customer: string, source: string, note: string) => void;
 }
 
-export default function GtipRecordDrawer({ open, target, onClose, onSave }: GtipRecordDrawerProps) {
+export default function GtipRecordDrawer({ open, target, initialCustomer, onClose, onSave }: GtipRecordDrawerProps) {
   const [gtipNo, setGtipNo]     = useState('');
-  const [customer, setCustomer] = useState('Arçelik A.Ş.');
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
+  const [customer, setCustomer] = useState('');
   const [source, setSource]     = useState('GTİP Sorgulama Talebi');
   const [note, setNote]         = useState('');
 
@@ -23,9 +26,18 @@ export default function GtipRecordDrawer({ open, target, onClose, onSave }: Gtip
     if (!open) return;
     setGtipNo('');
     setNote('');
-    setCustomer('Arçelik A.Ş.');
     setSource('GTİP Sorgulama Talebi');
-  }, [open]);
+    customersService.getCustomerList().then((list) => {
+      setCustomers(list);
+      const match = initialCustomer && list.some((c) => c.name === initialCustomer)
+        ? initialCustomer
+        : (list[0]?.name ?? '');
+      setCustomer(match);
+    }).catch(() => {
+      setCustomers([]);
+      setCustomer('');
+    });
+  }, [open, initialCustomer]);
 
   return (
     <Drawer
@@ -39,6 +51,7 @@ export default function GtipRecordDrawer({ open, target, onClose, onSave }: Gtip
           <Button
             variant="primary"
             icon={Send}
+            disabled={!customer}
             onClick={() =>
               onSave(
                 target?.materialNo ?? '',
@@ -91,11 +104,12 @@ export default function GtipRecordDrawer({ open, target, onClose, onSave }: Gtip
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Müşteri" htmlFor="dr-customer">
+          <Field label="Müşteri" htmlFor="dr-customer" required>
             <Select id="dr-customer" value={customer} onChange={(e) => setCustomer(e.target.value)}>
-              <option>Arçelik A.Ş.</option>
-              <option>Valeo eAutomotive Hungary Kft.</option>
-              <option>Ford Otosan</option>
+              <option value="">— Müşteri seç —</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
             </Select>
           </Field>
           <Field label="Giriş Kaynağı" htmlFor="dr-source">

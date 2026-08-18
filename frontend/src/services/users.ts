@@ -73,6 +73,11 @@ export const usersService = {
     return appUsers.filter((u) => u.role === 'MT Yönetici' && u.status === 'Aktif');
   },
 
+  getOperationUsers: async (): Promise<AppUser[]> => {
+    const appUsers = await listAppUsers();
+    return appUsers.filter((u) => u.role === 'Operasyon' && u.status === 'Aktif');
+  },
+
   createAppUser: async (data: Omit<AppUser, 'id'>): Promise<AppUser> => {
     return createAppUser({ ...EMPTY_NEW_USER(), ...data });
   },

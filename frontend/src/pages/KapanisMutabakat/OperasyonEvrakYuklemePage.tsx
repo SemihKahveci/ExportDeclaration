@@ -80,7 +80,7 @@ export default function KapanicOperasyonEvrakYuklemePage() {
   const [files,        setFiles]        = useState<KapanicFile[]>([]);
   const [controls,     setControls]     = useState<KapanicControlItem[]>([]);
   const [stats,        setStats]        = useState<KapanicPageStats | null>(null);
-  const [selectedId,   setSelectedId]   = useState<string>('kap-001');
+  const [selectedId,   setSelectedId]   = useState<string>('');
   const [controlState, setControlState] = useState<ControlState>('wait');
   const [autoChecked,  setAutoChecked]  = useState(false);
 
@@ -93,8 +93,8 @@ export default function KapanicOperasyonEvrakYuklemePage() {
       setFiles(f);
       setControls(ctl);
       setStats(s);
-      setLoading(false);
-    });
+      if (f.length) setSelectedId(f[0].id);
+    }).finally(() => setLoading(false));
   }, []);
 
   const selected = files.find((f) => f.id === selectedId) ?? null;

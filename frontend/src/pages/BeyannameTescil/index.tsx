@@ -134,7 +134,7 @@ export default function BeyannameTescilPage() {
   const [loading,   setLoading]   = useState(true);
   const [records,   setRecords]   = useState<TescilRecord[]>([]);
   const [stats,     setStats]     = useState<TescilPageStats | null>(null);
-  const [selectedId, setSelectedId] = useState<string>('tsc-001');
+  const [selectedId, setSelectedId] = useState<string>('');
 
   useEffect(() => {
     Promise.all([
@@ -143,8 +143,8 @@ export default function BeyannameTescilPage() {
     ]).then(([recs, s]) => {
       setRecords(recs);
       setStats(s);
-      setLoading(false);
-    });
+      if (recs.length) setSelectedId(recs[0].id);
+    }).finally(() => setLoading(false));
   }, []);
 
   const selected = records.find((r) => r.id === selectedId) ?? null;

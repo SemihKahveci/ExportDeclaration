@@ -59,8 +59,7 @@ export default function BeyannameOnayPage() {
       setListeItems(liste);
       setRecords(recs);
       setMappings(maps);
-      setLoading(false);
-    });
+    }).finally(() => setLoading(false));
   }, []);
 
   // Only show items where MT Kontrol is completed (onaya-hazir) and not yet acted upon

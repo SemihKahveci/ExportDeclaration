@@ -83,7 +83,7 @@ export default function KapanicEvraklarPage() {
   const [docs,          setDocs]          = useState<KapanicDoc[]>([]);
   const [costs,         setCosts]         = useState<KapanicCostItem[]>([]);
   const [stats,         setStats]         = useState<KapanicPageStats | null>(null);
-  const [selectedId,    setSelectedId]    = useState<string>('kap-001');
+  const [selectedId,    setSelectedId]    = useState<string>('');
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [mailOpen,      setMailOpen]      = useState(false);
 
@@ -102,8 +102,8 @@ export default function KapanicEvraklarPage() {
       setDocs(d);
       setCosts(c);
       setStats(s);
-      setLoading(false);
-    });
+      if (f.length) setSelectedId(f[0].id);
+    }).finally(() => setLoading(false));
   }, []);
 
   const selected = files.find((f) => f.id === selectedId) ?? null;
