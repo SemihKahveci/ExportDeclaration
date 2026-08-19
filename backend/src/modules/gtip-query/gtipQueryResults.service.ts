@@ -149,7 +149,7 @@ export async function sendStoredGtipQueryToApproval(
   const session = await GtipQuerySessionModel.findOne({ companyId });
   const sourceItems = body.results?.length
     ? normalizeItems(body.results)
-    : (session?.items ?? []).map((item) => ({
+    : (session?.items ?? []).map((item: GtipQueryItemDoc) => ({
         materialNo: item.materialNo,
         description: item.description,
         foundGtip: item.foundGtip,
