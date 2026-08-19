@@ -3,7 +3,7 @@ import type {
   GtipDeclaration, GtipQueryResult, GtipPageStats,
   CustomerListItem,
 } from '../types';
-import { parseInvoiceForGtipQuery } from '../api/gtipQueryApi';
+import { parseInvoiceForGtipQuery, getStoredGtipQuery, saveStoredGtipQuery, sendGtipQueryToApproval } from '../api/gtipQueryApi';
 import {
   bulkCreateMaterialRecords,
   createMaterialRecord,
@@ -293,8 +293,44 @@ export const gtipService = {
     return CUSTOMER_GTIP_REQUESTS.map((r) => ({ ...r }));
   },
   getCustomerQueryResults: async (): Promise<GtipQueryResult[]> => {
-    await delay(80);
-    return [];
+    const stored = await getStoredGtipQuery();
+    return stored.results ?? [];
+  },
+  getStoredCustomerQuery: async () => {
+    return getStoredGtipQuery();
+  },
+  saveCustomerQueryResults: async (payload: {
+    customerId?: string;
+    customerName?: string;
+    fileName?: string;
+    pdfType?: string;
+    results: GtipQueryResult[];
+  }) => {
+    return saveStoredGtipQuery({
+      customerId: payload.customerId,
+      customerName: payload.customerName,
+      fileName: payload.fileName,
+      pdfType: payload.pdfType,
+      results: payload.results.map((r) => ({
+        materialNo: r.materialNo,
+        description: r.description,
+        foundGtip: r.foundGtip,
+        status: r.status,
+        approvalStatus: r.approvalStatus,
+      })),
+    });
+  },
+  sendCustomerQueryToApproval: async (customerId: string, results: GtipQueryResult[]) => {
+    return sendGtipQueryToApproval({
+      customerId,
+      results: results.map((r) => ({
+        materialNo: r.materialNo,
+        description: r.description,
+        foundGtip: r.foundGtip,
+        status: r.status,
+        approvalStatus: r.approvalStatus,
+      })),
+    });
   },
   parseInvoicePdf: async (file: File): Promise<{
     results: GtipQueryResult[];

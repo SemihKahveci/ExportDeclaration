@@ -10,4 +10,7 @@ const upload = multer({
 
 export const gtipQueryRouter = Router();
 
+gtipQueryRouter.get("/results", asyncHandler(ctrl.getResults));
+gtipQueryRouter.put("/results", asyncHandler(ctrl.putResults));
+gtipQueryRouter.post("/send-to-approval", asyncHandler(ctrl.postSendToApproval));
 gtipQueryRouter.post("/parse-invoice", upload.single("file"), asyncHandler(ctrl.postParseInvoice));

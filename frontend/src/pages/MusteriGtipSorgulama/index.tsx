@@ -9,6 +9,7 @@ import { Field, Select, Textarea } from '../../components/ui/Fields';
 import UploadBox from '../../components/ui/UploadBox';
 import Pill from '../../components/ui/Pill';
 import Button from '../../components/ui/Button';
+import Modal from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import GtipRecordDrawer from '../GtipHazirlik/GtipRecordDrawer';
 import { ApiError } from '../../api/apiClient';
@@ -42,25 +43,45 @@ export default function MusteriGtipSorgulamaPage() {
   const [uploadedFile, setUploadedFile]   = useState<File | null>(null);
   const [drawerOpen, setDrawerOpen]       = useState(false);
   const [drawerTarget, setDrawerTarget]   = useState<GtipQueryResult | null>(null);
+  const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
+  const [sending, setSending]             = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      gtipService.getCustomerQueryResults(),
-      gtipService.getCustomers(),
-    ])
-      .then(([r, c]) => {
+
+    gtipService.getCustomers()
+      .then((c) => {
         if (cancelled) return;
-        setResults(r);
         setCustomers(c);
-        if (c.length > 0) setCustomer(c[0].name);
+        setCustomer((prev) => prev || c[0]?.name || '');
       })
       .catch(() => {
-        if (!cancelled) toast('Sayfa verileri yüklenemedi');
+        if (!cancelled) toast('Müşteri listesi yüklenemedi');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+
+    gtipService.getStoredCustomerQuery()
+      .then((stored) => {
+        if (cancelled) return;
+        setResults(stored.results ?? []);
+        if (stored.customerName) setCustomer(stored.customerName);
+        if ((stored.results?.length ?? 0) > 0 && stored.fileName) {
+          setLastParseMeta({
+            fileName: stored.fileName,
+            pdfType: stored.pdfType,
+            itemCount: stored.itemCount || stored.results.length,
+          });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          const msg = err instanceof ApiError ? err.message : 'Sorgu sonuçları yüklenemedi';
+          toast(msg);
+        }
+      });
+
     return () => { cancelled = true; };
   }, [toast]);
 
@@ -70,6 +91,28 @@ export default function MusteriGtipSorgulamaPage() {
       ?? null;
     setDrawerTarget(target);
     setDrawerOpen(true);
+  }
+
+  function selectedCustomerId() {
+    return customers.find((c) => c.name === customer)?.id ?? '';
+  }
+
+  async function persistResults(
+    rows: GtipQueryResult[],
+    meta?: { fileName: string; pdfType: string } | null
+  ) {
+    if (rows.length === 0) return;
+    const customerId = selectedCustomerId();
+    if (!customerId) {
+      throw new Error('Müşteri seçilmeden sorgu sonuçları kaydedilemez');
+    }
+    await gtipService.saveCustomerQueryResults({
+      customerId,
+      customerName: customer,
+      fileName: meta?.fileName ?? lastParseMeta?.fileName,
+      pdfType: meta?.pdfType ?? lastParseMeta?.pdfType,
+      results: rows,
+    });
   }
 
   async function handleGtipQuery() {
@@ -92,6 +135,15 @@ export default function MusteriGtipSorgulamaPage() {
       setResults(parsed);
       setLastParseMeta(meta);
       toast(`${meta.fileName}: ${meta.itemCount} kalem (${meta.pdfType})`);
+      try {
+        await persistResults(parsed, meta);
+      } catch (persistErr) {
+        toast(
+          persistErr instanceof Error
+            ? `PDF okundu ama sonuçlar kaydedilemedi: ${persistErr.message}`
+            : 'PDF okundu ama sonuçlar kaydedilemedi'
+        );
+      }
     } catch (err) {
       const msg = err instanceof ApiError
         ? err.message
@@ -104,20 +156,76 @@ export default function MusteriGtipSorgulamaPage() {
     }
   }
 
+  function handleGtipQueryClick() {
+    if (results.length > 0) {
+      setReplaceConfirmOpen(true);
+      return;
+    }
+    void handleGtipQuery();
+  }
+
+  function handleReplaceCancel() {
+    setReplaceConfirmOpen(false);
+  }
+
+  function handleReplaceConfirm() {
+    setReplaceConfirmOpen(false);
+    void handleGtipQuery();
+  }
+
+  async function handleSendToApproval() {
+    const customerId = selectedCustomerId();
+    if (!customerId) {
+      toast('Önce müşteri seçin');
+      return;
+    }
+    if (results.length === 0) {
+      toast('Onaya gönderilecek sorgu sonucu yok');
+      return;
+    }
+    setSending(true);
+    try {
+      const outcome = await gtipService.sendCustomerQueryToApproval(customerId, results);
+      setResults([]);
+      setLastParseMeta(null);
+      const duplicates = outcome.skippedDuplicates ?? 0;
+      const existing = outcome.skippedExisting ?? 0;
+      const parts = [`${outcome.sent} kayıt GTİP Onay’a gönderildi`];
+      if (duplicates > 0) {
+        parts.push(`${duplicates} satır aynı malzeme no ile tekrar ettiği için atlandı`);
+      }
+      if (existing > 0) {
+        parts.push(`${existing} kayıt bu müşteri için zaten kayıtlı olduğu için atlandı`);
+      }
+      toast(parts.join('. ') + '.');
+    } catch (err) {
+      const msg = err instanceof ApiError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : 'Onaya gönderme başarısız';
+      toast(msg);
+    } finally {
+      setSending(false);
+    }
+  }
+
   function handleSaveRecord(materialNo: string, description: string, gtipNo: string) {
-    setResults((prev) => [
+    const next: GtipQueryResult[] = [
       {
         id: `qr-${Date.now()}`,
         materialNo,
         description,
         foundGtip: gtipNo || '—',
-        status: 'Bulundu' as const,
-        approvalStatus: 'Onay Bekliyor' as const,
+        status: 'Bulundu',
+        approvalStatus: 'Onay Bekliyor',
       },
-      ...prev,
-    ]);
+      ...results,
+    ];
+    setResults(next);
     setDrawerOpen(false);
     toast('GTİP kaydı onay sürecine gönderildi');
+    void persistResults(next).catch(() => toast('Kayıt kaydedilemedi'));
   }
 
   const foundCount   = results.filter((r) => r.status === 'Bulundu').length;
@@ -235,9 +343,9 @@ export default function MusteriGtipSorgulamaPage() {
                   <Button
                     variant="blue"
                     icon={parsing ? Loader2 : Search}
-                    disabled={parsing || !uploadedFile}
+                    disabled={parsing || sending || !uploadedFile}
                     className={parsing ? '[&_svg]:animate-spin' : ''}
-                    onClick={handleGtipQuery}
+                    onClick={handleGtipQueryClick}
                   >
                     {parsing ? 'Sorgulanıyor…' : 'GTİP Sorgulat'}
                   </Button>
@@ -264,9 +372,21 @@ export default function MusteriGtipSorgulamaPage() {
                   : 'Yüklenen faturadan çıkarılan malzeme ve GTİP kayıtları'
               }
               actions={
-                <Button variant="primary" icon={Plus} size="sm" onClick={openDrawer}>
-                  GTİP Kaydı Ekle
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    icon={sending ? Loader2 : Send}
+                    size="sm"
+                    disabled={sending || parsing || results.length === 0}
+                    className={sending ? '[&_svg]:animate-spin' : ''}
+                    onClick={() => void handleSendToApproval()}
+                  >
+                    {sending ? 'Gönderiliyor…' : 'Onaya Gönder'}
+                  </Button>
+                  <Button variant="default" icon={Plus} size="sm" onClick={openDrawer}>
+                    GTİP Kaydı Ekle
+                  </Button>
+                </div>
               }
             />
             {results.length === 0 ? (
@@ -315,6 +435,26 @@ export default function MusteriGtipSorgulamaPage() {
         onClose={() => setDrawerOpen(false)}
         onSave={handleSaveRecord}
       />
+
+      <Modal
+        open={replaceConfirmOpen}
+        onClose={handleReplaceCancel}
+        title="Mevcut sorgu sonuçları silinsin mi?"
+        footer={
+          <>
+            <Button onClick={handleReplaceCancel}>Hayır, kalsın</Button>
+            <Button variant="danger" onClick={handleReplaceConfirm}>
+              Evet, sil ve sorgula
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13.5px] text-text leading-relaxed">
+          Tabloda kayıtlı sorgu sonuçları var. Yeni PDF ile GTİP sorgulatırsanız bu sonuçlar
+          silinecek ve veritabanından da kaldırılacak. Hayır derseniz mevcut sonuçlar olduğu gibi
+          kalır, yeni sorgu çalışmaz.
+        </p>
+      </Modal>
     </div>
   );
 }
