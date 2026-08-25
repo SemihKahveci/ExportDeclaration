@@ -44,7 +44,7 @@ export const env = {
   invoiceParserPython: process.env.INVOICE_PARSER_PYTHON ?? defaultPythonBin(),
   invoiceParserDir: process.env.INVOICE_PARSER_DIR ?? defaultParserDir,
   invoiceParserTimeoutMs: num(process.env.INVOICE_PARSER_TIMEOUT_MS, 10 * 60 * 1000),
-  licenseEnabled: bool(process.env.LICENSE_ENABLED, true),
+  licenseEnabled: bool(process.env.LICENSE_ENABLED, false),
 
   authJwtSecret: process.env.AUTH_JWT_SECRET ?? "dev-only-change-this-auth-secret-at-least-32-chars",
   authCookieName: process.env.AUTH_COOKIE_NAME ?? "export_decl_session",

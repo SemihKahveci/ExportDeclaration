@@ -30,10 +30,6 @@ Write-Host "Version : $Version"
 Write-Host "Platform: $Platform"
 Write-Host ""
 
-if (-not $env:VITE_COMPANY_ID) {
-    throw "VITE_COMPANY_ID tanımlı değil."
-}
-
 # Eski release varsa temizle
 if (Test-Path $ReleaseDir) {
     Write-Host "Eski release klasörü temizleniyor..."
