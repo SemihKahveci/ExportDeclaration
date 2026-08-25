@@ -24,6 +24,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^22.9.0",
     "@types/pdf-parse": "^1.1.5",
+    "@types/nodemailer": "^8.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
@@ -35,7 +36,6 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@types/nodemailer": "^8.0.1",
     "concurrently": "^9.2.3",
     "tsx": "^4.19.2"
   }
