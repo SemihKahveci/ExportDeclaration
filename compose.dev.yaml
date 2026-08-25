@@ -52,6 +52,15 @@ services:
       INVOICE_PARSER_DIR: /app/backend/scripts/invoice_parser
       INVOICE_PARSER_TIMEOUT_MS: 600000
 
+      MAIL_ENABLED: ${MAIL_ENABLED}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME}
+
     ports:
       - "3000:3000"
 

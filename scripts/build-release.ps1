@@ -49,6 +49,7 @@ Write-Host ""
 Write-Host "Backend image build ediliyor..." -ForegroundColor Yellow
 
 docker buildx build `
+    --builder multiplatform `
     --platform $Platform `
     --load `
     -f "$Root\Dockerfile.backend" `
@@ -63,6 +64,7 @@ Write-Host ""
 Write-Host "Frontend image build ediliyor..." -ForegroundColor Yellow
 
 docker buildx build `
+    --builder multiplatform `
     --platform $Platform `
     --load `
     -f "$Root\Dockerfile.frontend" `
@@ -89,7 +91,8 @@ Write-Host "Docker image'ları export ediliyor..." -ForegroundColor Yellow
 
 $ImageTar = Join-Path $ImagesDir "export-declaration-images.tar"
 
-docker save `
+docker image save `
+    --platform $Platform `
     -o $ImageTar `
     $BackendImage `
     $FrontendImage `

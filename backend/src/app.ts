@@ -15,6 +15,7 @@ import { declarationApprovalRulesRouter } from "./modules/declaration-approval-r
 import { customerRouter } from "./modules/customers/customer.routes.js";
 import { licenseMiddleware } from "./common/middlewares/licenseMiddleware.js";
 import { licenseRouter } from "./modules/license/license.routes.js";
+import { mailRouter } from "./modules/mail/mail.routes.js";
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use("/api/users", authContextMiddleware, userRouter);
 app.use("/api/material-records", authContextMiddleware, materialRecordRouter);
 app.use("/api/document-rules", authContextMiddleware, documentRuleRouter);
 app.use("/api/mail-templates", authContextMiddleware, mailTemplateRouter);
+app.use("/api/mail", mailRouter);
 app.use("/api/document-processes", authContextMiddleware, documentProcessRouter);
 app.use("/api/declaration-approval-rules", authContextMiddleware, declarationApprovalRulesRouter);
 app.use("/api/customers", authContextMiddleware, customerRouter);

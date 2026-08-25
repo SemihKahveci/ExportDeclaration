@@ -57,4 +57,14 @@ export const env = {
   installationIdPath:
     process.env.INSTALLATION_ID_PATH ??
     path.join(process.cwd(), "license-data", "installation-id.txt"),
+    mailEnabled: bool(process.env.MAIL_ENABLED),
+
+    smtpHost: process.env.SMTP_HOST ?? "",
+    smtpPort: num(process.env.SMTP_PORT, 587),
+    smtpSecure: bool(process.env.SMTP_SECURE),
+    smtpUser: process.env.SMTP_USER ?? "",
+    smtpPass: process.env.SMTP_PASS ?? "",
+
+    mailFrom: process.env.MAIL_FROM ?? "",
+    mailFromName: process.env.MAIL_FROM_NAME ?? "Export Declaration",
 } as const;
