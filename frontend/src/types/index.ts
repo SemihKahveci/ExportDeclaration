@@ -7,7 +7,9 @@ export type Role = 'super_admin' | 'admin' | 'manager' | 'yetkili';
 export interface FirmUser {
   id: string;
   name: string;
+  email?: string;
   role: string;
+  systemRole?: 'SUPERADMIN' | 'USER';
   capabilities: string[];
 }
 
@@ -586,6 +588,7 @@ export interface DeclarationApprovalRules {
 
 export interface AppUser {
   id: string;
+  systemRole: 'SUPERADMIN' | 'USER';
   name: string;
   email: string;
   role: AppUserRole;

@@ -13,7 +13,6 @@ import {
   Users,
   Archive,
   Settings,
-  Building2,
   Mail,
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -114,14 +113,6 @@ export const NAV_GROUPS: NavGroup[] = [
       permItem('/ayarlar'),
     ],
   },
-  {
-    label: 'Yönetim',
-    superAdminOnly: true,
-    requiredMode: 'cloud',
-    items: [
-      { label: 'Organizasyonlar', path: '/admin/organizations', icon: Building2 },
-    ],
-  },
 ];
 
 function filterItems(items: NavItem[], capSet: Set<string>): NavItem[] {
@@ -159,7 +150,7 @@ export function visibleGroups(
   }).filter((g): g is NavGroup => g !== null);
 }
 
-// Flatten all items (including children) — used by PlaceholderPage for label resolution
+// Flatten all items (including children)
 function flattenItems(items: NavItem[]): NavItem[] {
   return items.flatMap((item) =>
     item.children ? [item, ...flattenItems(item.children)] : [item]

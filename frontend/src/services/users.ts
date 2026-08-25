@@ -1,6 +1,7 @@
 import type { User, AppUser, FirmUser } from '../types';
 import type { OperationType, ApproverLevel, SpecialAction, MenuAction } from '../types';
 import { createAppUser, listAppUsers, updateAppUser } from '../api/userApi';
+import type { CreateAppUserPayload, UpdateAppUserPayload } from '../api/userApi';
 
 export function appUserToFirmUser(user: AppUser): FirmUser {
   return {
@@ -11,7 +12,7 @@ export function appUserToFirmUser(user: AppUser): FirmUser {
   };
 }
 
-const EMPTY_NEW_USER = (): Omit<AppUser, 'id'> => ({
+const EMPTY_NEW_USER = (): Omit<AppUser, 'id' | 'systemRole'> => ({
   name: '',
   email: '',
   role: 'Operasyon',
@@ -78,7 +79,7 @@ export const usersService = {
     return appUsers.filter((u) => u.role === 'Operasyon' && u.status === 'Aktif');
   },
 
-  createAppUser: async (data: Omit<AppUser, 'id'>): Promise<AppUser> => {
+  createAppUser: async (data: CreateAppUserPayload): Promise<AppUser> => {
     return createAppUser({ ...EMPTY_NEW_USER(), ...data });
   },
 
@@ -86,7 +87,7 @@ export const usersService = {
     return updateAppUser(id, { capabilities });
   },
 
-  updateUserPermissions: async (id: string, patch: Partial<AppUser>): Promise<AppUser> => {
+  updateUserPermissions: async (id: string, patch: UpdateAppUserPayload): Promise<AppUser> => {
     return updateAppUser(id, patch);
   },
 

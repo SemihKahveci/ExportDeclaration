@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import type { CreateAppUserPayload, UpdateAppUserPayload } from '../../api/userApi';
 import type { AppUser, DocProcess, OperationType, ApproverLevel, ScreenPermission, DeclarationApprovalRules } from '../../types';
 import { usersService } from '../../services/users';
 import { documentsService } from '../../services/documents';
 import { declarationApprovalRulesService, DEFAULT_DECLARATION_APPROVAL_RULES } from '../../services/declarationApprovalRules';
 import { useToast } from '../../components/ui/Toast';
+import { useAppContext } from '../../context/AppContext';
 import { ApiError } from '../../api/apiClient';
 import { deriveAuthFromScreenPermissions } from '../../permissions/deriveUserAuth';
 import Tabs from '../../components/ui/Tabs';
@@ -15,7 +17,7 @@ import DocProcessesTab from './DocProcessesTab';
 import DocDrawer from './DocDrawer';
 import ApprovalRulesTab from './ApprovalRulesTab';
 
-const TABS = [
+const ALL_TABS = [
   { key: 'users',           label: 'Kullanıcılar ve Yetkileri'  },
   { key: 'docs',            label: 'Doküman Süreçleri'           },
   { key: 'approval-rules',  label: 'Beyanname Onay Kuralları'    },
@@ -53,8 +55,11 @@ function errorMessage(err: unknown, fallback: string): string {
 
 export default function AyarlarPage() {
   const { toast } = useToast();
+  const { role } = useAppContext();
+  const isSuperAdmin = role === 'super_admin';
+  const tabs = isSuperAdmin ? ALL_TABS : ALL_TABS.filter((t) => t.key !== 'users');
 
-  const [activeTab, setActiveTab] = useState('users');
+  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'users' : 'docs');
 
   const [users,           setUsers]           = useState<AppUser[]>([]);
   const [selectedUserIdx, setSelectedUserIdx] = useState(0);
@@ -76,8 +81,9 @@ export default function AyarlarPage() {
   const [editDocIdx,     setEditDocIdx]     = useState<number | null>(null);
 
   useEffect(() => {
+    const usersPromise = isSuperAdmin ? usersService.getAppUsers() : Promise.resolve([] as AppUser[]);
     Promise.all([
-      usersService.getAppUsers(),
+      usersPromise,
       documentsService.getDocProcesses(),
       declarationApprovalRulesService.get(),
     ]).then(([appUsers, docProcs, rules]) => {
@@ -90,7 +96,7 @@ export default function AyarlarPage() {
       toast(errorMessage(err, 'Ayarlar yüklenemedi'));
       setLoading(false);
     });
-  }, [toast]);
+  }, [toast, isSuperAdmin]);
 
   function selectUser(idx: number) {
     setSelectedUserIdx(idx);
@@ -136,7 +142,7 @@ export default function AyarlarPage() {
     setUserDrawerOpen(true);
   }
 
-  async function handleSaveUser(data: Omit<AppUser, 'id'>) {
+  async function handleSaveUser(data: CreateAppUserPayload | UpdateAppUserPayload) {
     setSaving(true);
     try {
       if (editUserIdx !== null) {
@@ -147,14 +153,14 @@ export default function AyarlarPage() {
         const idx = nextUsers.findIndex((u) => u.id === updated.id);
         if (idx === selectedUserIdx) setLocalPerms(defaultPerms(updated));
       } else {
-        const created = await usersService.createAppUser(data);
+        const created = await usersService.createAppUser(data as CreateAppUserPayload);
         const nextUsers = [created, ...users];
         setUsers(nextUsers);
         setSelectedUserIdx(0);
         setLocalPerms(defaultPerms(created));
       }
       setUserDrawerOpen(false);
-      toast('Kullanıcı kaydedildi');
+      toast(editUserIdx !== null ? 'Kullanıcı kaydedildi' : 'Kullanıcı kaydedildi, giriş bilgileri mail ile gönderildi');
     } catch (err) {
       toast(errorMessage(err, 'Kullanıcı kaydedilemedi'));
     } finally {
@@ -226,7 +232,7 @@ export default function AyarlarPage() {
         </div>
       </div>
 
-      <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} className="mb-6" />
+      <Tabs tabs={tabs} active={activeTab} onChange={setActiveTab} className="mb-6" />
 
       {loading ? (
         <div className="flex items-center justify-center py-20 gap-3 text-muted">

@@ -1,7 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from '../components/layout/AppShell';
-import PlaceholderPage from '../pages/PlaceholderPage';
 import ProtectedRoute from './ProtectedRoute';
 import DosyaTakipPage from '../pages/DosyaTakip';
 import GtipMalzemePage from '../pages/GtipMalzeme';
@@ -20,6 +19,7 @@ import KapanicOperasyonEvrakYuklemePage from '../pages/KapanisMutabakat/Operasyo
 import KapanicOnayPage from '../pages/KapanisMutabakat/OnayPage';
 import MusteriGtipSorgulamaPage from '../pages/MusteriGtipSorgulama';
 import ArsivPage from '../pages/Arsiv';
+import LoginPage from '../pages/Login';
 
 const UIShowcasePage = import.meta.env.DEV
   ? lazy(() => import('../pages/UIShowcase'))
@@ -28,6 +28,7 @@ const UIShowcasePage = import.meta.env.DEV
 export default function AppRoutes() {
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
       <Route element={<AppShell />}>
         {/* Default redirect */}
         <Route index element={<Navigate to="/dosya-takip" replace />} />
@@ -105,32 +106,6 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute requiredCaps={['ayarlar.users', 'ayarlar.document_processes', 'ayarlar.mails']}>
               <AyarlarPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* Control plane — super_admin only */}
-        <Route
-          path="/admin/organizations"
-          element={
-            <ProtectedRoute requiredRoles={['super_admin']} requiredMode="cloud">
-              <PlaceholderPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/organizations/new"
-          element={
-            <ProtectedRoute requiredRoles={['super_admin']} requiredMode="cloud">
-              <PlaceholderPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin/organizations/:id"
-          element={
-            <ProtectedRoute requiredRoles={['super_admin']} requiredMode="cloud">
-              <PlaceholderPage />
             </ProtectedRoute>
           }
         />

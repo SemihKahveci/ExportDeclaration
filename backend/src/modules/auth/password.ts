@@ -13,7 +13,7 @@ function derive(password: string, salt: string, length: number): Promise<Buffer>
 
 export async function hashPassword(password: string): Promise<string> {
   const normalized = password.normalize("NFKC");
-  if (normalized.length < 8) throw new Error("Şifre en az 8 karakter olmalıdır.");
+  if (normalized.length < 6) throw new Error("Şifre en az 6 karakter olmalıdır.");
   const salt = randomBytes(16).toString("hex");
   const derived = await derive(normalized, salt, KEY_LENGTH);
   return `scrypt$${salt}$${derived.toString("hex")}`;

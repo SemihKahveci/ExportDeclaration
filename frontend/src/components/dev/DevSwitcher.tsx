@@ -5,16 +5,16 @@ import { usersService } from '../../services/users';
 import type { DeploymentMode, FirmUser } from '../../types';
 
 export default function DevSwitcher() {
-  const { currentUser, deploymentMode, setCurrentUser, setDeploymentMode } = useAppContext();
+  const { currentUser, deploymentMode, role, setCurrentUser, setDeploymentMode } = useAppContext();
   const [open, setOpen] = useState(false);
   const [firmUsers, setFirmUsers] = useState<FirmUser[]>([]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || role !== 'super_admin') return;
     usersService.getFirmUsers()
       .then(setFirmUsers)
       .catch(() => setFirmUsers([]));
-  }, [open]);
+  }, [open, role]);
 
   return (
     <div className="fixed bottom-4 left-4 z-50 select-none">

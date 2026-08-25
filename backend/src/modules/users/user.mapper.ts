@@ -4,6 +4,7 @@ export interface AppUserDto {
   id: string;
   name: string;
   email: string;
+  systemRole: AppUserDoc["systemRole"];
   role: AppUserDoc["role"];
   status: AppUserDoc["status"];
   capabilities: string[];
@@ -22,6 +23,7 @@ export function toAppUserDto(doc: AppUserDoc): AppUserDto {
     id: String(doc._id),
     name: doc.name,
     email: doc.email,
+    systemRole: doc.systemRole ?? "USER",
     role: doc.role,
     status: doc.status,
     capabilities: doc.capabilities ?? [],

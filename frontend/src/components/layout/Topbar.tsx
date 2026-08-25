@@ -1,5 +1,5 @@
 import { useLocation } from 'react-router-dom';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, LogOut } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
 import { NAV_GROUPS } from './navConfig';
 
@@ -28,7 +28,7 @@ function getBreadcrumb(pathname: string): Breadcrumb {
 
 export default function Topbar() {
   const location = useLocation();
-  const { role } = useAppContext();
+  const { role, logout } = useAppContext();
   const breadcrumb = getBreadcrumb(location.pathname);
 
   return (
@@ -63,6 +63,10 @@ export default function Topbar() {
         <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-accent-tint text-accent border border-accent/20">
           {ROLE_LABELS[role]}
         </span>
+
+        <button onClick={() => void logout()} title="Çıkış yap" className="w-8 h-8 flex items-center justify-center rounded hover:bg-line transition-colors">
+          <LogOut size={16} className="text-muted" />
+        </button>
 
         {/* Notifications */}
         <button className="relative w-8 h-8 flex items-center justify-center rounded hover:bg-line transition-colors">

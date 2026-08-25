@@ -1,11 +1,16 @@
+import { bootstrapSuperAdmin } from "./modules/auth/bootstrapSuperAdmin.js";
 import fs from "node:fs/promises";
 import app from "./app.js";
 import { connectDb } from "./config/db.js";
 import { env } from "./config/env.js";
 
 async function main(): Promise<void> {
+  if (env.authJwtSecret.trim().length < 32) {
+    throw new Error("AUTH_JWT_SECRET en az 32 karakter olmalıdır.");
+  }
   await fs.mkdir(env.uploadDir, { recursive: true });
   await connectDb();
+  await bootstrapSuperAdmin();
 
   const server = app.listen(env.port, () => {
     // eslint-disable-next-line no-console

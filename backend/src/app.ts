@@ -4,6 +4,7 @@ import { authContextMiddleware } from "./common/middlewares/authContext.js";
 import { errorHandler } from "./common/middlewares/errorHandler.js";
 import { buildCorsOptions } from "./config/corsOptions.js";
 import { env } from "./config/env.js";
+import { authRouter } from "./modules/auth/auth.routes.js";
 import { declarationRouter } from "./modules/declarations/declaration.routes.js";
 import { gtipQueryRouter } from "./modules/gtip-query/gtipQuery.routes.js";
 import { userRouter } from "./modules/users/user.routes.js";
@@ -30,16 +31,22 @@ app.use("/api/license", licenseRouter);
 // Bu satırdan sonraki bütün API endpointleri geçerli lisans ister.
 app.use("/api", licenseMiddleware);
 
-app.use("/api/declarations", authContextMiddleware, declarationRouter);
-app.use("/api/gtip-query", authContextMiddleware, gtipQueryRouter);
-app.use("/api/users", authContextMiddleware, userRouter);
-app.use("/api/material-records", authContextMiddleware, materialRecordRouter);
-app.use("/api/document-rules", authContextMiddleware, documentRuleRouter);
-app.use("/api/mail-templates", authContextMiddleware, mailTemplateRouter);
+// Login public; /me kendi içinde oturum doğrular.
+app.use("/api/auth", authRouter);
+
+// Buradan sonraki iş API'leri giriş ister.
+app.use("/api", authContextMiddleware);
+
+app.use("/api/declarations", declarationRouter);
+app.use("/api/gtip-query", gtipQueryRouter);
+app.use("/api/users", userRouter);
+app.use("/api/material-records", materialRecordRouter);
+app.use("/api/document-rules", documentRuleRouter);
+app.use("/api/mail-templates", mailTemplateRouter);
 app.use("/api/mail", mailRouter);
-app.use("/api/document-processes", authContextMiddleware, documentProcessRouter);
-app.use("/api/declaration-approval-rules", authContextMiddleware, declarationApprovalRulesRouter);
-app.use("/api/customers", authContextMiddleware, customerRouter);
+app.use("/api/document-processes", documentProcessRouter);
+app.use("/api/declaration-approval-rules", declarationApprovalRulesRouter);
+app.use("/api/customers", customerRouter);
 
 app.use(errorHandler);
 

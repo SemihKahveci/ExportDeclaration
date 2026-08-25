@@ -300,6 +300,7 @@ export default function UsersTab({
                   <div className="font-semibold text-text-strong text-[13.5px]">{u.name}</div>
                   <div className="font-mono text-[11.5px] text-muted mt-0.5">{u.email}</div>
                   <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                    {u.systemRole === 'SUPERADMIN' && <Pill variant="green">Süper Admin</Pill>}
                     <Pill variant={rolePillVariant(u.role)}>{roleLabel(u.role)}</Pill>
                     <Pill variant={statusPillVariant(u.status)}>{u.status}</Pill>
                   </div>
