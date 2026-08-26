@@ -21,6 +21,7 @@ import { useToast } from '../../components/ui/Toast';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Card } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import { useCan } from '../../permissions/useCan';
 import CustomerPanel from './CustomerPanel';
 import TransactionTypeSelector, { type ActiveTransactionType } from './TransactionTypeSelector';
 import TransactionTypeBadge from './TransactionTypeBadge';
@@ -130,6 +131,8 @@ function SummaryCard({ count, label, dotColor, active, onClick }: SummaryCardPro
 
 export default function GtipOnayPage() {
   const { toast } = useToast();
+  const { can } = useCan();
+  const canApprove = can('gtip_onay.approve');
 
   const [customers, setCustomers] = useState<MaterialCustomer[]>([]);
   const [records, setRecords] = useState<MaterialRecord[]>([]);
@@ -375,10 +378,10 @@ export default function GtipOnayPage() {
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
             <TransactionTypeSelector value={transactionType} onChange={setTransactionType} />
-            <Button icon={Download} onClick={() => setImportOpen(true)}>
+            <Button icon={Download} onClick={() => setImportOpen(true)} writeCap="gtip_onay.approve">
               İçe Aktar
             </Button>
-            <Button variant="primary" icon={Plus} onClick={openNewRecord}>
+            <Button variant="primary" icon={Plus} onClick={openNewRecord} writeCap="gtip_onay.approve">
               Yeni Kayıt
             </Button>
           </div>
@@ -501,7 +504,12 @@ export default function GtipOnayPage() {
                             <>
                               <button
                                 onClick={() => handleApprove(rec.id)}
-                                className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#bcdcca] text-ok bg-[#eef6f1] hover:bg-ok hover:border-ok hover:text-white"
+                                disabled={!canApprove}
+                                title={!canApprove ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                                className={[
+                                  'inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#bcdcca] text-ok bg-[#eef6f1] hover:bg-ok hover:border-ok hover:text-white',
+                                  !canApprove ? 'opacity-40 pointer-events-none' : '',
+                                ].join(' ')}
                               >
                                 <Check size={12} strokeWidth={2.4} />
                                 Onayla
@@ -509,7 +517,12 @@ export default function GtipOnayPage() {
                               {rec.status === 'pending' ? (
                                 <button
                                   onClick={() => handleReject(rec.id)}
-                                  className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white"
+                                  disabled={!canApprove}
+                                  title={!canApprove ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                                  className={[
+                                    'inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white',
+                                    !canApprove ? 'opacity-40 pointer-events-none' : '',
+                                  ].join(' ')}
                                 >
                                   <X size={12} strokeWidth={2.4} />
                                   Reddet
@@ -517,7 +530,12 @@ export default function GtipOnayPage() {
                               ) : (
                                 <button
                                   onClick={() => handleDelete(rec.id)}
-                                  className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white"
+                                  disabled={!canApprove}
+                                  title={!canApprove ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                                  className={[
+                                    'inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-[9px] py-[5px] rounded-[7px] border transition-colors whitespace-nowrap border-[#ecd0d0] text-[var(--hat-red)] bg-[#fbf0f0] hover:bg-[var(--hat-red)] hover:border-[var(--hat-red)] hover:text-white',
+                                    !canApprove ? 'opacity-40 pointer-events-none' : '',
+                                  ].join(' ')}
                                 >
                                   <Trash2 size={12} strokeWidth={2.4} />
                                   Sil
@@ -527,7 +545,12 @@ export default function GtipOnayPage() {
                           )}
                           <button
                             onClick={() => openEditRecord(rec)}
-                            className="text-muted-2 hover:text-accent transition-colors"
+                            disabled={!canApprove}
+                            title={!canApprove ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                            className={[
+                              'text-muted-2 hover:text-accent transition-colors',
+                              !canApprove ? 'opacity-40 pointer-events-none' : '',
+                            ].join(' ')}
                           >
                             <Pencil size={16} strokeWidth={2} />
                           </button>

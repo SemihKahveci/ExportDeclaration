@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import type { DeclarationFieldRule } from '../../types';
 import { FIELD_GROUPS } from '../../services/declarationFieldRules';
 import { Card, CardHead } from '../../components/ui/Card';
+import { useCan } from '../../permissions/useCan';
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,8 @@ interface FieldRowProps {
 
 function FieldRow({ fieldName, rule, onAdd, onEdit, onDelete }: FieldRowProps) {
   const hasRule = !!rule;
+  const { can } = useCan();
+  const canEdit = can('musteriler.edit');
 
   return (
     <div
@@ -91,15 +94,23 @@ function FieldRow({ fieldName, rule, onAdd, onEdit, onDelete }: FieldRowProps) {
           <>
             <button
               onClick={() => onEdit(rule.id)}
-              className="text-muted-2 hover:text-accent transition-colors p-0.5"
-              title="Düzenle"
+              disabled={!canEdit}
+              className={[
+                'text-muted-2 hover:text-accent transition-colors p-0.5',
+                !canEdit ? 'opacity-40 pointer-events-none' : '',
+              ].join(' ')}
+              title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Düzenle'}
             >
               <Pencil size={13} strokeWidth={2} />
             </button>
             <button
               onClick={() => onDelete(rule.id)}
-              className="text-muted-2 hover:text-hat-red transition-colors p-0.5"
-              title="Sil"
+              disabled={!canEdit}
+              className={[
+                'text-muted-2 hover:text-hat-red transition-colors p-0.5',
+                !canEdit ? 'opacity-40 pointer-events-none' : '',
+              ].join(' ')}
+              title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Sil'}
             >
               <Trash2 size={13} strokeWidth={2} />
             </button>
@@ -107,8 +118,12 @@ function FieldRow({ fieldName, rule, onAdd, onEdit, onDelete }: FieldRowProps) {
         ) : (
           <button
             onClick={onAdd}
-            className="text-muted-2 hover:text-accent transition-colors p-0.5 opacity-0 group-hover:opacity-100"
-            title="Kural Ekle"
+            disabled={!canEdit}
+            className={[
+              'text-muted-2 hover:text-accent transition-colors p-0.5 opacity-0 group-hover:opacity-100',
+              !canEdit ? 'opacity-40 pointer-events-none' : '',
+            ].join(' ')}
+            title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Kural Ekle'}
           >
             <Plus size={14} strokeWidth={2} />
           </button>
@@ -199,6 +214,8 @@ export default function DeclFieldRulesTab({ rules, onNew, onEdit, onDelete }: De
   const totalFields     = FIELD_GROUPS.reduce((sum, g) => sum + g.fields.length, 0);
   const configuredCount = rules.length;
   const activeCount     = rules.filter((r) => r.status === 'Aktif').length;
+  const { can } = useCan();
+  const canEdit = can('musteriler.edit');
 
   return (
     <div className="space-y-4">
@@ -226,7 +243,12 @@ export default function DeclFieldRulesTab({ rules, onNew, onEdit, onDelete }: De
             <button
               type="button"
               onClick={() => onNew()}
-              className="inline-flex items-center gap-2 bg-accent text-white font-semibold text-[13px] px-4 h-9 rounded border border-transparent hover:bg-accent-d transition-colors shrink-0"
+              disabled={!canEdit}
+              title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+              className={[
+                'inline-flex items-center gap-2 bg-accent text-white font-semibold text-[13px] px-4 h-9 rounded border border-transparent hover:bg-accent-d transition-colors shrink-0',
+                !canEdit ? 'opacity-40 pointer-events-none' : '',
+              ].join(' ')}
             >
               <Plus size={15} strokeWidth={2.5} />
               Yeni Alan Kuralı

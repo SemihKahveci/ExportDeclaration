@@ -100,6 +100,7 @@ export default function RuleDrawer({
           variant="danger"
           icon={Trash2}
           onClick={() => onDelete(draft.id)}
+          writeCap="evraklar.manage"
         >
           Evet, sil
         </Button>
@@ -110,6 +111,7 @@ export default function RuleDrawer({
         <Button
           variant="primary"
           disabled={!canSave}
+          writeCap="evraklar.manage"
           onClick={() => onSave({
             ...draft,
             id: draft.id || `er-${Date.now()}`,

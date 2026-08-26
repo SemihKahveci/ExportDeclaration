@@ -346,6 +346,7 @@ export default function MusteriGtipSorgulamaPage() {
                     disabled={parsing || sending || !uploadedFile}
                     className={parsing ? '[&_svg]:animate-spin' : ''}
                     onClick={handleGtipQueryClick}
+                    writeCap="musteri_gtip.edit"
                   >
                     {parsing ? 'Sorgulanıyor…' : 'GTİP Sorgulat'}
                   </Button>
@@ -354,6 +355,7 @@ export default function MusteriGtipSorgulamaPage() {
                     icon={Send}
                     disabled={results.length === 0}
                     onClick={() => toast('Sorgu sonucu müşteriye gönderildi')}
+                    writeCap="musteri_gtip.edit"
                   >
                     Sonucu Müşteriye Gönder
                   </Button>
@@ -380,10 +382,11 @@ export default function MusteriGtipSorgulamaPage() {
                     disabled={sending || parsing || results.length === 0}
                     className={sending ? '[&_svg]:animate-spin' : ''}
                     onClick={() => void handleSendToApproval()}
+                    writeCap="musteri_gtip.edit"
                   >
                     {sending ? 'Gönderiliyor…' : 'Onaya Gönder'}
                   </Button>
-                  <Button variant="default" icon={Plus} size="sm" onClick={openDrawer}>
+                  <Button variant="default" icon={Plus} size="sm" onClick={openDrawer} writeCap="musteri_gtip.edit">
                     GTİP Kaydı Ekle
                   </Button>
                 </div>
@@ -443,7 +446,7 @@ export default function MusteriGtipSorgulamaPage() {
         footer={
           <>
             <Button onClick={handleReplaceCancel}>Hayır, kalsın</Button>
-            <Button variant="danger" onClick={handleReplaceConfirm}>
+            <Button variant="danger" onClick={handleReplaceConfirm} writeCap="musteri_gtip.edit">
               Evet, sil ve sorgula
             </Button>
           </>

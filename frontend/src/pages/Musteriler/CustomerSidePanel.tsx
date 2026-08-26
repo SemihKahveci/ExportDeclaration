@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import type { CustomerListItem } from '../../types';
+import { useCan } from '../../permissions/useCan';
 
 interface CustomerSidePanelProps {
   customers: CustomerListItem[];
@@ -21,6 +22,8 @@ export default function CustomerSidePanel({
   onCreate,
   creating = false,
 }: CustomerSidePanelProps) {
+  const { can } = useCan();
+  const canEdit = can('musteriler.edit');
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
 
@@ -30,7 +33,7 @@ export default function CustomerSidePanel({
 
   function submitCreate() {
     const name = newName.trim();
-    if (!name || !onCreate) return;
+    if (!name || !onCreate || !canEdit) return;
     onCreate(name);
     setNewName('');
     setShowCreate(false);
@@ -45,15 +48,19 @@ export default function CustomerSidePanel({
             <button
               type="button"
               onClick={() => setShowCreate((v) => !v)}
-              className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-accent hover:text-accent-d"
-              title="Yeni müşteri"
+              disabled={!canEdit}
+              title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Yeni müşteri'}
+              className={[
+                'inline-flex items-center gap-1 text-[11.5px] font-semibold text-accent hover:text-accent-d',
+                !canEdit ? 'opacity-40 pointer-events-none' : '',
+              ].join(' ')}
             >
               <Plus size={14} strokeWidth={2.2} />
               Yeni
             </button>
           )}
         </div>
-        {showCreate && (
+        {showCreate && canEdit && (
           <div className="mt-2.5 space-y-2">
             <input
               type="text"

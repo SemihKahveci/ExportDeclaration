@@ -392,7 +392,7 @@ export default function CustomerDrawer({
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave} disabled={!canSave}>
+          <Button variant="primary" onClick={handleSave} disabled={!canSave} writeCap="musteriler.edit">
             Kaydet
           </Button>
         </>

@@ -73,7 +73,7 @@ export default function AddressTab({
           title="Adres Kayıtları"
           sub="Aynı adres farklı işlemlerde gönderici veya alıcı olabilir."
           actions={
-            <Button variant="primary" size="sm" icon={Pencil} onClick={onNew}>
+            <Button variant="primary" size="sm" icon={Pencil} onClick={onNew} writeCap="musteriler.edit">
               Yeni Adres
             </Button>
           }
@@ -172,6 +172,7 @@ export default function AddressTab({
                   disabled={isSent}
                   onClick={onSendEvrim}
                   className="whitespace-nowrap"
+                  writeCap="musteriler.edit"
                 >
                   {isSent ? 'Sistemde Güncel' : 'Sisteme Kayıt Gönder'}
                 </Button>
@@ -180,7 +181,7 @@ export default function AddressTab({
 
             {/* Edit button */}
             <div>
-              <Button icon={Pencil} size="sm" onClick={onEdit}>
+              <Button icon={Pencil} size="sm" onClick={onEdit} writeCap="musteriler.edit">
                 Adresi Düzenle
               </Button>
             </div>

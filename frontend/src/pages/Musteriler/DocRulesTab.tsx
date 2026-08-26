@@ -5,6 +5,7 @@ import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Select } from '../../components/ui/Fields';
 import Button from '../../components/ui/Button';
+import { useCan } from '../../permissions/useCan';
 
 // ─── Mode badge ───────────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ interface DocRulesTabProps {
 }
 
 export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) {
+  const { can } = useCan();
+  const canEdit = can('musteriler.edit');
   const [filterTip, setFilterTip] = useState('Tümü');
   const [filterTas, setFilterTas] = useState('Tümü');
   const [filterSt, setFilterSt] = useState('Tümü');
@@ -65,7 +68,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
         title="Müşteri Evrak Kuralları"
         sub="İşlem tipi ve taşıma şekline göre müşteriden istenecek evrak setleri."
         actions={
-          <Button variant="primary" size="sm" icon={Plus} onClick={onNew}>
+          <Button variant="primary" size="sm" icon={Plus} onClick={onNew} writeCap="musteriler.edit">
             Yeni Evrak Kuralı
           </Button>
         }
@@ -143,7 +146,12 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
                   <Td className="w-px">
                     <button
                       onClick={() => onEdit(realIdx)}
-                      className="text-muted-2 hover:text-accent transition-colors"
+                      disabled={!canEdit}
+                      title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                      className={[
+                        'text-muted-2 hover:text-accent transition-colors',
+                        !canEdit ? 'opacity-40 pointer-events-none' : '',
+                      ].join(' ')}
                     >
                       <Pencil size={15} strokeWidth={2} />
                     </button>

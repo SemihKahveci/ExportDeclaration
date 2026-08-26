@@ -132,6 +132,7 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
               variant="danger"
               icon={Trash2}
               onClick={() => template && onDelete(template.id)}
+              writeCap="mailler.manage"
             >
               Evet, Sil
             </Button>
@@ -139,7 +140,7 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
         ) : (
           <>
             <Button onClick={onClose}>Vazgeç</Button>
-            <Button variant="primary" onClick={handleSave} disabled={!canSave}>
+            <Button variant="primary" onClick={handleSave} disabled={!canSave} writeCap="mailler.manage">
               Kaydet
             </Button>
           </>
@@ -373,7 +374,7 @@ export default function MaillerPage() {
             Sistemin göndereceği mail şablonlarını süreç bazında tanımlayın ve düzenleyin.
           </p>
         </div>
-        <Button variant="primary" icon={Plus} onClick={openNew}>
+        <Button variant="primary" icon={Plus} onClick={openNew} writeCap="mailler.manage">
           Yeni Mail Şablonu
         </Button>
       </div>
@@ -506,10 +507,10 @@ export default function MaillerPage() {
                         className="flex items-center gap-1.5 justify-end"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Button size="sm" icon={Pencil} onClick={() => openEdit(t)}>
+                        <Button size="sm" icon={Pencil} onClick={() => openEdit(t)} writeCap="mailler.manage">
                           Düzenle
                         </Button>
-                        <Button size="sm" icon={Trash2} onClick={(e) => openDelete(t, e)} />
+                        <Button size="sm" icon={Trash2} onClick={(e) => openDelete(t, e)} writeCap="mailler.manage" />
                       </div>
                     </Td>
                   </Tr>

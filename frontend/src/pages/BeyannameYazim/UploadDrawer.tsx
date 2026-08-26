@@ -126,6 +126,7 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose }: U
             variant="primary"
             onClick={handleSave}
             disabled={!ref || !docType || saving}
+            writeCap="beyanname.write"
           >
             {saving ? 'Kaydediliyor…' : 'Kaydet'}
           </Button>

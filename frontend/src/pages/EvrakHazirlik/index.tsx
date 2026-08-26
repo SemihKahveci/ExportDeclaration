@@ -196,6 +196,7 @@ export default function EvrakHazirlikPage() {
             icon={AlertTriangle}
             disabled={selectedFile?.allReady ?? false}
             onClick={() => toast('Eksik evrakla yazım başlatıldı. Sonradan gelen evraklar yazım ekranında değerlendirilecek.')}
+            writeCap="beyanname.write"
             style={
               !(selectedFile?.allReady ?? false)
                 ? { background: 'var(--warn-tint)', borderColor: '#e8d0a2', color: '#7a5a16' }
@@ -209,6 +210,7 @@ export default function EvrakHazirlikPage() {
             icon={CheckSquare}
             disabled={!(selectedFile?.allReady ?? false)}
             onClick={() => toast('Tüm evraklar hazır. Beyanname yazım süreci başlatılır.')}
+            writeCap="beyanname.write"
           >
             Beyanname Yazmaya Başla
           </Button>
@@ -288,6 +290,7 @@ export default function EvrakHazirlikPage() {
                     variant="blue"
                     icon={Bell}
                     onClick={() => toast('Eksik evrak hatırlatması gönderildi')}
+                    writeCap="beyanname.write"
                   >
                     Evrak Hatırlatma Gönder
                   </Button>

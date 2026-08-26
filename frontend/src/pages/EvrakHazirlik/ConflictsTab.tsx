@@ -83,13 +83,14 @@ export default function ConflictsTab({ conflicts }: ConflictsTabProps) {
           />
         </div>
         <div className="flex gap-2.5 justify-end">
-          <Button icon={Pencil} onClick={() => toast('Manuel karar modu aktif')}>
+          <Button icon={Pencil} onClick={() => toast('Manuel karar modu aktif')} writeCap="beyanname.write">
             Manuel Karar Ver
           </Button>
           <Button
             variant="primary"
             icon={Send}
             onClick={() => toast('Uyumsuzluk bildirimi müşteriye gönderildi')}
+            writeCap="beyanname.write"
           >
             Müşteriye Uyumsuzluk Bildir
           </Button>

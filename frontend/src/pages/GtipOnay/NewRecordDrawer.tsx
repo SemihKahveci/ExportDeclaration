@@ -113,7 +113,7 @@ export default function NewRecordDrawer({
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave} disabled={!canSave || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!canSave || saving} writeCap="gtip_onay.approve">
             {saving ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
           </Button>
         </>

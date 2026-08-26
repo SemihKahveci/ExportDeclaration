@@ -272,6 +272,7 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
                           icon={Upload}
                           onClick={() => onRowUpload(item)}
                           title="Dosya Yükle"
+                          writeCap="beyanname.write"
                         >
                           Yükle
                         </Button>
@@ -282,6 +283,7 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
                           onClick={() => onRowReminder(item)}
                           disabled={!hasMissing}
                           title="Eksik Evrak Hatırlat"
+                          writeCap="beyanname.write"
                         >
                           Hatırlat
                         </Button>
@@ -292,6 +294,7 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
                             icon={FileWarning}
                             onClick={() => onSelectYazim(item)}
                             title="Eksik evrakla yazım moduna geç"
+                            writeCap="beyanname.write"
                           >
                             Eksik Yaz
                           </Button>

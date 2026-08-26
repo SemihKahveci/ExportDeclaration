@@ -54,7 +54,7 @@ export default function ReminderModal({ open, items, preselectedRef, onClose }: 
       footer={
         <>
           <Button variant="default" onClick={onClose}>İptal</Button>
-          <Button variant="primary" onClick={handleSend} disabled={!canSend}>
+          <Button variant="primary" onClick={handleSend} disabled={!canSend} writeCap="beyanname.write">
             Gönder
           </Button>
         </>

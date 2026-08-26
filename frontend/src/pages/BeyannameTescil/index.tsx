@@ -185,6 +185,7 @@ export default function BeyannameTescilPage() {
             variant="primary"
             icon={Send}
             onClick={() => toast('Müşteri bildirimi gönderildi')}
+            writeCap="tescil.notify"
           >
             Müşteriye Bildir
           </Button>

@@ -181,7 +181,7 @@ export default function EvraklarPage() {
             Beyanname tipi ve koşullara göre zorunlu evrak kural setlerini tanımlayın.
           </p>
         </div>
-        <Button variant="primary" icon={Plus} onClick={openNew}>
+        <Button variant="primary" icon={Plus} onClick={openNew} writeCap="evraklar.manage">
           Yeni Kural
         </Button>
       </div>
@@ -314,10 +314,10 @@ export default function EvraklarPage() {
                     </Td>
                     <Td>
                       <div className="flex items-center gap-1.5 justify-end" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" icon={Pencil} onClick={() => openEdit(rule)}>
+                        <Button size="sm" icon={Pencil} onClick={() => openEdit(rule)} writeCap="evraklar.manage">
                           Düzenle
                         </Button>
-                        <Button size="sm" icon={Trash2} onClick={(e) => openDelete(rule, e)} />
+                        <Button size="sm" icon={Trash2} onClick={(e) => openDelete(rule, e)} writeCap="evraklar.manage" />
                       </div>
                     </Td>
                   </Tr>

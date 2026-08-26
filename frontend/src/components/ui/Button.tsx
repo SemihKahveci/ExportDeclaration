@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
+import { useCan } from '../../permissions/useCan';
 
 type ButtonVariant = 'default' | 'primary' | 'blue' | 'warn' | 'danger';
 type ButtonSize = 'default' | 'sm' | 'mini';
@@ -9,6 +10,10 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
   icon?: LucideIcon;
   children?: ReactNode;
+  /** Bu capability yoksa buton pasif olur (sadece görüntüleme yetkisi). */
+  writeCap?: string;
+  /** Bu capability'lerden hiçbiri yoksa buton pasif olur. */
+  writeCaps?: string[];
 }
 
 const VARIANT_STYLES: Record<ButtonVariant, string> = {
@@ -37,20 +42,31 @@ export default function Button({
   icon: Icon,
   children,
   disabled,
+  writeCap,
+  writeCaps,
   className = '',
+  title,
   ...rest
 }: ButtonProps) {
+  const { can, canAny } = useCan();
+  const writeBlocked = writeCap
+    ? !can(writeCap)
+    : writeCaps
+      ? !canAny(writeCaps)
+      : false;
+  const isDisabled = Boolean(disabled || writeBlocked);
   const isDefault = variant === 'default';
   const isPrimary = variant === 'primary';
 
   return (
     <button
-      disabled={disabled}
+      disabled={isDisabled}
+      title={writeBlocked ? (title || 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)') : title}
       className={[
         'inline-flex items-center justify-center font-medium rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 select-none',
         VARIANT_STYLES[variant],
         SIZE_STYLES[size],
-        disabled ? 'opacity-40 pointer-events-none' : '',
+        isDisabled ? 'opacity-40 pointer-events-none' : '',
         className,
       ].join(' ')}
       style={

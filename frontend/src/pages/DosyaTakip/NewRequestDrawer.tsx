@@ -94,7 +94,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave} disabled={!selectedCustId || saving}>
+          <Button variant="primary" onClick={handleSave} disabled={!selectedCustId || saving} writeCap="dosya_takip.edit">
             {saving ? 'Kaydediliyor…' : 'Talebi Kaydet'}
           </Button>
         </>

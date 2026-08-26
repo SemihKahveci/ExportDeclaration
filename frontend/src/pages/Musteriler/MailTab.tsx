@@ -3,6 +3,7 @@ import type { MailDomain, CustomerMail } from '../../types';
 import { Card, CardHead } from '../../components/ui/Card';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
+import { useCan } from '../../permissions/useCan';
 
 // ─── Small status badge ───────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ export default function MailTab({
   onNewMail,
   onEditMail,
 }: MailTabProps) {
+  const { can } = useCan();
   return (
     <div className="space-y-4">
       {/* Domain definitions */}
@@ -40,7 +42,7 @@ export default function MailTab({
           title="Mail Domain Tanımları"
           sub="Gelen maillerin müşteriye otomatik eşleştirilmesi için domain/uzantı tanımları."
           actions={
-            <Button variant="primary" size="sm" icon={Plus} onClick={onNewDomain}>
+            <Button variant="primary" size="sm" icon={Plus} onClick={onNewDomain} writeCap="musteriler.edit">
               Yeni Domain
             </Button>
           }
@@ -59,7 +61,7 @@ export default function MailTab({
               </span>
               <span className="text-[12.5px] text-muted flex-1 min-w-0 truncate">{d.note}</span>
               <StatusBadge active={d.matchStatus === 'active'} />
-              <Button size="sm" onClick={() => onEditDomain(i)}>
+              <Button size="sm" onClick={() => onEditDomain(i)} writeCap="musteriler.edit">
                 Düzenle
               </Button>
             </div>
@@ -73,7 +75,7 @@ export default function MailTab({
           title="Müşteri Mail Adresleri"
           sub="Bu mailler Evrim'e gönderilmez. Bildirim süreçleri Ayarlar > Bildirim Süreçleri'nden gelir."
           actions={
-            <Button variant="primary" size="sm" icon={Plus} onClick={onNewMail}>
+            <Button variant="primary" size="sm" icon={Plus} onClick={onNewMail} writeCap="musteriler.edit">
               Yeni Mail
             </Button>
           }
@@ -121,7 +123,12 @@ export default function MailTab({
                   <Td className="w-px">
                     <button
                       onClick={() => onEditMail(i)}
-                      className="text-muted-2 hover:text-accent transition-colors"
+                      disabled={!can('musteriler.edit')}
+                      title={!can('musteriler.edit') ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                      className={[
+                        'text-muted-2 hover:text-accent transition-colors',
+                        !can('musteriler.edit') ? 'opacity-40 pointer-events-none' : '',
+                      ].join(' ')}
                     >
                       <Pencil size={15} strokeWidth={2} />
                     </button>

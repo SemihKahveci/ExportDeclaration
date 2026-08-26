@@ -16,6 +16,7 @@ import { declarationFieldRulesService } from '../../services/declarationFieldRul
 import { useToast } from '../../components/ui/Toast';
 import { ApiError } from '../../api/apiClient';
 import Tabs from '../../components/ui/Tabs';
+import { useCan } from '../../permissions/useCan';
 import CustomerSidePanel from './CustomerSidePanel';
 import AddressTab from './AddressTab';
 import MailTab from './MailTab';
@@ -42,6 +43,7 @@ function errorMessage(err: unknown, fallback: string): string {
 
 export default function MusterilerPage() {
   const { toast } = useToast();
+  const { can } = useCan();
 
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [custSearch, setCustSearch] = useState('');
@@ -361,7 +363,12 @@ export default function MusterilerPage() {
               {activeTab === 'addr' && (
                 <button
                   onClick={() => openDrawer('addr')}
-                  className="inline-flex items-center gap-2 bg-accent text-white font-semibold text-[13px] px-4 h-9 rounded border border-transparent hover:bg-accent-d transition-colors shrink-0"
+                  disabled={!can('musteriler.edit')}
+                  title={!can('musteriler.edit') ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                  className={[
+                    'inline-flex items-center gap-2 bg-accent text-white font-semibold text-[13px] px-4 h-9 rounded border border-transparent hover:bg-accent-d transition-colors shrink-0',
+                    !can('musteriler.edit') ? 'opacity-40 pointer-events-none' : '',
+                  ].join(' ')}
                 >
                   <span className="text-lg leading-none">+</span>
                   Yeni Adres

@@ -96,7 +96,7 @@ export default function DeclFieldRuleDrawer({
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
-          <Button variant="primary" onClick={handleSave}>Kaydet</Button>
+          <Button variant="primary" onClick={handleSave} writeCap="musteriler.edit">Kaydet</Button>
         </>
       }
     >

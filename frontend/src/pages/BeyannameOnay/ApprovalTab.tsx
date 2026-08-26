@@ -387,10 +387,10 @@ export default function ApprovalTab({
                 )}
 
                 <div className="flex items-center gap-2 justify-end flex-wrap">
-                  <Button size="sm" icon={MessageSquare} onClick={() => setNoteOpen(true)}>
+                  <Button size="sm" icon={MessageSquare} onClick={() => setNoteOpen(true)} writeCap="beyanname_onay.approve">
                     Not Ekle
                   </Button>
-                  <Button size="sm" variant="warn" icon={RotateCcw} onClick={onGeriGonder}>
+                  <Button size="sm" variant="warn" icon={RotateCcw} onClick={onGeriGonder} writeCap="beyanname_onay.approve">
                     Geri Gönder
                   </Button>
                   <Button
@@ -398,6 +398,7 @@ export default function ApprovalTab({
                     variant="primary"
                     icon={primaryIcon}
                     onClick={primaryClick}
+                    writeCap="beyanname_onay.approve"
                   >
                     {primaryLabel}
                   </Button>
@@ -419,6 +420,7 @@ export default function ApprovalTab({
             <Button
               variant="primary"
               icon={Send}
+              writeCap="beyanname_onay.approve"
               onClick={() => {
                 onNotEkle(noteText);
                 setNoteOpen(false);

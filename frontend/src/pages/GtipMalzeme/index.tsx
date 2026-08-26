@@ -18,6 +18,7 @@ import { useToast } from '../../components/ui/Toast';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Card } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import { useCan } from '../../permissions/useCan';
 import CustomerPanel from './CustomerPanel';
 import TransactionTypeSelector, { type ActiveTransactionType } from './TransactionTypeSelector';
 import TransactionTypeBadge from './TransactionTypeBadge';
@@ -115,6 +116,8 @@ function SummaryCard({ count, label, dotColor, active, onClick }: SummaryCardPro
 
 export default function GtipMalzemePage() {
   const { toast } = useToast();
+  const { can } = useCan();
+  const canEdit = can('gtip_malzeme.edit');
 
   const [customers, setCustomers] = useState<MaterialCustomer[]>([]);
   const [records, setRecords] = useState<MaterialRecord[]>([]);
@@ -279,10 +282,10 @@ export default function GtipMalzemePage() {
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
             <TransactionTypeSelector value={transactionType} onChange={setTransactionType} />
-            <Button icon={Download} onClick={() => setImportOpen(true)}>
+            <Button icon={Download} onClick={() => setImportOpen(true)} writeCap="gtip_malzeme.edit">
               İçe Aktar
             </Button>
-            <Button variant="primary" icon={Plus} onClick={() => setNewRecordOpen(true)}>
+            <Button variant="primary" icon={Plus} onClick={() => setNewRecordOpen(true)} writeCap="gtip_malzeme.edit">
               Yeni Kayıt
             </Button>
           </div>
@@ -403,8 +406,12 @@ export default function GtipMalzemePage() {
                         <div className="flex items-center justify-end">
                           <button
                             onClick={() => setNewRecordOpen(true)}
-                            className="text-muted-2 hover:text-accent transition-colors"
-                            title="Düzenle"
+                            disabled={!canEdit}
+                            title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Düzenle'}
+                            className={[
+                              'text-muted-2 hover:text-accent transition-colors',
+                              !canEdit ? 'opacity-40 pointer-events-none' : '',
+                            ].join(' ')}
                           >
                             <Pencil size={16} strokeWidth={2} />
                           </button>

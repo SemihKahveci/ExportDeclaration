@@ -3,6 +3,7 @@ import type { NotificationRule, NotifyWorkingMode } from '../../types';
 import { Card, CardHead } from '../../components/ui/Card';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
+import { useCan } from '../../permissions/useCan';
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,8 @@ interface NotifyRulesTabProps {
 }
 
 export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabProps) {
+  const { can } = useCan();
+  const canEdit = can('musteriler.edit');
   const counts = {
     auto:       rules.filter((r) => r.workingMode === 'Otomatik').length,
     controlled: rules.filter((r) => r.workingMode === 'Kontrollü').length,
@@ -81,7 +84,7 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
           title="Bildirim Kuralları"
           sub="İşlem bazında bildirimin nasıl çalışacağı müşteri özelinde tanımlanır."
           actions={
-            <Button variant="primary" size="sm" icon={Plus} onClick={onNew}>
+            <Button variant="primary" size="sm" icon={Plus} onClick={onNew} writeCap="musteriler.edit">
               Yeni Bildirim Kuralı
             </Button>
           }
@@ -127,7 +130,12 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
                   <Td className="w-px">
                     <button
                       onClick={() => onEdit(i)}
-                      className="text-muted-2 hover:text-accent transition-colors"
+                      disabled={!canEdit}
+                      title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+                      className={[
+                        'text-muted-2 hover:text-accent transition-colors',
+                        !canEdit ? 'opacity-40 pointer-events-none' : '',
+                      ].join(' ')}
                     >
                       <Pencil size={15} strokeWidth={2} />
                     </button>

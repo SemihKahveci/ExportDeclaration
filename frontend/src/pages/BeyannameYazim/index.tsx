@@ -118,7 +118,7 @@ export default function BeyannameYazimPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <Button icon={Bell} onClick={() => { setReminderRef(undefined); setReminderOpen(true); }}>
+            <Button icon={Bell} onClick={() => { setReminderRef(undefined); setReminderOpen(true); }} writeCap="beyanname.write">
               Eksik Evrak Hatırlat
             </Button>
           </div>
@@ -167,10 +167,10 @@ export default function BeyannameYazimPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2 mt-6">
-          <Button variant="default" icon={Save} onClick={handleTaslakKaydet}>
+          <Button variant="default" icon={Save} onClick={handleTaslakKaydet} writeCap="beyanname.write">
             Taslak Kaydet
           </Button>
-          <Button variant="primary" icon={Send} onClick={handleSistemeGonder}>
+          <Button variant="primary" icon={Send} onClick={handleSistemeGonder} writeCap="beyanname.send">
             Sisteme Gönder
           </Button>
         </div>

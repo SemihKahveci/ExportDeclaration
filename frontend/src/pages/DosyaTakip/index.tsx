@@ -168,13 +168,14 @@ export default function DosyaTakipPage() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2.5">
-          <Button icon={Download} onClick={() => toast('Excel indirme hazırlanıyor…')}>
+          <Button icon={Download} onClick={() => toast('Excel indirme hazırlanıyor…')} writeCap="dosya_takip.edit">
             Dışa Aktar
           </Button>
           <Button
             variant="primary"
             icon={Plus}
             onClick={() => setNewRequestOpen(true)}
+            writeCap="dosya_takip.edit"
           >
             Yeni Talep
           </Button>

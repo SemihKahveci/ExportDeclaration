@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { UserCheck, Pencil, Check, X } from 'lucide-react';
 import type { AppUser, CustomerListItem } from '../../types';
+import { useCan } from '../../permissions/useCan';
 
 interface MtAssignmentCardProps {
   customer: CustomerListItem;
@@ -15,6 +16,8 @@ export default function MtAssignmentCard({
   mtManagerUsers,
   onSave,
 }: MtAssignmentCardProps) {
+  const { can } = useCan();
+  const canEdit = can('musteriler.edit');
   const [editing, setEditing] = useState(false);
   const [mtId, setMtId] = useState(customer.assignedMtUserId ?? '');
   const [mtMgrId, setMtMgrId] = useState(customer.assignedMtManagerUserId ?? '');
@@ -79,7 +82,12 @@ export default function MtAssignmentCard({
           <div className="flex items-center gap-1.5 ml-auto shrink-0">
             <button
               onClick={handleSave}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-d transition-colors"
+              disabled={!canEdit}
+              title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+              className={[
+                'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-accent text-white text-[12px] font-semibold hover:bg-accent-d transition-colors',
+                !canEdit ? 'opacity-40 pointer-events-none' : '',
+              ].join(' ')}
             >
               <Check size={12} strokeWidth={2.5} />
               Kaydet
@@ -117,7 +125,12 @@ export default function MtAssignmentCard({
 
           <button
             onClick={() => setEditing(true)}
-            className="ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-line text-[12px] font-semibold text-muted hover:border-accent hover:text-accent transition-colors"
+            disabled={!canEdit}
+            title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
+            className={[
+              'ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-line text-[12px] font-semibold text-muted hover:border-accent hover:text-accent transition-colors',
+              !canEdit ? 'opacity-40 pointer-events-none' : '',
+            ].join(' ')}
           >
             <Pencil size={11} strokeWidth={2} />
             Düzenle
