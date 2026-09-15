@@ -5,7 +5,7 @@ import type {
   ArchiveStats,
   FileStatus,
 } from '../types';
-import { fetchCustomsFiles, liveApiEnabled, apiCreateOperationFile } from './liveApi';
+import { fetchCustomsFiles, liveApiEnabled, apiCreateOperationFile, apiUploadByRef } from './liveApi';
 
 function computeStatusCounts(files: CustomsFile[]): FileStatusCounts {
   const active = files.filter((f) => !f.isArchived);
@@ -60,11 +60,24 @@ export const filesService = {
     operationType: string;
     transportMode?: string;
     assigneeName?: string | null;
+    files?: File[];
   }): Promise<CustomsFile> => {
-    return apiCreateOperationFile({
-      ...payload,
+    const { files = [], ...operationPayload } = payload;
+    const created = await apiCreateOperationFile({
+      ...operationPayload,
       lastActivity: 'Yeni talep oluşturuldu',
     });
+
+    // Geçiş aşaması: Yeni Talep ekranında belge tipi henüz seçilmiyor.
+    // XML'i e-Fatura XML, diğer desteklenen dosyaları fatura adayı olarak başlatıyoruz.
+    // Canonical Document Model + classification geldiğinde bu tahmin kaldırılacak.
+    for (const file of files) {
+      const lower = file.name.toLowerCase();
+      const label = lower.endsWith('.xml') ? 'e-Fatura XML' : 'Fatura';
+      await apiUploadByRef(created.ref, file, label);
+    }
+
+    return created;
   },
 
   listArchived: async (operationType?: string): Promise<CustomsFile[]> => {

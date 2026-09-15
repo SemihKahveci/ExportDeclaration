@@ -17,16 +17,16 @@ export async function postParseInvoice(req: Request, res: Response): Promise<voi
 }
 
 export async function getResults(req: Request, res: Response): Promise<void> {
-  const data = await getStoredGtipQuery(req.auth!.companyId);
+  const data = await getStoredGtipQuery(req.auth!.operationalCompanyId);
   res.status(200).json({ ok: true, data });
 }
 
 export async function putResults(req: Request, res: Response): Promise<void> {
-  const data = await saveStoredGtipQuery(req.auth!.companyId, req.body ?? {});
+  const data = await saveStoredGtipQuery(req.auth!.operationalCompanyId, req.body ?? {});
   res.status(200).json({ ok: true, data });
 }
 
 export async function postSendToApproval(req: Request, res: Response): Promise<void> {
-  const data = await sendStoredGtipQueryToApproval(req.auth!.companyId, req.body ?? {});
+  const data = await sendStoredGtipQueryToApproval(req.auth!.operationalCompanyId, req.body ?? {});
   res.status(200).json({ ok: true, data });
 }

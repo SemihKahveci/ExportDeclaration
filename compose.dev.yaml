@@ -24,6 +24,21 @@ services:
     networks:
       - export_dev_network
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: export-declaration-redis-dev
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_dev_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - export_dev_network
+
   backend:
     build:
       context: .
@@ -37,6 +52,7 @@ services:
       PORT: 3000
 
       MONGODB_URI: mongodb://mongo:27017/export_declaration
+      REDIS_URL: redis://redis:6379
       
       LICENSE_ENABLED: "false"
       LICENSE_FILE_PATH: /app/licenses/license.json
@@ -66,7 +82,7 @@ services:
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
       SUPERADMIN_NAME: ${SUPERADMIN_NAME}
-      SUPERADMIN_COMPANY_ID: ${SUPERADMIN_COMPANY_ID:-}
+      INSTALLATION_COMPANY_ID: ${INSTALLATION_COMPANY_ID:-}
       SUPERADMIN_RESET_PASSWORD: ${SUPERADMIN_RESET_PASSWORD:-false}
 
     ports:
@@ -83,7 +99,42 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
+    networks:
+      - export_dev_network
+
+  idp-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend.dev
+    container_name: export-declaration-idp-worker-dev
+    restart: unless-stopped
+    command: ["npm", "run", "dev:worker"]
+    environment:
+      NODE_ENV: development
+      MONGODB_URI: mongodb://mongo:27017/export_declaration
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /app/uploads
+      IDP_WORKER_CONCURRENCY: ${IDP_WORKER_CONCURRENCY:-2}
+      IDP_JOB_ATTEMPTS: ${IDP_JOB_ATTEMPTS:-3}
+      IDP_JOB_BACKOFF_MS: ${IDP_JOB_BACKOFF_MS:-5000}
+      IDP_PROCESSOR_VERSION: ${IDP_PROCESSOR_VERSION:-foundation-1}
+      INVOICE_PARSER_ENABLED: "true"
+      INVOICE_PARSER_PYTHON: /opt/venv/bin/python
+      INVOICE_PARSER_DIR: /app/backend/scripts/invoice_parser
+      INVOICE_PARSER_TIMEOUT_MS: 600000
+    volumes:
+      - ./backend:/app/backend
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./uploads:/app/uploads
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - export_dev_network
 
@@ -121,6 +172,7 @@ services:
 
 volumes:
   mongo_dev_data:
+  redis_dev_data:
   backend_node_modules:
   frontend_node_modules:
 

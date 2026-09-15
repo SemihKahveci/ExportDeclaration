@@ -13,48 +13,48 @@ import {
 import fs from "node:fs/promises";
 
 export async function postDeclaration(req: Request, res: Response): Promise<void> {
-  const companyId = req.auth!.companyId;
+  const companyId = req.auth!.operationalCompanyId;
   const created = await createDeclaration(companyId, req.auth!.userId, req.body ?? {});
   res.status(201).json({ ok: true, data: created });
 }
 
 export async function getDeclarations(req: Request, res: Response): Promise<void> {
-  const list = await listDeclarations(req.auth!.companyId);
+  const list = await listDeclarations(req.auth!.operationalCompanyId);
   res.json({ ok: true, data: list });
 }
 
 export async function getDeclarationById(req: Request, res: Response): Promise<void> {
-  const row = await getDeclaration(req.auth!.companyId, req.params.id!);
+  const row = await getDeclaration(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data: row });
 }
 
 export async function patchDeclarationById(req: Request, res: Response): Promise<void> {
-  const updated = await patchDeclaration(req.auth!.companyId, req.params.id!, req.body ?? {});
+  const updated = await patchDeclaration(req.auth!.operationalCompanyId, req.params.id!, req.body ?? {});
   res.json({ ok: true, data: updated });
 }
 
 export async function postExtract(req: Request, res: Response): Promise<void> {
-  const data = await runExtraction(req.auth!.companyId, req.params.id!);
+  const data = await runExtraction(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data });
 }
 
 export async function postNormalize(req: Request, res: Response): Promise<void> {
-  const data = await runNormalize(req.auth!.companyId, req.params.id!);
+  const data = await runNormalize(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data });
 }
 
 export async function postValidate(req: Request, res: Response): Promise<void> {
-  const result = await runValidate(req.auth!.companyId, req.params.id!);
+  const result = await runValidate(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data: result });
 }
 
 export async function postGenerateXml(req: Request, res: Response): Promise<void> {
-  const out = await runGenerateXml(req.auth!.companyId, req.params.id!);
+  const out = await runGenerateXml(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data: out });
 }
 
 export async function getDownloadXml(req: Request, res: Response): Promise<void> {
-  const filePath = await getGeneratedXmlPath(req.auth!.companyId, req.params.id!);
+  const filePath = await getGeneratedXmlPath(req.auth!.operationalCompanyId, req.params.id!);
   const buf = await fs.readFile(filePath);
   res.setHeader("Content-Type", "application/xml");
   res.setHeader("Content-Disposition", `attachment; filename="beyanname.xml"`);

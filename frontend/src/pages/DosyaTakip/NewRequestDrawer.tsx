@@ -7,7 +7,8 @@ import Note from '../../components/ui/Note';
 import UploadBox from '../../components/ui/UploadBox';
 import { customersService } from '../../services/customers';
 import { usersService } from '../../services/users';
-import type { CustomerListItem, AppUser } from '../../types';
+import type { AssignableUser } from '../../api/userApi';
+import type { CustomerListItem } from '../../types';
 
 export interface NewRequestPayload {
   customerId: string;
@@ -16,6 +17,7 @@ export interface NewRequestPayload {
   operationType: string;
   transportMode: string;
   assigneeName: string | null;
+  files: File[];
 }
 
 interface NewRequestDrawerProps {
@@ -31,26 +33,25 @@ function parseCityFromMeta(meta?: string): string {
 
 export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDrawerProps) {
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
-  const [allMtUsers, setAllMtUsers] = useState<AppUser[]>([]);
-  const [allMtMgrUsers, setAllMtMgrUsers] = useState<AppUser[]>([]);
-  const [operators, setOperators] = useState<AppUser[]>([]);
+  const [allMtUsers, setAllMtUsers] = useState<AssignableUser[]>([]);
+  const [allMtMgrUsers, setAllMtMgrUsers] = useState<AssignableUser[]>([]);
+  const [operators, setOperators] = useState<AssignableUser[]>([]);
   const [selectedCustId, setSelectedCustId] = useState('');
   const [operationType, setOperationType] = useState('İhracat');
   const [transportMode, setTransportMode] = useState('Karayolu');
   const [assigneeName, setAssigneeName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   useEffect(() => {
     Promise.all([
       customersService.getCustomerList(),
-      usersService.getMtUsers(),
-      usersService.getMtManagerUsers(),
-      usersService.getOperationUsers(),
-    ]).then(([list, mt, mtMgr, ops]) => {
+      usersService.getAssignableUsers(),
+    ]).then(([list, assignable]) => {
       setCustomers(list);
-      setAllMtUsers(mt);
-      setAllMtMgrUsers(mtMgr);
-      setOperators(ops);
+      setAllMtUsers(assignable.filter((u) => u.role === 'MT'));
+      setAllMtMgrUsers(assignable.filter((u) => u.role === 'MT Yönetici'));
+      setOperators(assignable.filter((u) => u.role === 'Operasyon'));
     });
   }, []);
 
@@ -61,6 +62,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
     setTransportMode('Karayolu');
     setAssigneeName('');
     setSaving(false);
+    setSelectedFiles([]);
   }, [open]);
 
   const selectedCustomer = customers.find((c) => c.id === selectedCustId) ?? null;
@@ -79,6 +81,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
         operationType,
         transportMode,
         assigneeName: assigneeName.trim() || assignedMt?.name || null,
+        files: selectedFiles,
       });
     } finally {
       setSaving(false);
@@ -176,7 +179,8 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
             title="Dosya seç veya sürükle"
             hint="PDF, XML, JPG, PNG, XLSX"
             multiple
-            onFiles={() => {}}
+            accept=".pdf,.xml,.jpg,.jpeg,.png,.xlsx"
+            onFiles={setSelectedFiles}
           />
         </Field>
 

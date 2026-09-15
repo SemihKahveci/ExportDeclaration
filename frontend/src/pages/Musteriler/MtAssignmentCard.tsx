@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { UserCheck, Pencil, Check, X } from 'lucide-react';
-import type { AppUser, CustomerListItem } from '../../types';
+import type { CustomerListItem } from '../../types';
+import type { AssignableUser } from '../../api/userApi';
 import { useCan } from '../../permissions/useCan';
 
 interface MtAssignmentCardProps {
   customer: CustomerListItem;
-  mtUsers: AppUser[];
-  mtManagerUsers: AppUser[];
+  mtUsers: AssignableUser[];
+  mtManagerUsers: AssignableUser[];
   onSave: (mtUserId: string | undefined, mtManagerUserId: string | undefined) => void;
 }
 

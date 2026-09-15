@@ -11,6 +11,7 @@ import {
 import { toAppUserDto, type AppUserDto } from "./user.mapper.js";
 import { setPassword } from "../auth/auth.service.js";
 import { sendNewUserCredentialsMail } from "../mail/mail.service.js";
+import { CustomerModel } from "../customers/customer.models.js";
 
 export type CreateAppUserInput = Omit<AppUserDto, "id" | "createdAt" | "updatedAt" | "systemRole"> & { password?: string };
 export type UpdateAppUserInput = Partial<Omit<CreateAppUserInput, "password">> & { password?: string };
@@ -40,7 +41,7 @@ function normalizeEmail(email: string): string {
 function pickWritableFields(body: UpdateAppUserInput): Partial<AppUserDoc> {
   const patch: Partial<AppUserDoc> = {};
   if (body.name !== undefined) patch.name = String(body.name).trim();
-  if (body.email !== undefined) patch.email = normalizeEmail(String(body.email));
+  // E-posta oluşturma sonrası değiştirilemez
   if (body.role !== undefined) { assertRole(body.role); patch.role = body.role; }
   if (body.status !== undefined) { assertStatus(body.status); patch.status = body.status; }
   if (body.capabilities !== undefined) patch.capabilities = body.capabilities;
@@ -56,6 +57,26 @@ function pickWritableFields(body: UpdateAppUserInput): Partial<AppUserDoc> {
 export async function listAppUsers(companyId: mongoose.Types.ObjectId): Promise<AppUserDto[]> {
   const rows = await AppUserModel.find({ companyId }).sort({ systemRole: 1, createdAt: -1 });
   return rows.map((row) => toAppUserDto(row));
+}
+
+/** MT atama vb. için sade liste — yetki yönetimi alanları yok. */
+export type AssignableUserDto = {
+  id: string;
+  name: string;
+  role: AppUserDoc["role"];
+  status: AppUserDoc["status"];
+};
+
+export async function listAssignableUsers(companyId: mongoose.Types.ObjectId): Promise<AssignableUserDto[]> {
+  const rows = await AppUserModel.find({ companyId, status: "Aktif" })
+    .select("name role status")
+    .sort({ name: 1 });
+  return rows.map((row) => ({
+    id: String(row._id),
+    name: row.name,
+    role: row.role,
+    status: row.status,
+  }));
 }
 
 function toUsername(name: string): string {
@@ -135,4 +156,32 @@ export async function updateAppUser(companyId: mongoose.Types.ObjectId, userId: 
     }
     throw err;
   }
+}
+
+export async function deleteAppUser(
+  companyId: mongoose.Types.ObjectId,
+  userId: string,
+  actorUserId: mongoose.Types.ObjectId,
+): Promise<void> {
+  if (!mongoose.isValidObjectId(userId)) throw new HttpError(400, "Geçersiz kullanıcı id.");
+  if (String(userId) === String(actorUserId)) {
+    throw new HttpError(400, "Kendi hesabınızı silemezsiniz.");
+  }
+
+  const user = await AppUserModel.findOne({ _id: userId, companyId });
+  if (!user) throw new HttpError(404, "Kullanıcı bulunamadı.");
+  if (user.systemRole === "SUPERADMIN") {
+    throw new HttpError(403, "Süper Admin silinemez.");
+  }
+
+  await AppUserModel.deleteOne({ _id: userId, companyId });
+
+  await CustomerModel.updateMany(
+    { companyId, assignedMtUserId: userId },
+    { $unset: { assignedMtUserId: 1 } },
+  );
+  await CustomerModel.updateMany(
+    { companyId, assignedMtManagerUserId: userId },
+    { $unset: { assignedMtManagerUserId: 1 } },
+  );
 }

@@ -8,10 +8,10 @@ import type {
   DocumentRule,
   NotificationRule,
   DeclarationFieldRule,
-  AppUser,
 } from '../../types';
 import { customersService } from '../../services/customers';
 import { usersService } from '../../services/users';
+import type { AssignableUser } from '../../api/userApi';
 import { declarationFieldRulesService } from '../../services/declarationFieldRules';
 import { useToast } from '../../components/ui/Toast';
 import { ApiError } from '../../api/apiClient';
@@ -50,8 +50,8 @@ export default function MusterilerPage() {
   const [selectedId, setSelectedId] = useState('');
   const [activeTab, setActiveTab] = useState('addr');
 
-  const [mtUsers, setMtUsers] = useState<AppUser[]>([]);
-  const [mtManagerUsers, setMtManagerUsers] = useState<AppUser[]>([]);
+  const [mtUsers, setMtUsers] = useState<AssignableUser[]>([]);
+  const [mtManagerUsers, setMtManagerUsers] = useState<AssignableUser[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -86,13 +86,12 @@ export default function MusterilerPage() {
   useEffect(() => {
     Promise.all([
       customersService.getCustomerList(),
-      usersService.getMtUsers(),
-      usersService.getMtManagerUsers(),
+      usersService.getAssignableUsers(),
     ])
-      .then(([list, mt, mtMgr]) => {
+      .then(([list, assignable]) => {
         setCustomers(list);
-        setMtUsers(mt);
-        setMtManagerUsers(mtMgr);
+        setMtUsers(assignable.filter((u) => u.role === 'MT'));
+        setMtManagerUsers(assignable.filter((u) => u.role === 'MT Yönetici'));
         setSelectedId((prev) => prev || list[0]?.id || '');
         if (!list.length) setLoading(false);
       })

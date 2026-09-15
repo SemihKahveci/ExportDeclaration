@@ -13,7 +13,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "start:fresh": "npm run build && node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:worker": "tsx watch backend/src/worker.ts",
+    "start:worker": "node dist/worker.js"
   },
   "engines": {
     "node": ">=20"
@@ -33,7 +35,8 @@
     "nodemailer": "^9.0.5",
     "pdf-parse": "^2.4.5",
     "typescript": "^5.6.3",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "bullmq": "^5.58.5"
   },
   "devDependencies": {
     "concurrently": "^9.2.3",

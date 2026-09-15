@@ -14,7 +14,7 @@ export const APPROVER_LEVELS = ["none", "first", "second"] as const;
 export const SYSTEM_ROLES = ["SUPERADMIN", "USER"] as const;
 
 export interface AppUserDoc extends mongoose.Document {
-  companyId: mongoose.Types.ObjectId;
+  companyId?: mongoose.Types.ObjectId | null;
   name: string;
   email: string;
   passwordHash?: string;
@@ -36,9 +36,16 @@ export interface AppUserDoc extends mongoose.Document {
 
 const AppUserSchema = new Schema(
   {
-    companyId: { type: Schema.Types.ObjectId, required: true, index: true },
+    companyId: {
+      type: Schema.Types.ObjectId,
+      required: function (this: AppUserDoc) {
+        return this.systemRole !== "SUPERADMIN";
+      },
+      default: null,
+      index: true
+    },
     name: { type: String, required: true, trim: true },
-    email: { type: String, required: true, trim: true, lowercase: true, index: true },
+    email: { type: String, required: true, trim: true, lowercase: true },
     passwordHash: { type: String, select: false },
     systemRole: { type: String, enum: SYSTEM_ROLES, default: "USER", index: true },
     role: { type: String, enum: APP_USER_ROLES, required: true },
@@ -56,7 +63,20 @@ const AppUserSchema = new Schema(
   { timestamps: true }
 );
 
-AppUserSchema.index({ companyId: 1, email: 1 }, { unique: true });
+AppUserSchema.pre("validate", function (next) {
+  if (this.systemRole === "SUPERADMIN") {
+    this.companyId = null;
+    return next();
+  }
+
+  if (!this.companyId) {
+    return next(new Error("Normal kullanıcı için companyId zorunludur."));
+  }
+
+  next();
+});
+
+AppUserSchema.index({ email: 1 }, { unique: true });
 
 export const AppUserModel =
   mongoose.models.AppUser ?? mongoose.model<AppUserDoc>("AppUser", AppUserSchema);

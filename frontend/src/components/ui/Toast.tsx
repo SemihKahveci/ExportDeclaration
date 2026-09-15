@@ -33,13 +33,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [box, setBox] = useState({ top: 0, left: 0, width: 0, height: 0 });
 
   const toast = useCallback((message: string, options?: ToastOptions) => {
-    const id = ++nextId;
-    const duration = options?.duration
-      ?? (message.includes('\n') ? 8000 : 3500);
-    setToasts((prev) => [...prev, { id, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, duration);
+    setToasts((prev) => {
+      if (prev.some((t) => t.message === message)) return prev;
+      const id = ++nextId;
+      const duration = options?.duration
+        ?? (message.includes('\n') ? 8000 : 3500);
+      setTimeout(() => {
+        setToasts((curr) => curr.filter((t) => t.id !== id));
+      }, duration);
+      return [...prev, { id, message }];
+    });
   }, []);
 
   useLayoutEffect(() => {

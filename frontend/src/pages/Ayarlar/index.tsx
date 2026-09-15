@@ -10,6 +10,9 @@ import { useAppContext } from '../../context/AppContext';
 import { ApiError } from '../../api/apiClient';
 import { deriveAuthFromScreenPermissions } from '../../permissions/deriveUserAuth';
 import Tabs from '../../components/ui/Tabs';
+import Modal from '../../components/ui/Modal';
+import Button from '../../components/ui/Button';
+import Note from '../../components/ui/Note';
 import UsersTab from './UsersTab';
 import type { UsersTabLocalPerms } from './UsersTab';
 import UserDrawer from './UserDrawer';
@@ -55,7 +58,7 @@ function errorMessage(err: unknown, fallback: string): string {
 
 export default function AyarlarPage() {
   const { toast } = useToast();
-  const { role } = useAppContext();
+  const { role, currentUser } = useAppContext();
   const isSuperAdmin = role === 'super_admin';
   const tabs = isSuperAdmin ? ALL_TABS : ALL_TABS.filter((t) => t.key !== 'users');
 
@@ -77,6 +80,7 @@ export default function AyarlarPage() {
 
   const [userDrawerOpen, setUserDrawerOpen] = useState(false);
   const [editUserIdx,    setEditUserIdx]    = useState<number | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [docDrawerOpen,  setDocDrawerOpen]  = useState(false);
   const [editDocIdx,     setEditDocIdx]     = useState<number | null>(null);
 
@@ -168,6 +172,26 @@ export default function AyarlarPage() {
     }
   }
 
+  async function handleDeleteUser() {
+    const current = users[selectedUserIdx];
+    if (!current) return;
+    setSaving(true);
+    try {
+      await usersService.deleteAppUser(current.id);
+      const nextUsers = users.filter((u) => u.id !== current.id);
+      setUsers(nextUsers);
+      const nextIdx = Math.min(selectedUserIdx, Math.max(0, nextUsers.length - 1));
+      setSelectedUserIdx(nextIdx);
+      if (nextUsers[nextIdx]) setLocalPerms(defaultPerms(nextUsers[nextIdx]));
+      setDeleteConfirmOpen(false);
+      toast('Kullanıcı silindi');
+    } catch (err) {
+      toast(errorMessage(err, 'Kullanıcı silinemedi'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function openDocDrawer(editIdx: number | null) {
     setEditDocIdx(editIdx);
     setDocDrawerOpen(true);
@@ -220,6 +244,13 @@ export default function AyarlarPage() {
 
   const editUser = editUserIdx !== null ? users[editUserIdx] : undefined;
   const editDoc  = editDocIdx  !== null ? docs[editDocIdx]   : undefined;
+  const selectedUser = users[selectedUserIdx];
+  const canDeleteSelected = Boolean(
+    isSuperAdmin &&
+    selectedUser &&
+    selectedUser.systemRole !== 'SUPERADMIN' &&
+    selectedUser.id !== currentUser.id,
+  );
 
   return (
     <div className="px-7 pt-6 pb-12 overflow-y-auto">
@@ -252,6 +283,8 @@ export default function AyarlarPage() {
               onResetPerms={handleResetPerms}
               onNew={() => openUserDrawer(null)}
               onEdit={() => openUserDrawer(selectedUserIdx)}
+              onDelete={() => setDeleteConfirmOpen(true)}
+              canDelete={canDeleteSelected}
               saving={saving}
             />
           )}
@@ -282,6 +315,28 @@ export default function AyarlarPage() {
         onSave={handleSaveUser}
         saving={saving}
       />
+
+      <Modal
+        open={deleteConfirmOpen}
+        onClose={() => !saving && setDeleteConfirmOpen(false)}
+        title="Kullanıcıyı Sil"
+        footer={
+          <>
+            <Button onClick={() => setDeleteConfirmOpen(false)} disabled={saving}>Vazgeç</Button>
+            <Button variant="danger" onClick={handleDeleteUser} disabled={saving}>
+              {saving ? 'Siliniyor…' : 'Evet, sil'}
+            </Button>
+          </>
+        }
+      >
+        <Note variant="warn">
+          <p className="font-semibold">Bu işlem geri alınamaz.</p>
+          <p className="mt-1">
+            <strong>{selectedUser?.name}</strong> ({selectedUser?.email}) kalıcı olarak silinecek.
+            Müşteri MT atamalarından da kaldırılır.
+          </p>
+        </Note>
+      </Modal>
 
       <DocDrawer
         open={docDrawerOpen}

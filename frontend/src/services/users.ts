@@ -1,7 +1,7 @@
 import type { User, AppUser, FirmUser } from '../types';
 import type { OperationType, ApproverLevel, SpecialAction, MenuAction } from '../types';
-import { createAppUser, listAppUsers, updateAppUser } from '../api/userApi';
-import type { CreateAppUserPayload, UpdateAppUserPayload } from '../api/userApi';
+import { createAppUser, deleteAppUser, listAppUsers, listAssignableUsers, updateAppUser } from '../api/userApi';
+import type { AssignableUser, CreateAppUserPayload, UpdateAppUserPayload } from '../api/userApi';
 
 export function appUserToFirmUser(user: AppUser): FirmUser {
   return {
@@ -64,19 +64,23 @@ export const usersService = {
       .map(appUserToFirmUser);
   },
 
-  getMtUsers: async (): Promise<AppUser[]> => {
-    const appUsers = await listAppUsers();
-    return appUsers.filter((u) => u.role === 'MT' && u.status === 'Aktif');
+  getAssignableUsers: async (): Promise<AssignableUser[]> => {
+    return listAssignableUsers();
   },
 
-  getMtManagerUsers: async (): Promise<AppUser[]> => {
-    const appUsers = await listAppUsers();
-    return appUsers.filter((u) => u.role === 'MT Yönetici' && u.status === 'Aktif');
+  getMtUsers: async (): Promise<AssignableUser[]> => {
+    const users = await listAssignableUsers();
+    return users.filter((u) => u.role === 'MT');
   },
 
-  getOperationUsers: async (): Promise<AppUser[]> => {
-    const appUsers = await listAppUsers();
-    return appUsers.filter((u) => u.role === 'Operasyon' && u.status === 'Aktif');
+  getMtManagerUsers: async (): Promise<AssignableUser[]> => {
+    const users = await listAssignableUsers();
+    return users.filter((u) => u.role === 'MT Yönetici');
+  },
+
+  getOperationUsers: async (): Promise<AssignableUser[]> => {
+    const users = await listAssignableUsers();
+    return users.filter((u) => u.role === 'Operasyon');
   },
 
   createAppUser: async (data: CreateAppUserPayload): Promise<AppUser> => {
@@ -89,6 +93,10 @@ export const usersService = {
 
   updateUserPermissions: async (id: string, patch: UpdateAppUserPayload): Promise<AppUser> => {
     return updateAppUser(id, patch);
+  },
+
+  deleteAppUser: async (id: string): Promise<void> => {
+    await deleteAppUser(id);
   },
 
   emptyNewUser: EMPTY_NEW_USER,

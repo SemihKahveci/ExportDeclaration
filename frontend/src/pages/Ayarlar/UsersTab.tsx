@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Pencil, Search } from 'lucide-react';
+import { Plus, Pencil, Search, Trash2 } from 'lucide-react';
 import type { AppUser, AppUserRole, AppUserStatus, OperationType, ApproverLevel, ScreenPermission } from '../../types';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import StatCard from '../../components/ui/StatCard';
@@ -191,6 +191,8 @@ interface UsersTabProps {
   onResetPerms: () => void;
   onNew: () => void;
   onEdit: () => void;
+  onDelete: () => void;
+  canDelete?: boolean;
   saving?: boolean;
 }
 
@@ -206,6 +208,8 @@ export default function UsersTab({
   onResetPerms,
   onNew,
   onEdit,
+  onDelete,
+  canDelete = false,
   saving = false,
 }: UsersTabProps) {
   const sel = users[selectedIdx];
@@ -318,9 +322,16 @@ export default function UsersTab({
             sub={sel ? sel.name : 'Sol listeden kullanıcı seçin'}
             actions={
               sel && (
-                <Button size="sm" icon={Pencil} onClick={onEdit}>
-                  Düzenle
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button size="sm" icon={Pencil} onClick={onEdit}>
+                    Düzenle
+                  </Button>
+                  {canDelete && (
+                    <Button size="sm" variant="danger" icon={Trash2} onClick={onDelete} disabled={saving}>
+                      Sil
+                    </Button>
+                  )}
+                </div>
               )
             }
           />

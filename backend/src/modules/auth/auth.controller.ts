@@ -27,6 +27,6 @@ export async function postLogout(_req: Request, res: Response): Promise<void> {
 }
 
 export async function getMe(req: Request, res: Response): Promise<void> {
-  const user = await getAuthUser(req.auth!.companyId, req.auth!.userId);
+  const user = await getAuthUser(req.auth!.userId);
   res.json({ ok: true, data: user });
 }

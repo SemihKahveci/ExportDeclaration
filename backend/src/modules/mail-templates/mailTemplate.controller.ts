@@ -7,21 +7,21 @@ import {
 } from "./mailTemplate.service.js";
 
 export async function getTemplates(req: Request, res: Response): Promise<void> {
-  const data = await listMailTemplates(req.auth!.companyId);
+  const data = await listMailTemplates(req.auth!.operationalCompanyId);
   res.json({ ok: true, data });
 }
 
 export async function postTemplate(req: Request, res: Response): Promise<void> {
-  const data = await createMailTemplate(req.auth!.companyId, req.body ?? {});
+  const data = await createMailTemplate(req.auth!.operationalCompanyId, req.body ?? {});
   res.status(201).json({ ok: true, data });
 }
 
 export async function patchTemplate(req: Request, res: Response): Promise<void> {
-  const data = await updateMailTemplate(req.auth!.companyId, req.params.id!, req.body ?? {});
+  const data = await updateMailTemplate(req.auth!.operationalCompanyId, req.params.id!, req.body ?? {});
   res.json({ ok: true, data });
 }
 
 export async function deleteTemplate(req: Request, res: Response): Promise<void> {
-  await deleteMailTemplate(req.auth!.companyId, req.params.id!);
+  await deleteMailTemplate(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data: { deleted: true } });
 }

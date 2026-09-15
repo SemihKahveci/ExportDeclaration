@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import * as svc from "./customer.service.js";
 
 function cid(req: Request) {
-  return req.auth!.companyId;
+  return req.auth!.operationalCompanyId;
 }
 
 export async function getCustomers(req: Request, res: Response): Promise<void> {

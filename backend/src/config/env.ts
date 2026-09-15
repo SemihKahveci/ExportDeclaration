@@ -32,6 +32,11 @@ export const env = {
   port: num(process.env.PORT, 3000),
   mongoUri: process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/export_declaration",
   uploadDir: process.env.UPLOAD_DIR ?? "uploads",
+  redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+  idpWorkerConcurrency: num(process.env.IDP_WORKER_CONCURRENCY, 2),
+  idpJobAttempts: num(process.env.IDP_JOB_ATTEMPTS, 3),
+  idpJobBackoffMs: num(process.env.IDP_JOB_BACKOFF_MS, 5000),
+  idpProcessorVersion: process.env.IDP_PROCESSOR_VERSION ?? "foundation-1",
   jsonBodyLimit: process.env.JSON_BODY_LIMIT ?? "2mb",
   /**
    * Virgülle ayrılmış izinli kökler (CORS_ORIGIN). Boş dizi → `origin: true`.
@@ -52,7 +57,7 @@ export const env = {
   superAdminEmail: process.env.SUPERADMIN_EMAIL ?? "",
   superAdminPassword: process.env.SUPERADMIN_PASSWORD ?? "",
   superAdminName: process.env.SUPERADMIN_NAME ?? "Süper Admin",
-  superAdminCompanyId: process.env.SUPERADMIN_COMPANY_ID ?? "",
+  installationCompanyId: process.env.INSTALLATION_COMPANY_ID ?? "",
   superAdminResetPassword: bool(process.env.SUPERADMIN_RESET_PASSWORD, false),
   
   licenseFilePath:

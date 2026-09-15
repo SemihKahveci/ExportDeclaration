@@ -8,7 +8,10 @@ export interface DocumentDoc extends mongoose.Document {
   type: string;
   fileName?: string;
   filePath?: string;
+  storageKey?: string;
   mimeType?: string;
+  size?: number;
+  sha256?: string;
   extractionStatus: string;
   extractedData?: unknown;
   parseErrors: string[];
@@ -28,8 +31,11 @@ const DocumentSchema = new Schema(
     },
 
     fileName: String,
-    filePath: String,
+    filePath: String, // legacy absolute path; storageKey is canonical going forward
+    storageKey: { type: String, index: true },
     mimeType: String,
+    size: Number,
+    sha256: { type: String, index: true },
 
     extractionStatus: {
       type: String,
@@ -44,5 +50,9 @@ const DocumentSchema = new Schema(
   { timestamps: true }
 );
 
-export const UploadedDocumentModel =
+// Collection name is intentionally preserved for a migration-free foundation refactor.
+export const UploadedFileModel =
   mongoose.models.UploadedDocument ?? mongoose.model<DocumentDoc>("UploadedDocument", DocumentSchema);
+
+/** @deprecated Use UploadedFileModel in new IDP code. Kept while declaration normalization is migrated. */
+export const UploadedDocumentModel = UploadedFileModel;
