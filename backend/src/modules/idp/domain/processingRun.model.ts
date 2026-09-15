@@ -11,6 +11,7 @@ export interface ProcessingRunDoc extends mongoose.Document {
   attempt: number;
   processorVersion: string;
   modelVersion?: string;
+  canonicalDocument?: unknown;
   rawExtraction?: unknown;
   candidates?: unknown;
   resolvedResult?: unknown;
@@ -33,6 +34,7 @@ const ProcessingRunSchema = new Schema({
   attempt: { type: Number, default: 0 },
   processorVersion: { type: String, required: true },
   modelVersion: String,
+  canonicalDocument: Schema.Types.Mixed,
   rawExtraction: Schema.Types.Mixed,
   candidates: Schema.Types.Mixed,
   resolvedResult: Schema.Types.Mixed,

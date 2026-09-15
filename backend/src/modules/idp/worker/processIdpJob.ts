@@ -2,6 +2,7 @@ import { ProcessingRunModel } from "../domain/processingRun.model.js";
 import { ProcessingStage, ProcessingStatus } from "../domain/idp.types.js";
 import { UploadedDocumentModel } from "../../documents/document.model.js";
 import { extractFromUploaded } from "../../extraction/extraction.service.js";
+import { analyzeUploadedPdf } from "../analyzer/pdfAnalyzer.js";
 
 export async function processIdpJob(processingRunId: string): Promise<void> {
   const run = await ProcessingRunModel.findById(processingRunId);
@@ -17,8 +18,19 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
     const file = await UploadedDocumentModel.findById(run.uploadedFileId);
     if (!file) throw new Error(`UploadedFile bulunamadı: ${run.uploadedFileId}`);
 
-    // Foundation geçişi: mevcut extractor davranışını worker içine alıyoruz.
-    // Sonraki fazlarda bu nokta ANALYZE -> SEGMENT -> CANDIDATES -> LLM zincirine ayrılacak.
+    // Foundation 2.1: PDF önce belge-tipinden bağımsız Canonical Document Model'e dönüştürülür.
+    // OCR, segmentation ve classification sonraki aşamalarda bu modelin üzerine eklenecek.
+    run.currentStage = ProcessingStage.ANALYZE;
+    await run.save();
+    const canonicalDocument = await analyzeUploadedPdf(file);
+    if (canonicalDocument) {
+      run.canonicalDocument = canonicalDocument;
+      await run.save();
+    }
+
+    // Geriye dönük uyumluluk: mevcut invoice extractor şimdilik canonical analizden sonra çalışmaya devam eder.
+    run.currentStage = ProcessingStage.EXTRACT_CONTENT;
+    await run.save();
     const extracted = await extractFromUploaded(file);
     run.rawExtraction = extracted.data;
     run.currentStage = ProcessingStage.FINALIZE;

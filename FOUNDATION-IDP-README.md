@@ -44,3 +44,17 @@ Operasyonel kayıtların tenant kapsamı `INSTALLATION_COMPANY_ID` ile belirleni
 Foundation 1 entegrasyonunda Dosya Takip / Yeni Talep ekranında seçilen dosyalar artık talep oluşturulduktan sonra gerçek document upload endpoint'ine gönderilir. Başarılı her upload otomatik olarak bir ProcessingRun oluşturur ve BullMQ üzerinden `idp-worker` kuyruğuna alınır. Ayrı `/process` endpoint'i manuel reprocess/retry amacıyla korunur.
 
 Yeni Talep ekranında henüz belge tipi seçimi/classification bulunmadığı için XML dosyaları geçici olarak `E_INVOICE_XML`, diğer desteklenen dosyalar `INVOICE` adayı olarak yüklenir. Bu geçici eşleme Canonical Document Model + segmentation/classification aşamasında kaldırılacaktır.
+
+## Foundation 2.1 - Canonical Document Model + PDF Analyzer
+
+PDF dosyaları IDP worker içinde mevcut invoice extractor'dan önce belge-tipinden bağımsız analiz edilir.
+
+- Sayfa boyutları ve rotation kaydedilir.
+- Native PDF text, word ve line içerikleri çıkarılır.
+- Word/line bounding box koordinatları `0..1` aralığında normalize edilir.
+- Sayfalar DIGITAL / SCANNED / MIXED olarak analiz edilir.
+- Belge geneli `analysis.contentKind` ile özetlenir.
+- Sonuç immutable `ProcessingRun.canonicalDocument` snapshot'ında tutulur.
+- Mevcut Python invoice parser geriye dönük uyumluluk için analizden sonra çalışmaya devam eder.
+
+Bu faz OCR yapmaz. Native text bulunmayan sayfalar SCANNED olarak işaretlenir; OCR fallback Foundation 2.2'de canonical modele `source: OCR` olarak eklenecektir.
