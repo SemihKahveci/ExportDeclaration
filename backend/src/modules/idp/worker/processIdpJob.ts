@@ -3,35 +3,99 @@ import { ProcessingStage, ProcessingStatus } from "../domain/idp.types.js";
 import { UploadedDocumentModel } from "../../documents/document.model.js";
 import { extractFromUploaded } from "../../extraction/extraction.service.js";
 import { analyzeUploadedPdf } from "../analyzer/pdfAnalyzer.js";
+import { enrichCanonicalDocumentWithOcr } from "../analyzer/ocrEnricher.js";
+import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
+
+function log(event: string, fields: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({ event, ...fields }));
+}
+
+/**
+ * canonicalDocument is stored as Schema.Types.Mixed.
+ * Mongoose does not reliably detect deep mutations inside Mixed fields,
+ * so every canonical-document persistence explicitly marks the field modified.
+ */
+async function persistCanonicalDocument(
+  run: InstanceType<typeof ProcessingRunModel>,
+  canonicalDocument: CanonicalDocument
+): Promise<void> {
+  run.canonicalDocument = canonicalDocument;
+  run.markModified("canonicalDocument");
+  await run.save();
+}
 
 export async function processIdpJob(processingRunId: string): Promise<void> {
+  const jobStartedAt = Date.now();
   const run = await ProcessingRunModel.findById(processingRunId);
   if (!run) throw new Error(`ProcessingRun bulunamadı: ${processingRunId}`);
+
   run.status = ProcessingStatus.PROCESSING;
-  run.currentStage = ProcessingStage.EXTRACT_CONTENT;
+  run.currentStage = ProcessingStage.INGEST;
   run.attempt += 1;
   run.startedAt ??= new Date();
+  run.completedAt = undefined;
   run.error = undefined;
   await run.save();
+  log("idp.job.started", { jobId: processingRunId, attempt: run.attempt });
+
+  const stage = async <T>(name: string, currentStage: string, fn: () => Promise<T>): Promise<T> => {
+    const startedAt = Date.now();
+    run.currentStage = currentStage;
+    await run.save();
+    log("idp.stage.started", { jobId: processingRunId, stage: name });
+
+    try {
+      const value = await fn();
+      log("idp.stage.completed", {
+        jobId: processingRunId,
+        stage: name,
+        durationMs: Date.now() - startedAt
+      });
+      return value;
+    } catch (error) {
+      log("idp.stage.failed", {
+        jobId: processingRunId,
+        stage: name,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  };
 
   try {
     const file = await UploadedDocumentModel.findById(run.uploadedFileId);
     if (!file) throw new Error(`UploadedFile bulunamadı: ${run.uploadedFileId}`);
 
-    // Foundation 2.1: PDF önce belge-tipinden bağımsız Canonical Document Model'e dönüştürülür.
-    // OCR, segmentation ve classification sonraki aşamalarda bu modelin üzerine eklenecek.
-    run.currentStage = ProcessingStage.ANALYZE;
-    await run.save();
-    const canonicalDocument = await analyzeUploadedPdf(file);
+    let canonicalDocument = await stage(
+      "ANALYZE",
+      ProcessingStage.ANALYZE,
+      () => analyzeUploadedPdf(file)
+    );
+
     if (canonicalDocument) {
-      run.canonicalDocument = canonicalDocument;
-      await run.save();
+      await persistCanonicalDocument(run, canonicalDocument);
+
+      canonicalDocument = await stage(
+        "OCR_ENRICH",
+        ProcessingStage.EXTRACT_CONTENT,
+        () => enrichCanonicalDocumentWithOcr(file.filePath!, canonicalDocument!)
+      );
+
+      // OCR enrichment mutates nested pages/words/analysis inside the Mixed field.
+      // Explicit markModified guarantees that OCR data is persisted to MongoDB.
+      await persistCanonicalDocument(run, canonicalDocument);
     }
 
-    // Geriye dönük uyumluluk: mevcut invoice extractor şimdilik canonical analizden sonra çalışmaya devam eder.
-    run.currentStage = ProcessingStage.EXTRACT_CONTENT;
-    await run.save();
-    const extracted = await extractFromUploaded(file);
+    const extracted = await stage(
+      "LEGACY_EXTRACT",
+      ProcessingStage.EXTRACT_CONTENT,
+      () =>
+        extractFromUploaded(file, {
+          canonicalDocument: canonicalDocument ?? undefined
+        })
+    );
+
     run.rawExtraction = extracted.data;
     run.currentStage = ProcessingStage.FINALIZE;
     run.finalResult = extracted.data;
@@ -39,11 +103,15 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
     run.completedAt = new Date();
     await run.save();
 
-    // Geriye dönük uyumluluk: normalization henüz UploadedDocument.extractedData okuyor.
     file.extractedData = extracted.data;
     file.extractionStatus = "SUCCESS";
     file.parseErrors = [];
     await file.save();
+
+    log("idp.completed", {
+      jobId: processingRunId,
+      durationMs: Date.now() - jobStartedAt
+    });
   } catch (error) {
     run.status = ProcessingStatus.FAILED;
     run.error = {

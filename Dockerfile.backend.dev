@@ -15,6 +15,7 @@ RUN python3 -m venv /opt/venv
 
 ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
+ENV PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 
 COPY package.json package-lock.json ./
 COPY backend/scripts/invoice_parser/requirements.txt \
@@ -25,6 +26,13 @@ RUN npm ci
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir \
        -r backend/scripts/invoice_parser/requirements.txt
+
+# PaddleOCR modellerini image build sırasında indirip doğrula. Böylece runtime
+# internet/model-host erişimine ihtiyaç duymaz ve uyumsuzluk build aşamasında yakalanır.
+COPY backend/scripts/invoice_parser/ocr_runtime.py backend/scripts/invoice_parser/ocr_runtime.py
+COPY backend/scripts/invoice_parser/preload_ocr_models.py backend/scripts/invoice_parser/preload_ocr_models.py
+RUN PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
+    python backend/scripts/invoice_parser/preload_ocr_models.py
 
 COPY tsconfig.json ./
 COPY backend ./backend

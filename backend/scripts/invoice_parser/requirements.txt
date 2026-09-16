@@ -1,6 +1,8 @@
-# Python 3.11 önerilir (PaddleOCR uyumluluğu)
-pymupdf>=1.24.0
-paddleocr>=2.7.0
-paddlepaddle>=2.6.2
-Pillow>=10.0.0
-numpy>=1.26.0
+# Runtime baseline: Python 3.11
+# PaddleOCR is pinned to a major/minor API contract. Do not use open-ended >= here:
+# PaddleOCR 2.x and 3.x have incompatible constructor/inference/result APIs.
+pymupdf>=1.24.0,<2.0.0
+paddleocr==3.7.0
+paddlepaddle==3.2.0
+Pillow>=10.0.0,<12.0.0
+numpy>=1.26.0,<3.0.0

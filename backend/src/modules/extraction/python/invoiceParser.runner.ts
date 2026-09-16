@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { env } from "../../../config/env.js";
+import type { CanonicalDocument } from "../../idp/domain/canonicalDocument.types.js";
 
 export interface PythonInvoiceItem {
   lineNo?: number;
@@ -27,6 +28,7 @@ export interface PythonInvoiceResult {
   inputFile: string;
   itemCount: number;
   items: PythonInvoiceItem[];
+  extractionSource?: "CANONICAL_DOCUMENT" | "LEGACY_PDF";
 }
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -82,7 +84,7 @@ function runProcess(
  */
 export async function runPythonInvoiceParser(
   pdfPath: string,
-  options?: { annotate?: boolean; timeoutMs?: number }
+  options?: { annotate?: boolean; timeoutMs?: number; canonicalDocument?: CanonicalDocument }
 ): Promise<PythonInvoiceResult> {
   const scriptDir = env.invoiceParserDir;
   const pythonBin = env.invoiceParserPython;
@@ -99,6 +101,22 @@ export async function runPythonInvoiceParser(
   const outputJson = path.join(workDir, "invoice_result.json");
 
   const args = [scriptPath, pdfPath, "--output", outputJson, "--debug-dir", workDir];
+
+  // For scanned/mixed PDFs the IDP pipeline has already produced OCR-backed
+  // canonical words. Pass that snapshot to the legacy candidate extractor so
+  // it does not initialize PaddleOCR and OCR the same PDF a second time.
+  if (options?.canonicalDocument?.analysis.ocrPageCount) {
+    const canonicalInput = path.join(workDir, "canonical_document.json");
+    await fs.writeFile(canonicalInput, JSON.stringify(options.canonicalDocument), "utf-8");
+    args.push("--canonical-input", canonicalInput);
+    console.log(JSON.stringify({
+      event: "idp.legacy_extract.canonical_input",
+      pageCount: options.canonicalDocument.analysis.pageCount,
+      ocrPageCount: options.canonicalDocument.analysis.ocrPageCount,
+      ocrWordCount: options.canonicalDocument.analysis.ocrWordCount
+    }));
+  }
+
   if (options?.annotate) {
     args.push("--annotate", "--annotated-output", path.join(workDir, "annotated_invoice.pdf"));
   }

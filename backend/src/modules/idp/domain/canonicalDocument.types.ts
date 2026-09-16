@@ -32,6 +32,9 @@ export interface CanonicalPage {
   imageCount: number;
   imageCoverage: number;
   contentKind: PdfContentKind;
+  ocrApplied?: boolean;
+  ocrText?: string;
+  ocrWordCount?: number;
   words: CanonicalWord[];
   lines: CanonicalLine[];
 }
@@ -50,6 +53,8 @@ export interface CanonicalDocument {
     scannedPageCount: number;
     mixedPageCount: number;
     nativeTextPageCount: number;
+    ocrPageCount?: number;
+    ocrWordCount?: number;
   };
   pages: CanonicalPage[];
 }

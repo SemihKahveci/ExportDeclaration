@@ -8,14 +8,18 @@ import { extractPackingList } from "./extractors/packingList.extractor.js";
 import { extractProforma } from "./extractors/proforma.extractor.js";
 import { extractBillOfLadingInstruction } from "./extractors/billOfLading.extractor.js";
 import { extractExportInvoice } from "./extractors/exportInvoice.extractor.js";
+import type { CanonicalDocument } from "../idp/domain/canonicalDocument.types.js";
 
-export async function extractFromUploaded(doc: DocumentDoc): Promise<ExtractedSource> {
+export async function extractFromUploaded(
+  doc: DocumentDoc,
+  options?: { canonicalDocument?: CanonicalDocument }
+): Promise<ExtractedSource> {
   const path = doc.filePath ?? "";
   const mime = doc.mimeType;
 
   switch (doc.type as DocumentTypeValue) {
     case DocumentType.INVOICE:
-      return extractInvoice(path, mime);
+      return extractInvoice(path, mime, { canonicalDocument: options?.canonicalDocument });
     case DocumentType.E_INVOICE_XML:
       return extractInvoiceXml(path);
     case DocumentType.EXPORT_INVOICE:

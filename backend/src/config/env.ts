@@ -32,11 +32,6 @@ export const env = {
   port: num(process.env.PORT, 3000),
   mongoUri: process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/export_declaration",
   uploadDir: process.env.UPLOAD_DIR ?? "uploads",
-  redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
-  idpWorkerConcurrency: num(process.env.IDP_WORKER_CONCURRENCY, 2),
-  idpJobAttempts: num(process.env.IDP_JOB_ATTEMPTS, 3),
-  idpJobBackoffMs: num(process.env.IDP_JOB_BACKOFF_MS, 5000),
-  idpProcessorVersion: process.env.IDP_PROCESSOR_VERSION ?? "foundation-1",
   jsonBodyLimit: process.env.JSON_BODY_LIMIT ?? "2mb",
   /**
    * Virgülle ayrılmış izinli kökler (CORS_ORIGIN). Boş dizi → `origin: true`.
@@ -49,6 +44,8 @@ export const env = {
   invoiceParserPython: process.env.INVOICE_PARSER_PYTHON ?? defaultPythonBin(),
   invoiceParserDir: process.env.INVOICE_PARSER_DIR ?? defaultParserDir,
   invoiceParserTimeoutMs: num(process.env.INVOICE_PARSER_TIMEOUT_MS, 10 * 60 * 1000),
+  ocrIdleTimeoutMs: num(process.env.OCR_IDLE_TIMEOUT_MS, 2 * 60 * 1000),
+  ocrTotalTimeoutMs: num(process.env.OCR_TOTAL_TIMEOUT_MS, 15 * 60 * 1000),
   licenseEnabled: bool(process.env.LICENSE_ENABLED, false),
 
   authJwtSecret: process.env.AUTH_JWT_SECRET ?? "dev-only-change-this-auth-secret-at-least-32-chars",
@@ -58,6 +55,13 @@ export const env = {
   superAdminPassword: process.env.SUPERADMIN_PASSWORD ?? "",
   superAdminName: process.env.SUPERADMIN_NAME ?? "Süper Admin",
   installationCompanyId: process.env.INSTALLATION_COMPANY_ID ?? "",
+
+  redisUrl: process.env.REDIS_URL ?? "redis://redis:6379",  
+  idpWorkerConcurrency: num(process.env.IDP_WORKER_CONCURRENCY, 2),
+  idpJobAttempts: num(process.env.IDP_JOB_ATTEMPTS, 3),
+  idpJobBackoffMs: num(process.env.IDP_JOB_BACKOFF_MS, 5000),
+  idpProcessorVersion: process.env.IDP_PROCESSOR_VERSION ?? "foundation-1",
+  
   superAdminResetPassword: bool(process.env.SUPERADMIN_RESET_PASSWORD, false),
   
   licenseFilePath:

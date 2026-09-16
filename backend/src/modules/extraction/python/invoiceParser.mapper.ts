@@ -65,6 +65,7 @@ export function mapPythonInvoiceToExtracted(result: PythonInvoiceResult): Extrac
     extractMeta: {
       pythonParser: true,
       pdfType: result.pdfType,
+      extractionSource: result.extractionSource,
       itemCount: result.itemCount,
       needsReviewCount: result.items.filter((i) => i.needsReview).length,
       rawItems: result.items

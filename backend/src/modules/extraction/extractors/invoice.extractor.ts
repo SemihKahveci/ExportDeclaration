@@ -7,6 +7,7 @@ import type { ExtractedSource } from "../../normalization/normalizedDeclaration.
 import { mapPythonInvoiceToExtracted } from "../python/invoiceParser.mapper.js";
 import { runPythonInvoiceParser } from "../python/invoiceParser.runner.js";
 import { extractFieldsFromInvoiceText } from "./invoiceTextHeuristics.js";
+import type { CanonicalDocument } from "../../idp/domain/canonicalDocument.types.js";
 
 const emptyBlocks = () => ({
   header: {},
@@ -42,7 +43,11 @@ async function extractInvoiceHeuristic(filePath: string): Promise<ExtractedSourc
  * INVOICE: `INVOICE_PARSER_ENABLED=true` ise Python pipeline (OCR + GTİP + kalem çıkarımı).
  * Devre dışı veya hata durumunda pdf-parse + sezgisel kurallara düşer.
  */
-export async function extractInvoice(filePath: string, mimeType: string | undefined): Promise<ExtractedSource> {
+export async function extractInvoice(
+  filePath: string,
+  mimeType: string | undefined,
+  options?: { canonicalDocument?: CanonicalDocument }
+): Promise<ExtractedSource> {
   const type: DocumentTypeValue = "INVOICE";
   const ext = path.extname(filePath).toLowerCase();
   const looksPdf = Boolean(mimeType?.toLowerCase().includes("pdf") || ext === ".pdf");
@@ -71,7 +76,8 @@ export async function extractInvoice(filePath: string, mimeType: string | undefi
   if (env.invoiceParserEnabled) {
     try {
       const result = await runPythonInvoiceParser(filePath, {
-        timeoutMs: env.invoiceParserTimeoutMs
+        timeoutMs: env.invoiceParserTimeoutMs,
+        canonicalDocument: options?.canonicalDocument
       });
       return {
         type,
