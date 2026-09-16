@@ -9,8 +9,8 @@ import { segmentCanonicalDocument } from "../segmenter/documentSegmenter.js";
 import type { DocumentSegment } from "../domain/documentSegment.types.js";
 import type { SegmentClassification } from "../domain/segmentClassification.types.js";
 import { classifyDocumentSegments } from "../classifier/segmentClassifier.js";
-import { projectInvoiceCanonicalDocument } from "../projector/canonicalSegmentProjector.js";
 import { DocumentType } from "../../../common/enums/documentType.js";
+import { extractCandidatesBySegment, getPrimaryInvoiceCandidate } from "../candidates/candidateExtractorRegistry.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -163,55 +163,68 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
     }
 
     const isInvoiceDocument = file.type === DocumentType.INVOICE;
-    const invoiceCanonicalDocument =
-      isInvoiceDocument && canonicalDocument && segments?.length && classifications?.length
-        ? projectInvoiceCanonicalDocument(canonicalDocument, segments, classifications)
-        : undefined;
 
-    if (isInvoiceDocument && canonicalDocument && !invoiceCanonicalDocument) {
-      run.status = ProcessingStatus.REVIEW_REQUIRED;
-      run.currentStage = ProcessingStage.CLASSIFY;
-      run.completedAt = new Date();
+    let extractedData: Record<string, unknown>;
+
+    if (isInvoiceDocument && canonicalDocument && segments?.length && classifications?.length) {
+      const candidateEnvelope = await stage(
+        "CANDIDATE_EXTRACT",
+        ProcessingStage.EXTRACT_CANDIDATES,
+        () => extractCandidatesBySegment(file, canonicalDocument!, segments!, classifications!)
+      );
+
+      run.candidates = candidateEnvelope;
+      run.markModified("candidates");
       await run.save();
 
-      file.extractionStatus = "MANUAL_REQUIRED";
-      file.parseErrors = ["INVOICE olarak sınıflandırılmış segment bulunamadı."];
-      await file.save();
-
-      log("idp.classification.review_required", {
+      log("idp.candidate_extract.completed", {
         jobId: processingRunId,
-        reason: "invoice-segment-not-found",
-        classifications
+        results: candidateEnvelope.segments.map((result) => ({
+          segmentId: result.segmentId,
+          documentType: result.documentType,
+          status: result.status,
+          extractor: result.extractor,
+          pageNumbers: result.pageNumbers
+        }))
       });
-      return;
+
+      const invoiceData = getPrimaryInvoiceCandidate(candidateEnvelope);
+      if (!invoiceData) {
+        run.status = ProcessingStatus.REVIEW_REQUIRED;
+        run.currentStage = ProcessingStage.EXTRACT_CANDIDATES;
+        run.completedAt = new Date();
+        await run.save();
+
+        file.extractionStatus = "MANUAL_REQUIRED";
+        file.parseErrors = ["INVOICE segmenti için aday veri üretilemedi."];
+        await file.save();
+
+        log("idp.candidate_extract.review_required", {
+          jobId: processingRunId,
+          reason: "invoice-candidate-not-produced"
+        });
+        return;
+      }
+      extractedData = invoiceData;
+    } else {
+      // Non-INVOICE upload types keep their existing dedicated extraction path until
+      // their classified segment extractors are registered in this registry.
+      const extracted = await stage(
+        "CANDIDATE_EXTRACT",
+        ProcessingStage.EXTRACT_CANDIDATES,
+        () => extractFromUploaded(file, { canonicalDocument })
+      );
+      extractedData = extracted.data;
     }
 
-    if (invoiceCanonicalDocument) {
-      log("idp.candidate_extract.segment_projection", {
-        jobId: processingRunId,
-        sourcePageCount: canonicalDocument?.pages.length ?? 0,
-        projectedPageCount: invoiceCanonicalDocument.pages.length,
-        projectedPageNumbers: invoiceCanonicalDocument.pages.map((page) => page.pageNumber)
-      });
-    }
-
-    const extracted = await stage(
-      "CANDIDATE_EXTRACT",
-      ProcessingStage.EXTRACT_CANDIDATES,
-      () =>
-        extractFromUploaded(file, {
-          canonicalDocument: isInvoiceDocument ? invoiceCanonicalDocument : canonicalDocument
-        })
-    );
-
-    run.rawExtraction = extracted.data;
+    run.rawExtraction = extractedData;
     run.currentStage = ProcessingStage.FINALIZE;
-    run.finalResult = extracted.data;
+    run.finalResult = extractedData;
     run.status = ProcessingStatus.COMPLETED;
     run.completedAt = new Date();
     await run.save();
 
-    file.extractedData = extracted.data;
+    file.extractedData = extractedData;
     file.extractionStatus = "SUCCESS";
     file.parseErrors = [];
     await file.save();

@@ -58,3 +58,34 @@ PDF dosyaları IDP worker içinde mevcut invoice extractor'dan önce belge-tipin
 - Mevcut Python invoice parser geriye dönük uyumluluk için analizden sonra çalışmaya devam eder.
 
 Bu faz OCR yapmaz. Native text bulunmayan sayfalar SCANNED olarak işaretlenir; OCR fallback Foundation 2.2'de canonical modele `source: OCR` olarak eklenecektir.
+
+## Foundation 3.1 - Deterministic Document Segmentation
+
+Status: COMPLETED
+
+CanonicalDocument sayfaları deterministik ve açıklanabilir sınır sinyalleriyle logical document segmentlerine ayrılır. Boundary evidence; document family, document id, printed page sequence ve header discontinuity sinyallerini saklar. OCR batching yalnızca çalışma birimidir; semantic segment değildir.
+
+Regression:
+- VED2026000000146: pages 1-8 -> tek INVOICE segmenti
+- VED2026000000110: pages 1-3 -> tek INVOICE segmenti
+- 55-page composite: pages 1-35, 36-53, 54, 55 -> 4 segment
+
+## Foundation 3.2 - Deterministic Segment Classification
+
+Status: COMPLETED
+
+Her segment ayrı sınıflandırılır. Desteklenen sınıflar: INVOICE, PACKING_LIST, ATR, EUR1, CERTIFICATE_OF_ORIGIN, BILL_OF_LADING, CMR ve UNKNOWN. Sınıflandırıcı konservatiftir; güçlü kanıt yoksa UNKNOWN üretir. Classification evidence ve confidence ProcessingRun içinde persist edilir.
+
+55-page regression:
+- 1-35 -> INVOICE
+- 36-53 -> UNKNOWN
+- 54 -> CERTIFICATE_OF_ORIGIN
+- 55 -> ATR
+
+Invoice projection regression: 55 canonical sayfadan yalnızca 1-35 candidate extraction girdisine seçilir.
+
+## Foundation 3.3 - Candidate Extraction by Document Type
+
+Status: IN PROGRESS
+
+Candidate extraction artık segment + classification kontratı üzerinden yürütülür. Registry başlangıçta yalnızca INVOICE extractor içerir. UNKNOWN segmentler SKIPPED, bilinen fakat extractor'ı henüz kayıtlı olmayan belge tipleri UNSUPPORTED olarak audit edilir. ProcessingRun.candidates segment bazlı versioned envelope saklar. Legacy declaration uyumluluğu için rawExtraction/finalResult/extractedData, başarılı birincil INVOICE candidate sonucundan derive edilir; PDF/OCR fallback eklenmez.
