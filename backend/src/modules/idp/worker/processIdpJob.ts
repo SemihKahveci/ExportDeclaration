@@ -10,7 +10,9 @@ import type { DocumentSegment } from "../domain/documentSegment.types.js";
 import type { SegmentClassification } from "../domain/segmentClassification.types.js";
 import { classifyDocumentSegments } from "../classifier/segmentClassifier.js";
 import { DocumentType } from "../../../common/enums/documentType.js";
-import { extractCandidatesBySegment, getPrimaryInvoiceCandidate } from "../candidates/candidateExtractorRegistry.js";
+import { extractCandidatesBySegment } from "../candidates/candidateExtractorRegistry.js";
+import { resolveCandidates } from "../resolver/candidateResolver.js";
+import { CandidateResolutionStatus } from "../domain/candidateResolution.types.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -188,24 +190,46 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
         }))
       });
 
-      const invoiceData = getPrimaryInvoiceCandidate(candidateEnvelope);
-      if (!invoiceData) {
+      const resolution = await stage(
+        "RESOLVE",
+        ProcessingStage.RESOLVE,
+        async () => resolveCandidates(candidateEnvelope)
+      );
+
+      run.resolvedResult = resolution;
+      run.markModified("resolvedResult");
+      await run.save();
+
+      log("idp.resolve.completed", {
+        jobId: processingRunId,
+        status: resolution.status,
+        strategy: resolution.strategy,
+        documentType: resolution.documentType,
+        sourceSegmentIds: resolution.sourceSegmentIds,
+        issues: resolution.issues.map((issue) => issue.code)
+      });
+
+      if (resolution.status !== CandidateResolutionStatus.RESOLVED || !resolution.data) {
         run.status = ProcessingStatus.REVIEW_REQUIRED;
-        run.currentStage = ProcessingStage.EXTRACT_CANDIDATES;
+        run.currentStage = ProcessingStage.RESOLVE;
         run.completedAt = new Date();
         await run.save();
 
         file.extractionStatus = "MANUAL_REQUIRED";
-        file.parseErrors = ["INVOICE segmenti için aday veri üretilemedi."];
+        file.parseErrors = resolution.issues.map((issue) => issue.message);
         await file.save();
 
-        log("idp.candidate_extract.review_required", {
+        log("idp.resolve.review_required", {
           jobId: processingRunId,
-          reason: "invoice-candidate-not-produced"
+          issues: resolution.issues.map((issue) => ({
+            code: issue.code,
+            segmentIds: issue.segmentIds
+          }))
         });
         return;
       }
-      extractedData = invoiceData;
+
+      extractedData = resolution.data;
     } else {
       // Non-INVOICE upload types keep their existing dedicated extraction path until
       // their classified segment extractors are registered in this registry.

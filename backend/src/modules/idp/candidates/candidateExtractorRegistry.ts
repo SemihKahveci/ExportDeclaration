@@ -97,12 +97,3 @@ export async function extractCandidatesBySegment(
   return { version: "1", segments: results };
 }
 
-export function getPrimaryInvoiceCandidate(
-  envelope: CandidateExtractionEnvelope
-): Record<string, unknown> | undefined {
-  return envelope.segments.find(
-    (result) =>
-      result.documentType === ClassifiedDocumentType.INVOICE &&
-      result.status === CandidateExtractionStatus.EXTRACTED
-  )?.data;
-}

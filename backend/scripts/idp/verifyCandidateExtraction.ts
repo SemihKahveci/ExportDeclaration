@@ -18,18 +18,21 @@ function summarize(envelope: CandidateExtractionEnvelope) {
     firstPage: result.pageNumbers[0] ?? null,
     lastPage: result.pageNumbers.at(-1) ?? null,
     reason: result.reason ?? null,
-    extractedLineCount: Array.isArray((result.data as any)?.lines)
-      ? (result.data as any).lines.length
-      : Array.isArray((result.data as any)?.items)
-        ? (result.data as any).items.length
-        : null
+    extractedLineCount: Array.isArray((result.data as any)?.goodsLines)
+      ? (result.data as any).goodsLines.length
+      : null
   }));
 }
 
 async function main() {
   const processingRunId = process.argv[2];
+  const expectedLineCountRaw = process.argv[3];
+  const expectedLineCount = expectedLineCountRaw === undefined ? undefined : Number(expectedLineCountRaw);
   if (!processingRunId) {
-    throw new Error("Kullanım: npx tsx backend/scripts/idp/verifyCandidateExtraction.ts <processingRunId>");
+    throw new Error("Kullanım: npx tsx backend/scripts/idp/verifyCandidateExtraction.ts <processingRunId> [expectedLineCount]");
+  }
+  if (expectedLineCountRaw !== undefined && (!Number.isInteger(expectedLineCount) || expectedLineCount! < 0)) {
+    throw new Error(`expectedLineCount geçersiz: ${expectedLineCountRaw}`);
   }
 
   await mongoose.connect(env.mongoUri);
@@ -64,6 +67,14 @@ async function main() {
       throw new Error(`Beklenen tam 1 EXTRACTED INVOICE candidate; bulunan=${invoice.length}`);
     }
 
+    const goodsLines = (invoice[0]?.data as any)?.goodsLines;
+    if (!Array.isArray(goodsLines) || goodsLines.length === 0) {
+      throw new Error("EXTRACTED INVOICE candidate goodsLines içermiyor.");
+    }
+    if (expectedLineCount !== undefined && goodsLines.length !== expectedLineCount) {
+      throw new Error(`Invoice goodsLines sayısı beklenenden farklı: expected=${expectedLineCount}, actual=${goodsLines.length}`);
+    }
+
     for (const result of envelope.segments) {
       if (result.documentType === "UNKNOWN" && result.status !== "SKIPPED") {
         throw new Error(`${result.segmentId}: UNKNOWN segment SKIPPED olmalı.`);
@@ -80,7 +91,8 @@ async function main() {
     console.log(JSON.stringify({
       event: "idp.candidate-extraction.regression.passed",
       processingRunId,
-      invoicePageCount: invoice[0].pageNumbers.length
+      invoicePageCount: invoice[0].pageNumbers.length,
+      invoiceLineCount: goodsLines.length
     }));
   } finally {
     await mongoose.disconnect();
