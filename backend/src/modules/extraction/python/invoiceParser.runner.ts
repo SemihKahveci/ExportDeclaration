@@ -28,7 +28,7 @@ export interface PythonInvoiceResult {
   inputFile: string;
   itemCount: number;
   items: PythonInvoiceItem[];
-  extractionSource?: "CANONICAL_DOCUMENT" | "LEGACY_PDF";
+  extractionSource?: "CANONICAL_DOCUMENT";
 }
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -84,7 +84,7 @@ function runProcess(
  */
 export async function runPythonInvoiceParser(
   pdfPath: string,
-  options?: { annotate?: boolean; timeoutMs?: number; canonicalDocument?: CanonicalDocument }
+  options: { canonicalDocument: CanonicalDocument; annotate?: boolean; timeoutMs?: number }
 ): Promise<PythonInvoiceResult> {
   const scriptDir = env.invoiceParserDir;
   const pythonBin = env.invoiceParserPython;
@@ -102,26 +102,24 @@ export async function runPythonInvoiceParser(
 
   const args = [scriptPath, pdfPath, "--output", outputJson, "--debug-dir", workDir];
 
-  // For scanned/mixed PDFs the IDP pipeline has already produced OCR-backed
-  // canonical words. Pass that snapshot to the legacy candidate extractor so
-  // it does not initialize PaddleOCR and OCR the same PDF a second time.
-  if (options?.canonicalDocument?.analysis.ocrPageCount) {
-    const canonicalInput = path.join(workDir, "canonical_document.json");
-    await fs.writeFile(canonicalInput, JSON.stringify(options.canonicalDocument), "utf-8");
-    args.push("--canonical-input", canonicalInput);
-    console.log(JSON.stringify({
-      event: "idp.legacy_extract.canonical_input",
-      pageCount: options.canonicalDocument.analysis.pageCount,
-      ocrPageCount: options.canonicalDocument.analysis.ocrPageCount,
-      ocrWordCount: options.canonicalDocument.analysis.ocrWordCount
-    }));
-  }
+  // Candidate extraction consumes the CanonicalDocument for every PDF type.
+  // PDF reading/OCR belongs exclusively to the IDP analyze/OCR stages.
+  const canonicalInput = path.join(workDir, "canonical_document.json");
+  await fs.writeFile(canonicalInput, JSON.stringify(options.canonicalDocument), "utf-8");
+  args.push("--canonical-input", canonicalInput);
+  console.log(JSON.stringify({
+    event: "idp.candidate_extract.canonical_input",
+    contentKind: options.canonicalDocument.analysis.contentKind,
+    pageCount: options.canonicalDocument.analysis.pageCount,
+    ocrPageCount: options.canonicalDocument.analysis.ocrPageCount ?? 0,
+    ocrWordCount: options.canonicalDocument.analysis.ocrWordCount ?? 0
+  }));
 
-  if (options?.annotate) {
+  if (options.annotate) {
     args.push("--annotate", "--annotated-output", path.join(workDir, "annotated_invoice.pdf"));
   }
 
-  await runProcess(pythonBin, args, scriptCwd, options?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  await runProcess(pythonBin, args, scriptCwd, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
   const raw = await fs.readFile(outputJson, "utf-8");
   return JSON.parse(raw) as PythonInvoiceResult;

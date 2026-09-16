@@ -64,23 +64,30 @@ function runAnalyzer(scriptPath: string, pdfPath: string): Promise<AnalyzerOutpu
   });
 }
 
+export async function analyzePdfPath(
+  filePath: string,
+  source: CanonicalDocument["source"] = {}
+): Promise<CanonicalDocument> {
+  const scriptPath = path.join(env.invoiceParserDir, "analyze_pdf.py");
+  const result = await runAnalyzer(scriptPath, filePath);
+
+  return {
+    schemaVersion: "1.0",
+    source,
+    analysis: result.analysis,
+    pages: result.pages
+  };
+}
+
 export async function analyzeUploadedPdf(file: DocumentDoc): Promise<CanonicalDocument | null> {
   const filePath = file.filePath ?? "";
   const mime = (file.mimeType ?? "").toLowerCase();
   const isPdf = mime.includes("pdf") || filePath.toLowerCase().endsWith(".pdf");
   if (!isPdf || !filePath) return null;
 
-  const scriptPath = path.join(env.invoiceParserDir, "analyze_pdf.py");
-  const result = await runAnalyzer(scriptPath, filePath);
-
-  return {
-    schemaVersion: "1.0",
-    source: {
-      fileName: file.fileName,
-      mimeType: file.mimeType,
-      sha256: file.sha256
-    },
-    analysis: result.analysis,
-    pages: result.pages
-  };
+  return analyzePdfPath(filePath, {
+    fileName: file.fileName,
+    mimeType: file.mimeType,
+    sha256: file.sha256
+  });
 }

@@ -88,8 +88,8 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
     }
 
     const extracted = await stage(
-      "LEGACY_EXTRACT",
-      ProcessingStage.EXTRACT_CONTENT,
+      "CANDIDATE_EXTRACT",
+      ProcessingStage.EXTRACT_CANDIDATES,
       () =>
         extractFromUploaded(file, {
           canonicalDocument: canonicalDocument ?? undefined

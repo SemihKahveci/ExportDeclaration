@@ -4,6 +4,8 @@ import path from "node:path";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { env } from "../../config/env.js";
 import { runPythonInvoiceParser } from "../extraction/python/invoiceParser.runner.js";
+import { analyzePdfPath } from "../idp/analyzer/pdfAnalyzer.js";
+import { enrichCanonicalDocumentWithOcr } from "../idp/analyzer/ocrEnricher.js";
 import {
   mapPythonInvoiceToGtipQueryResults,
   type GtipQueryResultDto
@@ -38,8 +40,15 @@ export async function parseInvoicePdfForGtipQuery(
   try {
     await fs.writeFile(pdfPath, file.buffer);
 
+    let canonicalDocument = await analyzePdfPath(pdfPath, {
+      fileName: safeName,
+      mimeType: file.mimetype
+    });
+    canonicalDocument = await enrichCanonicalDocumentWithOcr(pdfPath, canonicalDocument);
+
     const parsed = await runPythonInvoiceParser(pdfPath, {
-      timeoutMs: env.invoiceParserTimeoutMs
+      timeoutMs: env.invoiceParserTimeoutMs,
+      canonicalDocument
     });
 
     const results = mapPythonInvoiceToGtipQueryResults(parsed);

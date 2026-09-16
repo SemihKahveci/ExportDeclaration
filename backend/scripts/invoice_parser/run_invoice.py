@@ -3,11 +3,8 @@ import json
 import fitz
 from pathlib import Path
 
-from pdf_type_detector import detect_pdf_type
 from gtip_extractor import extract_all_gtips
 from item_extractor import extract_items
-from pdf_parser import parse_digital_pdf
-from ocr_engine import run_ocr
 from annotator import annotate_invoice_images
 
 OUTPUT_DIR = Path("output")
@@ -43,9 +40,10 @@ def canonical_to_legacy_words(canonical_document):
     """Adapt normalized CanonicalDocument words to the coordinate space used
     by the existing GTIP/item extractors without running OCR again.
 
-    Legacy scanned OCR rendered PDF pages at zoom=3, so scanned/mixed pages
-    are projected to page-points * 3. Digital pages retain the historical
-    1700x2500 coordinate system used by parse_digital_pdf().
+    Preserve the historical coordinate spaces expected by the existing
+    GTIP/item rules while using CanonicalDocument as the only content source.
+    Scanned/mixed pages use the former zoom=3 OCR space; digital pages use
+    the former 1700x2500 native-text space.
     """
     pages = []
 
@@ -99,7 +97,7 @@ def parse_args():
     parser.add_argument("--debug-dir", default="output")
     parser.add_argument("--annotate", action="store_true")
     parser.add_argument("--annotated-output", default="output/annotated_invoice.pdf")
-    parser.add_argument("--canonical-input")
+    parser.add_argument("--canonical-input", required=True)
     return parser.parse_args()
 
 
@@ -113,21 +111,20 @@ def main():
     if not pdf_path.exists():
         raise FileNotFoundError(f"PDF bulunamadı: {pdf_path}")
 
-    pdf_type = detect_pdf_type(str(pdf_path))
-    extraction_source = "LEGACY_PDF"
+    canonical_document = load_json(args.canonical_input)
+    content_kind = canonical_document.get("analysis", {}).get("contentKind", "MIXED")
+    pdf_type = {
+        "DIGITAL": "DIGITAL_TEXT_PDF",
+        "SCANNED": "SCANNED_PDF",
+        "MIXED": "MIXED_PDF",
+    }.get(content_kind, "MIXED_PDF")
 
-    if args.canonical_input:
-        canonical_document = load_json(args.canonical_input)
-        paddle_all = canonical_to_legacy_words(canonical_document)
-        extraction_source = "CANONICAL_DOCUMENT"
-        # Annotation needs rendered page images, but normal extraction does not.
-        if args.annotate:
-            render_pdf_pages(pdf_path, debug_dir)
-    elif pdf_type == "DIGITAL_TEXT_PDF":
-        paddle_all = parse_digital_pdf(str(pdf_path))
+    paddle_all = canonical_to_legacy_words(canonical_document)
+    extraction_source = "CANONICAL_DOCUMENT"
+
+    # Annotation still needs page images, but extraction never re-reads/OCRs the PDF.
+    if args.annotate:
         render_pdf_pages(pdf_path, debug_dir)
-    else:
-        paddle_all = run_ocr(str(pdf_path), debug_dir)
 
     gtip_result = extract_all_gtips(paddle_all)
     items = extract_items(paddle_all, gtip_result)

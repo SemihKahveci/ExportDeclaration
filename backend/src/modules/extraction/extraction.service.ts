@@ -19,7 +19,10 @@ export async function extractFromUploaded(
 
   switch (doc.type as DocumentTypeValue) {
     case DocumentType.INVOICE:
-      return extractInvoice(path, mime, { canonicalDocument: options?.canonicalDocument });
+      if (!options?.canonicalDocument) {
+        throw new Error("INVOICE extraction requires CanonicalDocument; run the IDP analyze/OCR pipeline first.");
+      }
+      return extractInvoice(path, mime, { canonicalDocument: options.canonicalDocument });
     case DocumentType.E_INVOICE_XML:
       return extractInvoiceXml(path);
     case DocumentType.EXPORT_INVOICE:

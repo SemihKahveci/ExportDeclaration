@@ -12,9 +12,10 @@ import {
   validateNormalizedDeclaration
 } from "../validation/declarationValidator.service.js";
 import { generateEvrimXmlDraft } from "../xml/evrimXml.generator.js";
-import { extractFromUploaded } from "../extraction/extraction.service.js";
 import { DeclarationModel, type DeclarationDoc, type OperationMetaDoc } from "./declaration.model.js";
 import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.model.js";
+import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
+import { ProcessingStatus } from "../idp/domain/idp.types.js";
 import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
 import type { OperationTypeValue } from "../../common/enums/operationMeta.js";
 
@@ -190,17 +191,30 @@ export async function runExtraction(companyId: mongoose.Types.ObjectId, declarat
   for (const d of docs) {
     const full = await UploadedDocumentModel.findById(d._id);
     if (!full) continue;
-    try {
-      const extracted = await extractFromUploaded(full);
-      full.extractedData = extracted.data;
+
+    // Upload already creates an immutable ProcessingRun. Never parse/OCR the
+    // physical PDF again from the declaration action; consume the latest IDP run.
+    const run = await ProcessingRunModel.findOne({
+      companyId,
+      declarationId: dec._id,
+      uploadedFileId: full._id
+    }).sort({ createdAt: -1 });
+
+    if (!run) {
+      full.extractionStatus = "PENDING";
+      full.parseErrors = ["IDP processing run bulunamadı; dosyayı processing kuyruğuna alın."];
+    } else if (run.status === ProcessingStatus.COMPLETED) {
+      full.extractedData = run.finalResult ?? run.rawExtraction ?? {};
       full.extractionStatus = "SUCCESS";
       full.parseErrors = [];
-      await full.save();
-    } catch (e) {
+    } else if (run.status === ProcessingStatus.FAILED) {
       full.extractionStatus = "FAILED";
-      full.parseErrors = [e instanceof Error ? e.message : "Çıkarma hatası"];
-      await full.save();
+      full.parseErrors = [run.error?.message ?? "IDP processing başarısız."];
+    } else {
+      full.extractionStatus = "PENDING";
+      full.parseErrors = [`IDP processing henüz tamamlanmadı (${run.status}).`];
     }
+    await full.save();
   }
 
   return UploadedDocumentModel.find({ companyId, declarationId: dec._id }).lean();

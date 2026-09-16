@@ -1,19 +1,13 @@
-Foundation 2.3 - Canonical Candidate Extraction Bridge
+Foundation 2.3B - Canonical-only extraction cleanup
 
-Purpose:
-- Reuse CanonicalDocument OCR words during legacy invoice candidate extraction.
-- Prevent scanned/mixed invoices from running PaddleOCR a second time in LEGACY_EXTRACT.
-- Preserve legacy extractor coordinate expectations via a normalized-bbox adapter.
+Goals:
+- CanonicalDocument is the only PDF content source for invoice candidate extraction.
+- OCR is owned only by IDP OCR_ENRICH.
+- run_invoice.py requires --canonical-input and no longer has legacy OCR/native-PDF fallback.
+- GTIP Query uses analyze -> OCR enrich -> canonical candidate extraction.
+- declaration runExtraction consumes ProcessingRun results instead of reparsing files.
+- dead legacy OCR/PDF reader files are removed.
+- IDP stage log renamed LEGACY_EXTRACT -> CANDIDATE_EXTRACT.
 
-Expected scanned test log:
-- OCR_ENRICH completes normally.
-- Before LEGACY_EXTRACT Python execution:
-  idp.legacy_extract.canonical_input with ocrPageCount/ocrWordCount.
-- LEGACY_EXTRACT should drop from minutes to seconds (depending on extraction rules).
-
-Mongo verification:
-ProcessingRun.finalResult.extractMeta.extractionSource = CANONICAL_DOCUMENT
-
-Fallback behavior:
-- Existing non-IDP callers remain compatible because canonicalDocument is optional.
-- If no canonical OCR is supplied, run_invoice.py retains the existing legacy PDF/OCR path.
+After copying the changed files, delete the paths in DELETE_THESE_FILES.txt.
+Then rebuild Docker and regression-test scanned 0110 and digital 0146 before committing.
