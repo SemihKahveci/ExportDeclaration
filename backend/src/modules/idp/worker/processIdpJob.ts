@@ -6,6 +6,11 @@ import { analyzeUploadedPdf } from "../analyzer/pdfAnalyzer.js";
 import { enrichCanonicalDocumentWithOcr } from "../analyzer/ocrEnricher.js";
 import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
 import { segmentCanonicalDocument } from "../segmenter/documentSegmenter.js";
+import type { DocumentSegment } from "../domain/documentSegment.types.js";
+import type { SegmentClassification } from "../domain/segmentClassification.types.js";
+import { classifyDocumentSegments } from "../classifier/segmentClassifier.js";
+import { projectInvoiceCanonicalDocument } from "../projector/canonicalSegmentProjector.js";
+import { DocumentType } from "../../../common/enums/documentType.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -86,6 +91,9 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       if (canonicalDocument) await persistCanonicalDocument(run, canonicalDocument);
     }
 
+    let segments = run.segments as DocumentSegment[] | undefined;
+    let classifications = run.classifications as SegmentClassification[] | undefined;
+
     if (canonicalDocument) {
 
       canonicalDocument = await stage(
@@ -110,7 +118,7 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       // Persist once more for the zero-target and final-state cases.
       await persistCanonicalDocument(run, canonicalDocument);
 
-      const segments = await stage(
+      segments = await stage(
         "SEGMENT",
         ProcessingStage.SEGMENT,
         async () => segmentCanonicalDocument(canonicalDocument!)
@@ -131,6 +139,60 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
           anchor: segment.boundarySignals.anchor
         }))
       });
+
+      classifications = await stage(
+        "CLASSIFY",
+        ProcessingStage.CLASSIFY,
+        async () => classifyDocumentSegments(canonicalDocument!, segments!)
+      );
+      run.classifications = classifications;
+      run.markModified("classifications");
+      await run.save();
+
+      log("idp.classification.completed", {
+        jobId: processingRunId,
+        classificationCount: classifications.length,
+        classifications: classifications.map((classification) => ({
+          segmentId: classification.segmentId,
+          documentType: classification.documentType,
+          confidence: classification.confidence,
+          method: classification.method,
+          evidence: classification.evidence
+        }))
+      });
+    }
+
+    const isInvoiceDocument = file.type === DocumentType.INVOICE;
+    const invoiceCanonicalDocument =
+      isInvoiceDocument && canonicalDocument && segments?.length && classifications?.length
+        ? projectInvoiceCanonicalDocument(canonicalDocument, segments, classifications)
+        : undefined;
+
+    if (isInvoiceDocument && canonicalDocument && !invoiceCanonicalDocument) {
+      run.status = ProcessingStatus.REVIEW_REQUIRED;
+      run.currentStage = ProcessingStage.CLASSIFY;
+      run.completedAt = new Date();
+      await run.save();
+
+      file.extractionStatus = "MANUAL_REQUIRED";
+      file.parseErrors = ["INVOICE olarak sınıflandırılmış segment bulunamadı."];
+      await file.save();
+
+      log("idp.classification.review_required", {
+        jobId: processingRunId,
+        reason: "invoice-segment-not-found",
+        classifications
+      });
+      return;
+    }
+
+    if (invoiceCanonicalDocument) {
+      log("idp.candidate_extract.segment_projection", {
+        jobId: processingRunId,
+        sourcePageCount: canonicalDocument?.pages.length ?? 0,
+        projectedPageCount: invoiceCanonicalDocument.pages.length,
+        projectedPageNumbers: invoiceCanonicalDocument.pages.map((page) => page.pageNumber)
+      });
     }
 
     const extracted = await stage(
@@ -138,7 +200,7 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       ProcessingStage.EXTRACT_CANDIDATES,
       () =>
         extractFromUploaded(file, {
-          canonicalDocument: canonicalDocument ?? undefined
+          canonicalDocument: isInvoiceDocument ? invoiceCanonicalDocument : canonicalDocument
         })
     );
 

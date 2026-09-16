@@ -37,6 +37,9 @@ RUN PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
 COPY tsconfig.json ./
 COPY backend ./backend
 
+# Compile gate: image build must fail on TypeScript errors.
+RUN npm run typecheck
+
 RUN mkdir -p /app/uploads
 
 ENV NODE_ENV=development
