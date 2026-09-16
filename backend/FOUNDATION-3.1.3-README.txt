@@ -1,0 +1,21 @@
+Foundation 3.1.3 - footer-aware fingerprint boundary hardening
+
+Root causes found from the persisted 55-page fingerprint dump:
+1. Marel "Page X of 35" and "Invoice 10203688" are footer signals.
+2. 3.1.2 searched page counters only in the first 1800 chars.
+3. OCR canonical lines are word-level in this fixture, so title-only heuristics are insufficient.
+
+Fixes:
+- Page X/Y detection searches the complete canonical page text.
+- Strong anchors search top + head + tail + full page, with context-specific patterns.
+- Invoice/document IDs can be recovered from footer repetitions.
+- A completed X/Y sequence (e.g. Page 35 of 35) is a hard boundary before the next physical page,
+  even if the next logical document has no page counter.
+- Boundary diagnostics now include current/previous page totals.
+
+Regression (NO OCR):
+docker compose -f compose.dev.yaml exec idp-worker npx tsx backend/scripts/idp/resegmentProcessingRun.ts 6aaa74702a092689f532531e
+
+Do not use --persist until the result is accepted.
+Expected minimum invariant: pages 1-35 stay one segment and page 36 starts a new segment.
+Further boundaries after page 36 must be accepted from evidence, not fixture-specific page numbers.

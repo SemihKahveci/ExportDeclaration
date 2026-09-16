@@ -5,6 +5,7 @@ import { extractFromUploaded } from "../../extraction/extraction.service.js";
 import { analyzeUploadedPdf } from "../analyzer/pdfAnalyzer.js";
 import { enrichCanonicalDocumentWithOcr } from "../analyzer/ocrEnricher.js";
 import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
+import { segmentCanonicalDocument } from "../segmenter/documentSegmenter.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -67,24 +68,69 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
     const file = await UploadedDocumentModel.findById(run.uploadedFileId);
     if (!file) throw new Error(`UploadedFile bulunamadı: ${run.uploadedFileId}`);
 
-    let canonicalDocument = await stage(
-      "ANALYZE",
-      ProcessingStage.ANALYZE,
-      () => analyzeUploadedPdf(file)
-    );
+    let canonicalDocument = run.canonicalDocument as CanonicalDocument | undefined;
+
+    if (canonicalDocument?.pages?.length) {
+      log("idp.analyze.resumed_from_checkpoint", {
+        jobId: processingRunId,
+        pageCount: canonicalDocument.pages.length,
+        ocrPageCount: canonicalDocument.analysis?.ocrPageCount ?? 0
+      });
+    } else {
+      canonicalDocument = await stage(
+        "ANALYZE",
+        ProcessingStage.ANALYZE,
+        async () => (await analyzeUploadedPdf(file)) ?? undefined
+      );
+
+      if (canonicalDocument) await persistCanonicalDocument(run, canonicalDocument);
+    }
 
     if (canonicalDocument) {
-      await persistCanonicalDocument(run, canonicalDocument);
 
       canonicalDocument = await stage(
         "OCR_ENRICH",
         ProcessingStage.EXTRACT_CONTENT,
-        () => enrichCanonicalDocumentWithOcr(file.filePath!, canonicalDocument!)
+        () =>
+          enrichCanonicalDocumentWithOcr(
+            file.filePath!,
+            canonicalDocument!,
+            async (checkpointDocument, completedPages) => {
+              await persistCanonicalDocument(run, checkpointDocument);
+              log("idp.ocr.checkpoint.persisted", {
+                jobId: processingRunId,
+                completedPages,
+                ocrPageCount: checkpointDocument.analysis.ocrPageCount,
+                ocrWordCount: checkpointDocument.analysis.ocrWordCount
+              });
+            }
+          )
       );
 
-      // OCR enrichment mutates nested pages/words/analysis inside the Mixed field.
-      // Explicit markModified guarantees that OCR data is persisted to MongoDB.
+      // Persist once more for the zero-target and final-state cases.
       await persistCanonicalDocument(run, canonicalDocument);
+
+      const segments = await stage(
+        "SEGMENT",
+        ProcessingStage.SEGMENT,
+        async () => segmentCanonicalDocument(canonicalDocument!)
+      );
+
+      run.segments = segments;
+      run.markModified("segments");
+      await run.save();
+
+      log("idp.segmentation.completed", {
+        jobId: processingRunId,
+        segmentCount: segments.length,
+        segments: segments.map((segment) => ({
+          segmentId: segment.segmentId,
+          startPage: segment.startPage,
+          endPage: segment.endPage,
+          boundaryReason: segment.boundaryReason,
+          anchor: segment.boundarySignals.anchor
+        }))
+      });
     }
 
     const extracted = await stage(

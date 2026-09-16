@@ -46,6 +46,7 @@ export const env = {
   invoiceParserTimeoutMs: num(process.env.INVOICE_PARSER_TIMEOUT_MS, 10 * 60 * 1000),
   ocrIdleTimeoutMs: num(process.env.OCR_IDLE_TIMEOUT_MS, 2 * 60 * 1000),
   ocrTotalTimeoutMs: num(process.env.OCR_TOTAL_TIMEOUT_MS, 15 * 60 * 1000),
+  ocrBatchSize: Math.max(1, Math.floor(num(process.env.OCR_BATCH_SIZE, 10))),
   licenseEnabled: bool(process.env.LICENSE_ENABLED, false),
 
   authJwtSecret: process.env.AUTH_JWT_SECRET ?? "dev-only-change-this-auth-secret-at-least-32-chars",

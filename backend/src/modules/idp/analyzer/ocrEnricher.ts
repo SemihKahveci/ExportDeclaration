@@ -11,6 +11,14 @@ interface OcrPageResult {
 }
 interface OcrOutput { pages: OcrPageResult[]; }
 
+export type OcrCheckpoint = (document: CanonicalDocument, completedPages: number[]) => Promise<void>;
+
+function chunkPages(pageNumbers: number[], size: number): number[][] {
+  const chunks: number[][] = [];
+  for (let i = 0; i < pageNumbers.length; i += size) chunks.push(pageNumbers.slice(i, i + size));
+  return chunks;
+}
+
 function parseJsonOutput(stdout: string, stderr: string): OcrOutput {
   const lines = stdout.trim().split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   let lastError: unknown = null;
@@ -204,39 +212,86 @@ function isDuplicateOcrWord(ocrWord: CanonicalWord, nativeWords: CanonicalWord[]
 
 export async function enrichCanonicalDocumentWithOcr(
   pdfPath: string,
-  document: CanonicalDocument
+  document: CanonicalDocument,
+  checkpoint?: OcrCheckpoint
 ): Promise<CanonicalDocument> {
+  // A persisted checkpoint is authoritative: retries skip pages that already
+  // contain OCR output instead of throwing away completed Paddle work.
   const targetPages = document.pages
-    .filter((page) => page.contentKind === "SCANNED" || page.contentKind === "MIXED")
+    .filter((page) =>
+      (page.contentKind === "SCANNED" || page.contentKind === "MIXED") &&
+      !page.ocrApplied
+    )
     .map((page) => page.pageNumber);
 
-  if (targetPages.length === 0) return document;
-
-  console.log(JSON.stringify({ event: "idp.ocr.started", pages: targetPages }));
-  const scriptPath = path.join(env.invoiceParserDir, "ocr_canonical_pages.py");
-  const result = await runOcr(scriptPath, pdfPath, targetPages);
-  const byPage = new Map(result.pages.map((page) => [page.pageNumber, page]));
-
-  let ocrPageCount = 0;
-  let ocrWordCount = 0;
-  for (const page of document.pages) {
-    const ocr = byPage.get(page.pageNumber);
-    if (!ocr) continue;
-    const nativeWords = page.words.filter((word) => word.source === "NATIVE_TEXT");
-    const acceptedWords = page.contentKind === "MIXED"
-      ? ocr.words.filter((word) => !isDuplicateOcrWord(word, nativeWords))
-      : ocr.words;
-
-    page.ocrApplied = true;
-    page.ocrText = ocr.text;
-    page.ocrWordCount = acceptedWords.length;
-    page.words.push(...acceptedWords);
-    page.lines.push(...ocr.lines);
-    ocrPageCount += 1;
-    ocrWordCount += acceptedWords.length;
+  if (targetPages.length === 0) {
+    console.log(JSON.stringify({ event: "idp.ocr.skipped", reason: "all_target_pages_already_enriched" }));
+    return document;
   }
 
-  document.analysis.ocrPageCount = ocrPageCount;
-  document.analysis.ocrWordCount = ocrWordCount;
+  const batchSize = Math.max(1, env.ocrBatchSize);
+  const batches = chunkPages(targetPages, batchSize);
+  console.log(JSON.stringify({
+    event: "idp.ocr.started",
+    pages: targetPages,
+    batchSize,
+    batchCount: batches.length
+  }));
+
+  const scriptPath = path.join(env.invoiceParserDir, "ocr_canonical_pages.py");
+
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+    const batchPages = batches[batchIndex]!;
+    console.log(JSON.stringify({
+      event: "idp.ocr.batch.started",
+      batchIndex: batchIndex + 1,
+      batchCount: batches.length,
+      pages: batchPages
+    }));
+
+    const result = await runOcr(scriptPath, pdfPath, batchPages);
+    const byPage = new Map(result.pages.map((page) => [page.pageNumber, page]));
+
+    for (const page of document.pages) {
+      const ocr = byPage.get(page.pageNumber);
+      if (!ocr) continue;
+
+      // Defensive idempotency: a page must never receive the same OCR words twice.
+      if (page.ocrApplied) continue;
+
+      const nativeWords = page.words.filter((word) => word.source === "NATIVE_TEXT");
+      const acceptedWords = page.contentKind === "MIXED"
+        ? ocr.words.filter((word) => !isDuplicateOcrWord(word, nativeWords))
+        : ocr.words;
+
+      page.ocrApplied = true;
+      page.ocrText = ocr.text;
+      page.ocrWordCount = acceptedWords.length;
+      page.words.push(...acceptedWords);
+      page.lines.push(...ocr.lines);
+    }
+
+    // Recompute totals from canonical state rather than incrementing counters.
+    // This keeps retry/resume and checkpoint replay idempotent.
+    const enrichedPages = document.pages.filter((page) => page.ocrApplied);
+    document.analysis.ocrPageCount = enrichedPages.length;
+    document.analysis.ocrWordCount = enrichedPages.reduce(
+      (sum, page) => sum + (page.ocrWordCount ?? 0),
+      0
+    );
+
+    if (checkpoint) await checkpoint(document, batchPages);
+
+    console.log(JSON.stringify({
+      event: "idp.ocr.batch.completed",
+      batchIndex: batchIndex + 1,
+      batchCount: batches.length,
+      pages: batchPages,
+      persistedOcrPageCount: document.analysis.ocrPageCount,
+      persistedOcrWordCount: document.analysis.ocrWordCount
+    }));
+  }
+
   return document;
 }
+
