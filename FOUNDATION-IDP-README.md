@@ -167,3 +167,18 @@ Validation is a separate audited stage after candidate resolution and before fin
 - Missing GTIP is deliberately a warning rather than a hard error because invoices may legitimately omit GTIP; later resolve/human-review policy can enrich it.
 - A resolved candidate is never finalized when deterministic validation contains errors.
 - Qwen/LLM is still not part of this stage.
+
+## Foundation 4.1 — LLM Resolve Infrastructure / Qwen Provider (IN PROGRESS)
+
+Qwen is introduced behind an explicit provider and policy boundary; it does not bypass deterministic resolution or validation.
+
+- `LlmProvider` is vendor/runtime independent.
+- `QwenOpenAiProvider` targets an OpenAI-compatible local endpoint, suitable for a LAN-hosted model server such as DGX Spark.
+- LLM runtime is disabled by default (`LLM_ENABLED=false`) and has an explicit timeout.
+- Provider output has a versioned JSON contract and rejects malformed/empty resolved responses.
+- Policy does not call LLM for the deterministic single-candidate happy path.
+- No usable invoice candidate is not sent to the LLM because there is no grounded candidate data to resolve.
+- Multiple extracted invoice candidates are the first allowed LLM-resolution case, but worker invocation is intentionally not enabled until provider connectivity and response-contract regression pass.
+- Any future LLM-resolved data must still pass the existing deterministic `VALIDATE` stage before finalization.
+- Provider regression covers disabled-before-HTTP, valid OpenAI-compatible JSON, malformed model content, HTTP 500, and timeout; all failure cases are fail-closed.
+- Foundation 4.1 is complete once `verifyLlmResolveInfrastructure.ts`, `verifyQwenProvider.ts`, full Docker build, and production Compose config checks pass.

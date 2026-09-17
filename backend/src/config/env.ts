@@ -62,6 +62,13 @@ export const env = {
   idpJobAttempts: num(process.env.IDP_JOB_ATTEMPTS, 3),
   idpJobBackoffMs: num(process.env.IDP_JOB_BACKOFF_MS, 5000),
   idpProcessorVersion: process.env.IDP_PROCESSOR_VERSION ?? "foundation-1",
+
+  // LLM resolve provider. Disabled by default; runtime must opt in explicitly.
+  llmEnabled: bool(process.env.LLM_ENABLED, false),
+  llmBaseUrl: process.env.LLM_BASE_URL ?? "",
+  llmApiKey: process.env.LLM_API_KEY ?? "",
+  llmModel: process.env.LLM_MODEL ?? "Qwen3",
+  llmTimeoutMs: num(process.env.LLM_TIMEOUT_MS, 120000),
   
   superAdminResetPassword: bool(process.env.SUPERADMIN_RESET_PASSWORD, false),
   

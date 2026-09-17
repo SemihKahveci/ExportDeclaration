@@ -24,6 +24,21 @@ services:
     networks:
       - export_network
 
+  redis:
+    image: redis:7-alpine
+    container_name: export-declaration-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - export_network
+
   backend:
     image: export-declaration-backend:${APP_VERSION}
     container_name: export-declaration-backend
@@ -34,6 +49,7 @@ services:
       PORT: 3000
 
       MONGODB_URI: mongodb://mongo:27017/export_declaration
+      REDIS_URL: redis://redis:6379
 
       UPLOAD_DIR: /app/uploads
       JSON_BODY_LIMIT: 20mb
@@ -74,7 +90,47 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
+    networks:
+      - export_network
+
+  idp-worker:
+    image: export-declaration-backend:${APP_VERSION}
+    container_name: export-declaration-idp-worker
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/export_declaration
+      REDIS_URL: redis://redis:6379
+      UPLOAD_DIR: /app/uploads
+      IDP_WORKER_CONCURRENCY: ${IDP_WORKER_CONCURRENCY:-2}
+      IDP_JOB_ATTEMPTS: ${IDP_JOB_ATTEMPTS:-3}
+      IDP_JOB_BACKOFF_MS: ${IDP_JOB_BACKOFF_MS:-5000}
+      IDP_PROCESSOR_VERSION: ${IDP_PROCESSOR_VERSION:-foundation-4.1}
+      INVOICE_PARSER_ENABLED: "true"
+      INVOICE_PARSER_PYTHON: /opt/venv/bin/python
+      INVOICE_PARSER_DIR: /app/backend/scripts/invoice_parser
+      INVOICE_PARSER_TIMEOUT_MS: ${INVOICE_PARSER_TIMEOUT_MS:-600000}
+      OCR_IDLE_TIMEOUT_MS: ${OCR_IDLE_TIMEOUT_MS:-120000}
+      OCR_TOTAL_TIMEOUT_MS: ${OCR_TOTAL_TIMEOUT_MS:-900000}
+      OCR_BATCH_SIZE: ${OCR_BATCH_SIZE:-10}
+      OCR_CPU_THREADS: ${OCR_CPU_THREADS:-2}
+      OCR_MAX_RENDER_DIMENSION: ${OCR_MAX_RENDER_DIMENSION:-2400}
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-Qwen3}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-120000}
+    volumes:
+      - ./data/uploads:/app/uploads
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - export_network
 
@@ -94,6 +150,7 @@ services:
 
 volumes:
   mongo_data:
+  redis_data:
 
 networks:
   export_network:
