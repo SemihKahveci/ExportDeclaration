@@ -15,7 +15,10 @@ export type CandidateResolutionIssueCode =
   | "LLM_RESOLUTION_FAILED"
   | "LLM_INVALID_SOURCE_SEGMENT"
   | "LLM_REVIEW_REQUIRED"
-  | "FIELD_CANDIDATE_AMBIGUITY";
+  | "FIELD_CANDIDATE_AMBIGUITY"
+  | "FIELD_LLM_REVIEW_REQUIRED"
+  | "FIELD_LLM_INVALID_SELECTION"
+  | "FIELD_LLM_RESOLUTION_FAILED";
 
 export interface CandidateResolutionIssue {
   code: CandidateResolutionIssueCode;

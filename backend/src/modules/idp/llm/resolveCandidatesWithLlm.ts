@@ -7,9 +7,8 @@ import {
   CandidateResolutionStatus,
   type CandidateResolutionEnvelope
 } from "../domain/candidateResolution.types.js";
-import {
-  FieldResolutionStatus
-} from "../domain/fieldCandidate.types.js";
+import { FieldResolutionStatus } from "../domain/fieldCandidate.types.js";
+import type { FieldLlmProvider } from "../domain/fieldLlmResolve.types.js";
 import {
   LlmResolveDecision,
   type LlmProvider
@@ -21,6 +20,7 @@ import {
   resolveFieldCandidates
 } from "../resolver/fieldCandidateResolver.js";
 import { createLlmProvider } from "./llmProviderFactory.js";
+import { resolveFieldCandidatesWithLlm } from "./resolveFieldCandidatesWithLlm.js";
 import {
   decideLlmResolvePolicy,
   LlmResolvePolicyDecision
@@ -29,6 +29,7 @@ import {
 export interface ResolveCandidatesWithLlmOptions {
   llmEnabled?: boolean;
   provider?: LlmProvider;
+  fieldProvider?: FieldLlmProvider;
 }
 
 function extractedInvoiceSegmentIds(envelope: CandidateExtractionEnvelope): Set<string> {
@@ -44,22 +45,39 @@ function extractedInvoiceSegmentIds(envelope: CandidateExtractionEnvelope): Set<
   );
 }
 
-function resolveFieldsOrRequireReview(
-  resolution: CandidateResolutionEnvelope
-): CandidateResolutionEnvelope {
+async function resolveFieldsOrRequireReview(
+  resolution: CandidateResolutionEnvelope,
+  options: ResolveCandidatesWithLlmOptions
+): Promise<CandidateResolutionEnvelope> {
   if (resolution.status !== CandidateResolutionStatus.RESOLVED || !resolution.data) return resolution;
 
   const candidates = getFieldCandidateEnvelope(resolution.data);
-  if (!candidates) return resolution; // Backward-compatible candidates/tests without field evidence.
+  if (!candidates) return resolution;
 
-  const fieldResolution = resolveFieldCandidates(candidates);
+  const outcome = await resolveFieldCandidatesWithLlm(candidates, {
+    llmEnabled: options.llmEnabled,
+    provider: options.fieldProvider
+  });
+  const fieldResolution = outcome.resolution;
+
   if (fieldResolution.status === FieldResolutionStatus.RESOLVED) {
-    return { ...resolution, fieldResolution };
+    const data = structuredClone(resolution.data);
+    for (const field of Object.values(fieldResolution.fields)) {
+      if (field.status !== FieldResolutionStatus.RESOLVED || field.value === undefined) continue;
+      setPathValue(data, field.field, field.value);
+    }
+    return {
+      ...resolution,
+      data,
+      fieldResolution,
+      ...(outcome.provider && outcome.model ? { llmAudit: { provider: outcome.provider, model: outcome.model } } : {})
+    };
   }
 
   const ambiguousFields = Object.values(fieldResolution.fields)
     .filter((field) => field.status === FieldResolutionStatus.AMBIGUOUS)
     .map((field) => field.field);
+  const issueCode = outcome.issue?.code ?? "FIELD_CANDIDATE_AMBIGUITY";
 
   return {
     version: "1",
@@ -68,13 +86,25 @@ function resolveFieldsOrRequireReview(
     strategy: "MANUAL_REVIEW",
     sourceSegmentIds: resolution.sourceSegmentIds,
     issues: [{
-      code: "FIELD_CANDIDATE_AMBIGUITY",
-      message: `Çelişen field candidate değerleri bulundu: ${ambiguousFields.join(", ")}`,
+      code: issueCode,
+      message: outcome.issue?.message ?? `Çelişen field candidate değerleri bulundu: ${ambiguousFields.join(", ")}`,
       segmentIds: resolution.sourceSegmentIds
     }],
     fieldResolution,
-    ...(resolution.llmAudit ? { llmAudit: resolution.llmAudit } : {})
+    ...(outcome.provider && outcome.model ? { llmAudit: { provider: outcome.provider, model: outcome.model } } : resolution.llmAudit ? { llmAudit: resolution.llmAudit } : {})
   };
+}
+
+function setPathValue(target: Record<string, unknown>, path: string, value: unknown): void {
+  const parts = path.split(".");
+  let cursor: any = target;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    const part = parts[i]!;
+    const next = parts[i + 1]!;
+    if (cursor[part] == null) cursor[part] = /^\d+$/.test(next) ? [] : {};
+    cursor = cursor[part];
+  }
+  cursor[parts[parts.length - 1]!] = value;
 }
 
 /**
@@ -90,7 +120,7 @@ export async function resolveCandidatesWithLlm(
   const policy = decideLlmResolvePolicy(envelope);
 
   if (policy !== LlmResolvePolicyDecision.ALLOW_AMBIGUOUS_CANDIDATES) {
-    return resolveFieldsOrRequireReview(deterministic);
+    return resolveFieldsOrRequireReview(deterministic, options);
   }
 
   const llmEnabled = options.llmEnabled ?? env.llmEnabled;
@@ -155,7 +185,7 @@ export async function resolveCandidatesWithLlm(
       data: response.data,
       issues: [],
       llmAudit: { provider: response.provider, model: response.model }
-    });
+    }, options);
   } catch (error) {
     return {
       version: "1",

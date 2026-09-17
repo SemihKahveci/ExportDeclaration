@@ -223,7 +223,7 @@ Regression utility: `backend/scripts/idp/verifyFieldCandidateEvidence.ts`.
 Real 0146 regression: 56 goods lines, 392 field candidate paths, persisted page/bbox/text provenance, VALID/COMPLETED.
 
 
-## Foundation 4.4 — Deterministic Field Candidate Resolution (IN PROGRESS)
+## Foundation 4.4 — Deterministic Field Candidate Resolution (COMPLETED)
 
 Field candidates now participate in RESOLVE rather than being audit-only metadata.
 
@@ -234,9 +234,25 @@ Rules:
 - Any field ambiguity makes the document resolution `REVIEW_REQUIRED / FIELD_CANDIDATE_AMBIGUITY`.
 - Documents/tests without a `fieldCandidates` envelope remain backward compatible.
 - Candidate values use the already-normalized extraction value while evidence continues to come from the raw extractor box/page. This prevents a later resolver from replacing numeric normalized values with locale-formatted raw strings.
-- Foundation 4.4 is deterministic only. Qwen field selection will be added behind a candidate-ID-only contract after this guard is proven; it will not be allowed to invent field values.
+- Foundation 4.4 is deterministic only; ambiguous fields fail closed and are never promoted.
 
 Regression utilities:
 - `backend/scripts/idp/verifyFieldCandidateResolution.ts`
 - `backend/scripts/idp/verifyFieldResolutionOrchestration.ts`
 - `backend/scripts/idp/verifyFieldCandidateEvidence.ts`
+
+
+## Foundation 4.5 — Evidence-Constrained LLM Field Resolution (IN PROGRESS)
+
+Field ambiguity can now be escalated to the existing OpenAI-compatible Qwen boundary without allowing free-form value generation.
+
+Rules:
+- `SINGLE_VALUE` and `CONSENSUS` remain deterministic and never call Qwen.
+- Only `AMBIGUOUS` field candidates are sent to the field LLM contract.
+- The model may select only an existing `candidateId` for the exact field, or return `REVIEW_REQUIRED`.
+- Hallucinated IDs, duplicate/extra fields, missing selections, malformed responses, provider failures and timeouts fail closed to `REVIEW_REQUIRED`.
+- Selected values are copied from the trusted candidate object; model-generated replacement values are not accepted.
+- LLM-resolved values are applied to a cloned resolved data object and still pass through deterministic `VALIDATE`.
+- Provider/model audit is persisted through the existing `llmAudit` contract.
+
+Regression utility: `backend/scripts/idp/verifyFieldLlmResolverIntegration.ts`.

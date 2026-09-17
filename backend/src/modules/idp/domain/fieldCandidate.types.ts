@@ -33,13 +33,14 @@ export const FieldResolutionStatus = {
 export const FieldResolutionMethod = {
   SINGLE_VALUE: "SINGLE_VALUE",
   CONSENSUS: "CONSENSUS",
-  AMBIGUOUS: "AMBIGUOUS"
+  AMBIGUOUS: "AMBIGUOUS",
+  LLM: "LLM"
 } as const;
 
 export interface ResolvedFieldCandidate {
   field: string;
   status: "RESOLVED" | "AMBIGUOUS";
-  method: "SINGLE_VALUE" | "CONSENSUS" | "AMBIGUOUS";
+  method: "SINGLE_VALUE" | "CONSENSUS" | "AMBIGUOUS" | "LLM";
   candidateIds: string[];
   selectedCandidateId?: string;
   value?: unknown;
