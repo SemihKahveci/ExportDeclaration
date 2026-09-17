@@ -11,7 +11,7 @@ import type { SegmentClassification } from "../domain/segmentClassification.type
 import { classifyDocumentSegments } from "../classifier/segmentClassifier.js";
 import { DocumentType } from "../../../common/enums/documentType.js";
 import { extractCandidatesBySegment } from "../candidates/candidateExtractorRegistry.js";
-import { resolveCandidates } from "../resolver/candidateResolver.js";
+import { resolveCandidatesWithLlm } from "../llm/resolveCandidatesWithLlm.js";
 import { CandidateResolutionStatus } from "../domain/candidateResolution.types.js";
 import { validateResolvedCandidate } from "../validator/documentValidatorRegistry.js";
 import { ValidationStatus } from "../domain/validation.types.js";
@@ -195,7 +195,7 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       const resolution = await stage(
         "RESOLVE",
         ProcessingStage.RESOLVE,
-        async () => resolveCandidates(candidateEnvelope)
+        async () => resolveCandidatesWithLlm(candidateEnvelope)
       );
 
       run.resolvedResult = resolution;
@@ -208,7 +208,8 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
         strategy: resolution.strategy,
         documentType: resolution.documentType,
         sourceSegmentIds: resolution.sourceSegmentIds,
-        issues: resolution.issues.map((issue) => issue.code)
+        issues: resolution.issues.map((issue) => issue.code),
+        llmAudit: resolution.llmAudit
       });
 
       if (resolution.status !== CandidateResolutionStatus.RESOLVED || !resolution.data) {

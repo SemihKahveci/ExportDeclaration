@@ -10,6 +10,7 @@ import {
   type SegmentCandidateResult
 } from "../domain/candidateExtraction.types.js";
 import { projectCanonicalDocumentToSegments } from "../projector/canonicalSegmentProjector.js";
+import { buildInvoiceFieldCandidates } from "./invoiceFieldCandidateEnricher.js";
 
 type ExtractorContext = {
   file: DocumentDoc;
@@ -39,7 +40,14 @@ const registry = new Map<string, RegisteredExtractor>([
           throw new Error(`INVOICE segment projection failed: ${segment.segmentId}`);
         }
         const extracted = await extractFromUploaded(file, { canonicalDocument: projected });
-        return extracted.data;
+        return {
+          ...extracted.data,
+          fieldCandidates: buildInvoiceFieldCandidates(
+            extracted.data,
+            projected,
+            segment.segmentId
+          )
+        };
       }
     }
   ]

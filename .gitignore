@@ -22,5 +22,5 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
-# Local diagnostic artifacts
+# IDP diagnostic outputs
 segment-fingerprints.txt

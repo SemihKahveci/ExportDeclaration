@@ -168,7 +168,7 @@ Validation is a separate audited stage after candidate resolution and before fin
 - A resolved candidate is never finalized when deterministic validation contains errors.
 - Qwen/LLM is still not part of this stage.
 
-## Foundation 4.1 — LLM Resolve Infrastructure / Qwen Provider (IN PROGRESS)
+## Foundation 4.1 — LLM Resolve Infrastructure / Qwen Provider (COMPLETED)
 
 Qwen is introduced behind an explicit provider and policy boundary; it does not bypass deterministic resolution or validation.
 
@@ -181,4 +181,41 @@ Qwen is introduced behind an explicit provider and policy boundary; it does not 
 - Multiple extracted invoice candidates are the first allowed LLM-resolution case, but worker invocation is intentionally not enabled until provider connectivity and response-contract regression pass.
 - Any future LLM-resolved data must still pass the existing deterministic `VALIDATE` stage before finalization.
 - Provider regression covers disabled-before-HTTP, valid OpenAI-compatible JSON, malformed model content, HTTP 500, and timeout; all failure cases are fail-closed.
-- Foundation 4.1 is complete once `verifyLlmResolveInfrastructure.ts`, `verifyQwenProvider.ts`, full Docker build, and production Compose config checks pass.
+- Regression gates passed: `verifyLlmResolveInfrastructure.ts`, `verifyQwenProvider.ts`, full Docker build, and production/release Compose config checks.
+
+
+## Foundation 4.2 — LLM Resolver Integration (COMPLETED)
+
+The worker RESOLVE stage now uses an orchestration boundary rather than calling the deterministic resolver directly.
+
+Rules:
+- 0 extracted invoice candidates -> deterministic `REVIEW_REQUIRED`; LLM is never called.
+- 1 extracted invoice candidate -> deterministic `SINGLE_CANDIDATE`; LLM is never called.
+- 2+ extracted invoice candidates + `LLM_ENABLED=false` -> deterministic `REVIEW_REQUIRED`.
+- 2+ extracted invoice candidates + `LLM_ENABLED=true` -> provider may resolve the ambiguity.
+- LLM may reference only extracted invoice segment IDs that were supplied in the request.
+- Hallucinated/unknown segment IDs are rejected and never promoted to resolved data.
+- Provider timeout/HTTP/parse/runtime failures are fail-closed as `REVIEW_REQUIRED`; they do not fail the IDP job.
+- An LLM `REVIEW_REQUIRED` response remains review-required.
+- Successful LLM resolution is audited with `strategy=LLM`, provider, model, and source segment IDs.
+- Every successful LLM result still passes the existing deterministic VALIDATE stage before FINALIZE.
+
+Regression utility: `backend/scripts/idp/verifyLlmResolverIntegration.ts`.
+
+
+## Foundation 4.3 — Field Candidate & Evidence Contract (IN PROGRESS)
+
+Invoice extraction now preserves the existing resolved `goodsLines` shape while adding a backward-compatible `fieldCandidates` envelope.
+
+Design:
+- Candidate/evidence types are generic IDP domain types, not invoice-only types.
+- Provenance is derived from the extractor's real `boxes` and `source.page`; TypeScript does not invent coordinates.
+- Legacy extractor boxes are converted back to canonical normalized 0..1 coordinates.
+- Evidence records segment ID, original page number, normalized bbox, matching canonical text when available, and `NATIVE_TEXT`/`OCR` source.
+- Description is currently page/segment-provenanced without a fabricated bbox because the legacy extractor derives it from a row window.
+- Unit is explicitly marked `DERIVED` until the extractor exposes a dedicated source box.
+- Existing resolved data and FINALIZE compatibility remain unchanged.
+
+This is the bridge for field-level deterministic/LLM resolution. Foundation 4.4 will add ambiguity construction/resolution rules over these candidates rather than allowing an LLM to invent arbitrary field values.
+
+Regression utility: `backend/scripts/idp/verifyFieldCandidateEvidence.ts`.
