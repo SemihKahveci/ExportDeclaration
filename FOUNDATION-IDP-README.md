@@ -242,7 +242,7 @@ Regression utilities:
 - `backend/scripts/idp/verifyFieldCandidateEvidence.ts`
 
 
-## Foundation 4.5 — Evidence-Constrained LLM Field Resolution (IN PROGRESS)
+## Foundation 4.5 — Evidence-Constrained LLM Field Resolution (COMPLETED)
 
 Field ambiguity can now be escalated to the existing OpenAI-compatible Qwen boundary without allowing free-form value generation.
 
@@ -256,3 +256,43 @@ Rules:
 - Provider/model audit is persisted through the existing `llmAudit` contract.
 
 Regression utility: `backend/scripts/idp/verifyFieldLlmResolverIntegration.ts`.
+
+
+## Foundation 4.6 — Generic Invoice Candidate Discovery (IN PROGRESS)
+
+The next extraction layer starts moving candidate discovery away from supplier/header-specific rules and onto canonical layout/evidence.
+
+V1 rules:
+- Discovery consumes only `CanonicalDocument`; it does not call the legacy Python invoice parser.
+- A 12-digit HS/GTIP-shaped value can anchor a goods row even when its physical column has no header.
+- Row membership comes from normalized canonical geometry rather than fixed pixel coordinates.
+- Quantity / unit-price / line-total candidates require a deterministic arithmetic relationship (`quantity * unitPrice ~= lineTotal`) before they are emitted.
+- Every discovered value carries page, normalized bbox, evidence text and NATIVE/OCR provenance.
+- Generic candidates are initially verified independently before promotion into the production resolver. This is a deliberate migration gate: the legacy extractor remains the production source until real-invoice regressions prove generic discovery has adequate recall and no unsafe conflicts.
+- No supplier name, invoice number, fixture-specific x coordinate or header label is encoded in the generic discovery implementation.
+
+Regression utility: `backend/scripts/idp/verifyGenericInvoiceCandidateDiscovery.ts`. The synthetic fixture deliberately contains five headers and eight logical data columns; GTIP, unit price and line total are in headerless columns.
+
+### Foundation 4.6 real-canonical comparison gate
+
+Before generic invoice discovery is promoted into the production candidate registry, compare it against persisted production results using the exact same CanonicalDocument. This avoids re-running PDF analysis/OCR and measures recall/exactness independently of the legacy parser. The comparison utility is diagnostic by design: it reports coverage, exact numeric matches, unmatched generic rows, and NATIVE_TEXT/OCR provenance; it does not silently promote generic candidates or mutate ProcessingRun data.
+
+Utility: `backend/scripts/idp/compareGenericInvoiceDiscovery.ts <processingRunId> [processingRunId...]`.
+
+### Foundation 4.6 — Generic candidate discovery hardening
+
+Generic invoice discovery now rejects date/time values that collapse to 12 digits and reconstructs visual rows from normalized CanonicalDocument geometry with separate OCR/native tolerances. Numeric relationship discovery is direction-agnostic relative to GTIP: quantity, unit price and line total are selected from row candidates by deterministic `quantity × unitPrice ≈ lineTotal` evidence rather than fixed header or left/right column assumptions. Raw CanonicalDocument provenance remains attached to every emitted candidate. Generic discovery remains a comparison/migration path and is not yet promoted over the production invoice extractor.
+
+### Foundation 4.6 hardening v3 — OCR row partitioning
+
+Generic invoice discovery now reconstructs goods rows from neighbouring HS-code anchors. The vertical midpoint between consecutive HS anchors is used as the row boundary, with an adaptive word-height fallback for edge/single rows. This avoids supplier-specific coordinates and fixes OCR baseline drift where quantity, unit price and line total are visually in the same goods row but their OCR boxes do not share a narrow y band. Date/time false-positive suppression from v2 remains in place. A synthetic OCR regression intentionally offsets numeric baselines and verifies two independent arithmetic rows.
+
+### Foundation 4.6 hardening v4 — mixed numeric tokens and duplicate-GTIP-safe comparison
+
+Generic invoice discovery now extracts locale-aware numeric fragments from mixed canonical words such as `78,75 EUR` and `%0,00 EUR1.138,00 EUR`. Arithmetic resolution remains evidence-constrained: quantity, unit price and line total are selected only when the row provides a valid `quantity × unitPrice ≈ lineTotal` relation. The original canonical word/bbox remains the provenance source.
+
+Real-comparison matching is document-order/occurrence based for repeated GTIPs. The same GTIP may legitimately appear on multiple goods lines with different quantity/price/amount values, so comparison must not reuse the first GTIP occurrence or select a row by numeric similarity.
+
+### Foundation 4.6 hardening v5 — source numeric precision
+
+Numeric fragment discovery preserves the complete source token precision before arithmetic validation. A value such as `39,0425` is normalized to `39.0425`; it must not be truncated to `39.042` merely because both values can satisfy a currency-rounded line total. Arithmetic is a validation signal, not a replacement for a stronger directly observed candidate. A regression fixture covers `5 × 39,0425 ≈ 195,21` and asserts that the selected unit-price candidate remains `39.0425` with the original `39,0425` evidence text.
