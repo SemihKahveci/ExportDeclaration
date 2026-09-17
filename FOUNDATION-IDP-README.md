@@ -155,3 +155,15 @@ docker compose -f compose.dev.yaml build
 ```
 
 DB volume'larını gereksiz yere silmeyin; `docker compose down -v` normal geliştirme/rebuild komutu değildir.
+
+## Foundation 3.5 — Deterministic Validation (COMPLETED)
+
+Validation is a separate audited stage after candidate resolution and before finalization.
+
+- `ProcessingRun.validationResult` stores a versioned validation envelope.
+- Validation is document-type registered; the first validator is `invoice-deterministic-v1`.
+- `ERROR` issues produce `REVIEW_REQUIRED`; `WARNING` issues are retained for audit but do not block finalization.
+- Invoice structural checks cover goods-line presence, positive/unique line numbers, 12-digit GTIP format when GTIP is present, positive quantity/unit price/line total, and soft warnings for missing GTIP, description, unit, currency, or extractor `needsReview` flags.
+- Missing GTIP is deliberately a warning rather than a hard error because invoices may legitimately omit GTIP; later resolve/human-review policy can enrich it.
+- A resolved candidate is never finalized when deterministic validation contains errors.
+- Qwen/LLM is still not part of this stage.

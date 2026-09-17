@@ -13,6 +13,8 @@ import { DocumentType } from "../../../common/enums/documentType.js";
 import { extractCandidatesBySegment } from "../candidates/candidateExtractorRegistry.js";
 import { resolveCandidates } from "../resolver/candidateResolver.js";
 import { CandidateResolutionStatus } from "../domain/candidateResolution.types.js";
+import { validateResolvedCandidate } from "../validator/documentValidatorRegistry.js";
+import { ValidationStatus } from "../domain/validation.types.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -226,6 +228,37 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
             segmentIds: issue.segmentIds
           }))
         });
+        return;
+      }
+
+      const validation = await stage(
+        "VALIDATE",
+        ProcessingStage.VALIDATE,
+        async () => validateResolvedCandidate(resolution)
+      );
+
+      run.validationResult = validation;
+      run.markModified("validationResult");
+      await run.save();
+
+      log("idp.validation.completed", {
+        jobId: processingRunId,
+        status: validation.status,
+        validator: validation.validator,
+        errorCount: validation.summary.errorCount,
+        warningCount: validation.summary.warningCount,
+        issues: validation.issues.map((issue) => ({ code: issue.code, severity: issue.severity, path: issue.path, lineNo: issue.lineNo }))
+      });
+
+      if (validation.status !== ValidationStatus.VALID) {
+        run.status = ProcessingStatus.REVIEW_REQUIRED;
+        run.currentStage = ProcessingStage.VALIDATE;
+        run.completedAt = new Date();
+        await run.save();
+        file.extractionStatus = "MANUAL_REQUIRED";
+        file.parseErrors = validation.issues.filter((issue) => issue.severity === "ERROR").map((issue) => issue.message);
+        await file.save();
+        log("idp.validation.review_required", { jobId: processingRunId, issues: validation.issues.map((issue) => issue.code) });
         return;
       }
 
