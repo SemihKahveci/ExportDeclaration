@@ -7,6 +7,16 @@ import type {
 
 const EXTRACTOR = "invoice-canonical-v1";
 
+type NormalizedGoodsLine = {
+  hsCode?: unknown;
+  productCode?: unknown;
+  description?: unknown;
+  quantity?: unknown;
+  unit?: unknown;
+  unitPrice?: unknown;
+  lineTotal?: unknown;
+};
+
 type RawInvoiceItem = {
   lineNo?: number;
   productCode?: string | null;
@@ -92,6 +102,10 @@ function add<T>(
   (fields[field] ??= []).push(candidate as FieldCandidate);
 }
 
+function normalizedGoodsLinesFromData(data: Record<string, unknown>): NormalizedGoodsLine[] {
+  return Array.isArray(data.goodsLines) ? data.goodsLines as NormalizedGoodsLine[] : [];
+}
+
 function rawItemsFromData(data: Record<string, unknown>): RawInvoiceItem[] {
   const meta = data.extractMeta;
   if (!meta || typeof meta !== "object") return [];
@@ -107,7 +121,10 @@ export function buildInvoiceFieldCandidates(
   const fields: Record<string, FieldCandidate[]> = {};
   const pages = new Map(canonicalDocument.pages.map((page) => [page.pageNumber, page]));
 
+  const normalizedLines = normalizedGoodsLinesFromData(data);
+
   rawItemsFromData(data).forEach((item, index) => {
+    const normalized = normalizedLines[index] ?? {};
     const lineNo = item.lineNo ?? index + 1;
     const pageNumber =
       asFiniteNumber(item.source?.page) ??
@@ -119,11 +136,11 @@ export function buildInvoiceFieldCandidates(
 
     const boxes = item.boxes ?? {};
     const fieldSpecs: Array<[string, unknown, unknown, number]> = [
-      [`goodsLines.${index}.hsCode`, item.gtip, boxes.gtip, 0.99],
-      [`goodsLines.${index}.productCode`, item.productCode, boxes.productCode, 0.95],
-      [`goodsLines.${index}.quantity`, item.quantity, boxes.quantity, 0.95],
-      [`goodsLines.${index}.unitPrice`, item.unitPrice, boxes.unitPrice, 0.95],
-      [`goodsLines.${index}.lineTotal`, item.amount, boxes.amount, 0.95]
+      [`goodsLines.${index}.hsCode`, normalized.hsCode, boxes.gtip, 0.99],
+      [`goodsLines.${index}.productCode`, normalized.productCode, boxes.productCode, 0.95],
+      [`goodsLines.${index}.quantity`, normalized.quantity, boxes.quantity, 0.95],
+      [`goodsLines.${index}.unitPrice`, normalized.unitPrice, boxes.unitPrice, 0.95],
+      [`goodsLines.${index}.lineTotal`, normalized.lineTotal, boxes.amount, 0.95]
     ];
 
     for (const [field, value, rawBox, confidence] of fieldSpecs) {
@@ -149,11 +166,11 @@ export function buildInvoiceFieldCandidates(
     add(
       fields,
       `goodsLines.${index}.description`,
-      item.description,
+      normalized.description,
       {
         segmentId,
         pageNumber,
-        text: item.description ?? undefined,
+        text: typeof item.description === "string" ? item.description : undefined,
         contentSource: sourceForPage(page)
       },
       `${segmentId}:line-${lineNo}:description`,
@@ -165,7 +182,7 @@ export function buildInvoiceFieldCandidates(
     add(
       fields,
       `goodsLines.${index}.unit`,
-      item.unit,
+      normalized.unit,
       {
         segmentId,
         pageNumber,

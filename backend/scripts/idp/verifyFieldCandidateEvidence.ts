@@ -89,7 +89,7 @@ assert.equal(hs?.evidence[0]?.contentSource, "NATIVE_TEXT");
 assert.ok(Math.abs((hs?.evidence[0]?.bbox?.x0 ?? 0) - 0.10) < 0.000001);
 assert.equal(hs?.evidence[0]?.text, "850440959019");
 
-assert.equal(amount?.value, "20,00");
+assert.equal(amount?.value, 20);
 assert.equal(amount?.evidence[0]?.text, "20,00");
 assert.equal(description?.evidence[0]?.bbox, undefined);
 assert.equal(unit?.derived, true);

@@ -8,11 +8,18 @@ import {
   type CandidateResolutionEnvelope
 } from "../domain/candidateResolution.types.js";
 import {
+  FieldResolutionStatus
+} from "../domain/fieldCandidate.types.js";
+import {
   LlmResolveDecision,
   type LlmProvider
 } from "../domain/llmResolve.types.js";
 import { ClassifiedDocumentType } from "../domain/segmentClassification.types.js";
 import { resolveCandidates } from "../resolver/candidateResolver.js";
+import {
+  getFieldCandidateEnvelope,
+  resolveFieldCandidates
+} from "../resolver/fieldCandidateResolver.js";
 import { createLlmProvider } from "./llmProviderFactory.js";
 import {
   decideLlmResolvePolicy,
@@ -37,12 +44,43 @@ function extractedInvoiceSegmentIds(envelope: CandidateExtractionEnvelope): Set<
   );
 }
 
+function resolveFieldsOrRequireReview(
+  resolution: CandidateResolutionEnvelope
+): CandidateResolutionEnvelope {
+  if (resolution.status !== CandidateResolutionStatus.RESOLVED || !resolution.data) return resolution;
+
+  const candidates = getFieldCandidateEnvelope(resolution.data);
+  if (!candidates) return resolution; // Backward-compatible candidates/tests without field evidence.
+
+  const fieldResolution = resolveFieldCandidates(candidates);
+  if (fieldResolution.status === FieldResolutionStatus.RESOLVED) {
+    return { ...resolution, fieldResolution };
+  }
+
+  const ambiguousFields = Object.values(fieldResolution.fields)
+    .filter((field) => field.status === FieldResolutionStatus.AMBIGUOUS)
+    .map((field) => field.field);
+
+  return {
+    version: "1",
+    status: CandidateResolutionStatus.REVIEW_REQUIRED,
+    documentType: resolution.documentType,
+    strategy: "MANUAL_REVIEW",
+    sourceSegmentIds: resolution.sourceSegmentIds,
+    issues: [{
+      code: "FIELD_CANDIDATE_AMBIGUITY",
+      message: `Çelişen field candidate değerleri bulundu: ${ambiguousFields.join(", ")}`,
+      segmentIds: resolution.sourceSegmentIds
+    }],
+    fieldResolution,
+    ...(resolution.llmAudit ? { llmAudit: resolution.llmAudit } : {})
+  };
+}
+
 /**
- * Resolution orchestration boundary.
- *
- * Deterministic resolution always runs first. LLM is only eligible for the
- * explicitly allowed ambiguous-candidate case. Provider failures never crash
- * the worker: ambiguity remains REVIEW_REQUIRED and is audited.
+ * Segment-level resolution orchestration plus deterministic field-level guard.
+ * Field ambiguity is fail-closed in Foundation 4.4. A later LLM field resolver
+ * may select candidate IDs, but it must never invent a value outside this set.
  */
 export async function resolveCandidatesWithLlm(
   envelope: CandidateExtractionEnvelope,
@@ -52,7 +90,7 @@ export async function resolveCandidatesWithLlm(
   const policy = decideLlmResolvePolicy(envelope);
 
   if (policy !== LlmResolvePolicyDecision.ALLOW_AMBIGUOUS_CANDIDATES) {
-    return deterministic;
+    return resolveFieldsOrRequireReview(deterministic);
   }
 
   const llmEnabled = options.llmEnabled ?? env.llmEnabled;
@@ -108,7 +146,7 @@ export async function resolveCandidatesWithLlm(
       throw new Error("LLM RESOLVED sonucu data ve sourceSegmentIds içermeli.");
     }
 
-    return {
+    return resolveFieldsOrRequireReview({
       version: "1",
       status: CandidateResolutionStatus.RESOLVED,
       documentType: ClassifiedDocumentType.INVOICE,
@@ -117,7 +155,7 @@ export async function resolveCandidatesWithLlm(
       data: response.data,
       issues: [],
       llmAudit: { provider: response.provider, model: response.model }
-    };
+    });
   } catch (error) {
     return {
       version: "1",

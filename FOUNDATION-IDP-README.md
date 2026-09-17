@@ -203,7 +203,7 @@ Rules:
 Regression utility: `backend/scripts/idp/verifyLlmResolverIntegration.ts`.
 
 
-## Foundation 4.3 — Field Candidate & Evidence Contract (IN PROGRESS)
+## Foundation 4.3 — Field Candidate & Evidence Contract (COMPLETED)
 
 Invoice extraction now preserves the existing resolved `goodsLines` shape while adding a backward-compatible `fieldCandidates` envelope.
 
@@ -219,3 +219,24 @@ Design:
 This is the bridge for field-level deterministic/LLM resolution. Foundation 4.4 will add ambiguity construction/resolution rules over these candidates rather than allowing an LLM to invent arbitrary field values.
 
 Regression utility: `backend/scripts/idp/verifyFieldCandidateEvidence.ts`.
+
+Real 0146 regression: 56 goods lines, 392 field candidate paths, persisted page/bbox/text provenance, VALID/COMPLETED.
+
+
+## Foundation 4.4 — Deterministic Field Candidate Resolution (IN PROGRESS)
+
+Field candidates now participate in RESOLVE rather than being audit-only metadata.
+
+Rules:
+- One distinct value -> `SINGLE_VALUE`.
+- Multiple candidates supporting the same normalized value -> `CONSENSUS`; highest-confidence candidate is retained as selected provenance.
+- Multiple distinct values -> `AMBIGUOUS`; no value is selected or promoted.
+- Any field ambiguity makes the document resolution `REVIEW_REQUIRED / FIELD_CANDIDATE_AMBIGUITY`.
+- Documents/tests without a `fieldCandidates` envelope remain backward compatible.
+- Candidate values use the already-normalized extraction value while evidence continues to come from the raw extractor box/page. This prevents a later resolver from replacing numeric normalized values with locale-formatted raw strings.
+- Foundation 4.4 is deterministic only. Qwen field selection will be added behind a candidate-ID-only contract after this guard is proven; it will not be allowed to invent field values.
+
+Regression utilities:
+- `backend/scripts/idp/verifyFieldCandidateResolution.ts`
+- `backend/scripts/idp/verifyFieldResolutionOrchestration.ts`
+- `backend/scripts/idp/verifyFieldCandidateEvidence.ts`

@@ -1,4 +1,5 @@
 import type { ClassifiedDocumentTypeValue } from "./segmentClassification.types.js";
+import type { FieldResolutionEnvelope } from "./fieldCandidate.types.js";
 
 export const CandidateResolutionStatus = {
   RESOLVED: "RESOLVED",
@@ -13,7 +14,8 @@ export type CandidateResolutionIssueCode =
   | "MULTIPLE_INVOICE_CANDIDATES"
   | "LLM_RESOLUTION_FAILED"
   | "LLM_INVALID_SOURCE_SEGMENT"
-  | "LLM_REVIEW_REQUIRED";
+  | "LLM_REVIEW_REQUIRED"
+  | "FIELD_CANDIDATE_AMBIGUITY";
 
 export interface CandidateResolutionIssue {
   code: CandidateResolutionIssueCode;
@@ -35,4 +37,5 @@ export interface CandidateResolutionEnvelope {
   data?: Record<string, unknown>;
   issues: CandidateResolutionIssue[];
   llmAudit?: CandidateResolutionLlmAudit;
+  fieldResolution?: FieldResolutionEnvelope;
 }
