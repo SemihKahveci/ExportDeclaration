@@ -346,3 +346,16 @@ Rules:
 - Extractor revision: `invoice-generic-layout-v15`.
 
 This closes the legacy-as-authority migration design. Human-review routing remains the next stage before generic extraction can replace the legacy production source.
+
+## Foundation 5.3 — Human Review Pipeline (API foundation)
+
+Human review is an explicit, tenant-scoped and append-only audit layer. A review case is derived from immutable `ProcessingRun` evidence rather than copying or mutating extraction output. It exposes resolver issues, deterministic validation issues, and generic canonical-evidence issues together with the candidate IDs and evidence available for that issue.
+
+Review decisions are stored separately in `HumanReviewDecision`; the original `ProcessingRun`, candidates, canonical evidence and prior decisions are never overwritten. `ACCEPT_CANDIDATE` is constrained to candidate IDs already attached to the issue and copies the stored candidate value/evidence. `OVERRIDE_VALUE` and `CONFIRM_VALUE` record the human-provided value together with actor, timestamp, field/row and evidence snapshot. Applying these decisions to business data is deliberately deferred to the NormalizedDeclaration stage so review cannot silently rewrite extraction history.
+
+Declaration-scoped API:
+- `GET /api/declarations/:id/idp-reviews/:runId`
+- `GET /api/declarations/:id/idp-reviews/:runId/decisions`
+- `POST /api/declarations/:id/idp-reviews/:runId/decisions`
+
+Foundation 5.3 does not treat legacy/generic migration conflicts as review issues by themselves: after Foundation 5.2, legacy is audit telemetry, while canonical evidence validation is the promotion authority.

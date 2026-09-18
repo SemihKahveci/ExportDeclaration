@@ -2,6 +2,7 @@ import { Router } from "express";
 import { asyncHandler } from "../../common/utils/asyncHandler.js";
 import * as ctrl from "./declaration.controller.js";
 import { documentSubRouter } from "../documents/document.routes.js";
+import { humanReviewRouter } from "../idp/review/humanReview.routes.js";
 
 const router = Router();
 
@@ -17,5 +18,6 @@ router.post("/:id/validate", asyncHandler(ctrl.postValidate));
 router.post("/:id/generate-xml", asyncHandler(ctrl.postGenerateXml));
 
 router.use("/:id/documents", documentSubRouter);
+router.use("/:id/idp-reviews", humanReviewRouter);
 
 export const declarationRouter = router;
