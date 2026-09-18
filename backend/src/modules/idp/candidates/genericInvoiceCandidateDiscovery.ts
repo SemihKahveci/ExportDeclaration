@@ -1,9 +1,17 @@
 import type { CanonicalBBox, CanonicalDocument, CanonicalPage, CanonicalWord } from "../domain/canonicalDocument.types.js";
 import type { FieldCandidate, FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 
-const EXTRACTOR = "invoice-generic-layout-v5";
+const EXTRACTOR = "invoice-generic-layout-v11";
 const MONEY_RE = /^(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{1,4})$/;
 const INTEGER_RE = /^\d{1,7}$/;
+const UNIT_ALIASES: Record<string, string> = {
+  ADET: "Adet", ADE: "Adet", PCS: "PCS", PC: "PCS", EA: "EA",
+  KG: "KG", KGS: "KG", SET: "SET", MT: "MT", M: "MT"
+};
+const STRUCTURAL_WORDS = new Set([
+  "EUR", "USD", "TRY", "TL", "GBP", "FCA", "EXW", "FOB", "CIF", "CFR", "DAP", "DPU", "DDP", "CPT", "CIP",
+  "KARAYOLU", "ROAD", "SEA", "AIR", "FRANCE", "GERMANY", "ITALY", "INDIA", "POLAND", "CHINA", "TURKEY", "TURKIYE"
+]);
 const DATE_TIME_RE = /(?:^|\D)\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s*\d{1,2}[:.]\d{2})?(?:\D|$)/;
 const CONTIGUOUS_HS_RE = /(?:^|\D)(\d{12})(?:\D|$)/;
 
@@ -99,6 +107,176 @@ function rowWords(
     })
     .sort((a, b) => a.bbox.x0 - b.bbox.x0 || centerY(a) - centerY(b));
 }
+
+/**
+ * Semantic content does not necessarily share the HS/numeric baseline. Product
+ * descriptions and secondary article codes commonly continue on visual lines
+ * below the anchor line. Assign those continuation lines to the anchor that
+ * starts them, stopping immediately before the next HS anchor. This is based on
+ * document-local line height/anchor spacing only; it contains no supplier or
+ * fixed-column coordinates.
+ */
+function semanticRowWords(
+  page: CanonicalPage,
+  anchor: CanonicalWord,
+  previousAnchor?: CanonicalWord,
+  nextAnchor?: CanonicalWord
+): CanonicalWord[] {
+  const anchorY = centerY(anchor);
+  const local = page.words.filter(w => Math.abs(centerY(w) - anchorY) <= 0.06);
+  const typicalHeight = median(local.map(height).filter(h => h > 0)) || height(anchor);
+  const lineSlack = Math.max(0.0025, Math.min(0.012, typicalHeight * 0.65));
+
+  const previousY = previousAnchor ? centerY(previousAnchor) : undefined;
+  const nextY = nextAnchor ? centerY(nextAnchor) : undefined;
+  const observedSpacing = nextY !== undefined
+    ? nextY - anchorY
+    : previousY !== undefined
+      ? anchorY - previousY
+      : Math.max(0.025, typicalHeight * 4);
+
+  // Start at this anchor's visual line (with a small OCR baseline allowance),
+  // never at the midpoint to the previous anchor. Continuation text appearing
+  // after the previous anchor therefore stays with the previous logical row.
+  const upper = anchorY - lineSlack;
+  const lower = nextY !== undefined
+    ? nextY - lineSlack
+    : Math.min(1, anchorY + Math.max(0.018, observedSpacing - lineSlack));
+
+  return page.words
+    .filter(word => {
+      const y = centerY(word);
+      return y >= upper && y < lower;
+    })
+    .sort((a, b) => centerY(a) - centerY(b) || a.bbox.x0 - b.bbox.x0);
+}
+
+function normalizedToken(text: string): string {
+  return text.trim().toLocaleUpperCase("tr-TR").replace(/İ/g, "I");
+}
+
+function unitFromText(text: string): string | undefined {
+  const normalized = normalizedToken(text).replace(/[^A-Z]/g, "");
+  return UNIT_ALIASES[normalized];
+}
+
+function overlaps(a: CanonicalWord, b: CanonicalWord): boolean {
+  return a.bbox.x0 <= b.bbox.x1 && a.bbox.x1 >= b.bbox.x0 && a.bbox.y0 <= b.bbox.y1 && a.bbox.y1 >= b.bbox.y0;
+}
+
+function productCodeValues(text: string): string[] {
+  const raw = text.trim();
+  if (!raw || raw.length < 3 || raw.length > 64) return [];
+  if (!/[A-Za-z]/.test(raw) || !/\d/.test(raw)) return [];
+  if (/\s/.test(raw) || hsCodeFromText(raw) || DATE_TIME_RE.test(raw)) return [];
+  // OCR frequently substitutes comma for dot in ERP/article namespaces.
+  if (!/^[A-Za-z0-9,._\/-]+$/.test(raw)) return [];
+
+  const values = [raw];
+  // Preserve the observed token and expose progressively shorter namespace
+  // suffixes as derived candidates. Examples:
+  //   AG,EAT.216384 -> EAT.216384 -> 216384 (numeric-only suffix rejected)
+  //   AG.SCH.C25B4  -> SCH.C25B4  -> C25B4
+  // This is lexical decomposition, not a supplier-prefix rule.
+  const separators = [...raw.matchAll(/[,._\/]/g)].map(match => match.index ?? -1).filter(index => index >= 0);
+  for (const index of separators) {
+    const suffix = raw.slice(index + 1);
+    const alphaNumericSuffix = /[A-Za-z]/.test(suffix) && /\d/.test(suffix);
+    const numericTerminalSuffix = /^\d{4,11}$/.test(suffix) && /[A-Za-z]/.test(raw.slice(0, index));
+    if (suffix.length >= 3 && (alphaNumericSuffix || numericTerminalSuffix) && /^[A-Za-z0-9,._\/-]+$/.test(suffix)) {
+      values.push(suffix);
+    }
+  }
+  return [...new Set(values)];
+}
+
+function addCandidate(fields: Record<string, FieldCandidate[]>, field: string, value: unknown, candidateId: string, segmentId: string, page: CanonicalPage, words: CanonicalWord[], confidence: number, derived = false) {
+  const item = candidate(field, candidateId, value, segmentId, page, words, confidence);
+  if (derived) item.derived = true;
+  (fields[field] ??= []).push(item);
+}
+
+function discoverSemanticFields(fields: Record<string, FieldCandidate[]>, rowIndex: number, row: CanonicalWord[], anchor: CanonicalWord, triplet: ReturnType<typeof findMathTriplet>, segmentId: string, page: CanonicalPage) {
+  if (!triplet) return;
+  const quantity = triplet.quantity;
+  const structured = new Set<CanonicalWord>([anchor, triplet.quantity, triplet.unitPrice, triplet.amount]);
+
+  // Unit is a business vocabulary concept, not a layout coordinate. Prefer units
+  // nearest the selected quantity but keep provenance from the actual token.
+  const unitWords = row
+    .map(word => ({ word, unit: unitFromText(word.text), distance: Math.abs(word.bbox.x0 - quantity.bbox.x1) }))
+    .filter((entry): entry is { word: CanonicalWord; unit: string; distance: number } => Boolean(entry.unit))
+    .sort((a, b) => a.distance - b.distance);
+  if (unitWords[0]) {
+    structured.add(unitWords[0].word);
+    const field = `goodsLines.${rowIndex}.unit`;
+    addCandidate(fields, field, unitWords[0].unit, `${segmentId}:generic:line-${rowIndex + 1}:unit`, segmentId, page, [unitWords[0].word], 0.96);
+  }
+
+  // Product codes are discovered by lexical shape, not a fixed column. Multiple
+  // plausible representations are intentionally retained as candidates.
+  const productWords = row
+    .filter(word => !structured.has(word) && word.bbox.x1 <= quantity.bbox.x0 + 0.02)
+    .flatMap(word => productCodeValues(word.text).map((value, variant) => ({ word, value, variant })))
+    .sort((a, b) => {
+      // The anchor line is the logical row start. A code-like token on that line
+      // is a stronger product-code candidate than a secondary/model code on a
+      // continuation line, while all alternatives remain available to resolver.
+      const aDy = Math.abs(centerY(a.word) - centerY(anchor));
+      const bDy = Math.abs(centerY(b.word) - centerY(anchor));
+      if (Math.abs(aDy - bDy) > 0.002) return aDy - bDy;
+      const aScore = (/[.,_\/]/.test(a.word.text) ? 1 : 0) + (a.value.length >= 4 ? 1 : 0);
+      const bScore = (/[.,_\/]/.test(b.word.text) ? 1 : 0) + (b.value.length >= 4 ? 1 : 0);
+      return bScore - aScore || a.word.bbox.x0 - b.word.bbox.x0 || a.variant - b.variant;
+    });
+  const productField = `goodsLines.${rowIndex}.productCode`;
+  productWords.slice(0, 6).forEach((entry, index) => addCandidate(fields, productField, entry.value, `${segmentId}:generic:line-${rowIndex + 1}:productCode:${index + 1}`, segmentId, page, [entry.word], index === 0 ? 0.90 : 0.82, entry.value !== entry.word.text.trim()));
+
+  const primaryProductCodeSourceWord = productWords[0]?.word;
+
+  // When a logical row has continuation lines, the item-description band is
+  // revealed by words that continue below the product-code anchor. Anchor-line
+  // values in other business columns (origin, delivery metadata, etc.) must not
+  // leak into the description merely because they happen to be left of quantity.
+  // This is geometry-derived per row: no country list, supplier prefix or fixed x.
+  const anchorY = centerY(anchor);
+  const continuationWords = row.filter(word => centerY(word) > anchorY + 0.0025 && word.bbox.x0 < quantity.bbox.x0);
+  const alignedContinuationWords = primaryProductCodeSourceWord
+    ? continuationWords.filter(word => {
+        const sourceWidth = Math.max(0.01, primaryProductCodeSourceWord.bbox.x1 - primaryProductCodeSourceWord.bbox.x0);
+        const alignmentSlack = Math.max(0.015, sourceWidth * 0.65);
+        return word.bbox.x0 <= primaryProductCodeSourceWord.bbox.x1 + alignmentSlack;
+      })
+    : continuationWords;
+  const hasSemanticContinuation = alignedContinuationWords.some(word =>
+    /[A-Za-zÀ-žÇĞİÖŞÜçğıöşü]/.test(word.text) && !unitFromText(word.text)
+  );
+
+  // Description is the residual human-readable logical-row content before quantity.
+  // Product/article codes are intentionally retained because commercial invoice
+  // descriptions often include them as part of the human-readable item text.
+  // Structural/business tokens and line numbers are removed without fixed columns.
+  const descriptionWords = row.filter(word => {
+    if (structured.has(word)) return false;
+    if (word === primaryProductCodeSourceWord) return false;
+    if (word.bbox.x0 >= quantity.bbox.x0) return false;
+    if (hasSemanticContinuation) {
+      const isContinuation = centerY(word) > anchorY + 0.0025;
+      if (!isContinuation) return false;
+      if (!alignedContinuationWords.includes(word)) return false;
+    }
+    const text = word.text.trim();
+    if (!text || INTEGER_RE.test(text) || hsCodeFromText(text)) return false;
+    const normalized = normalizedToken(text).replace(/[^A-Z]/g, "");
+    if (STRUCTURAL_WORDS.has(normalized) || unitFromText(text)) return false;
+    return /[A-Za-zÀ-žÇĞİÖŞÜçğıöşü]/.test(text);
+  }).sort((a, b) => centerY(a) - centerY(b) || a.bbox.x0 - b.bbox.x0);
+  if (descriptionWords.length) {
+    const field = `goodsLines.${rowIndex}.description`;
+    addCandidate(fields, field, descriptionWords.map(word => word.text.trim()).join(" ").replace(/\s+/g, " "), `${segmentId}:generic:line-${rowIndex + 1}:description`, segmentId, page, descriptionWords, 0.78);
+  }
+}
+
 function candidate(field: string, candidateId: string, value: unknown, segmentId: string, page: CanonicalPage, words: CanonicalWord[], confidence: number): FieldCandidate {
   return { candidateId, field, value, confidence, extractor: EXTRACTOR, evidence: [{ segmentId, pageNumber: page.pageNumber, bbox: unionBox(words), text: words.map(w => w.text.trim()).filter(Boolean).join(" "), contentSource: words.some(w => w.source === "OCR") ? "OCR" : "NATIVE_TEXT" }] };
 }
@@ -194,6 +372,7 @@ export function discoverGenericInvoiceFieldCandidates(canonicalDocument: Canonic
       ? anchors[rowIndex + 1]!.word
       : undefined;
     const row = rowWords(page, anchor, previousAnchor, nextAnchor);
+    const semanticRow = semanticRowWords(page, anchor, previousAnchor, nextAnchor);
     const hsField = `goodsLines.${rowIndex}.hsCode`;
     fields[hsField] = [candidate(hsField, `${segmentId}:generic:line-${rowIndex + 1}:hsCode`, hsCode, segmentId, page, [anchor], 0.98)];
     const triplet = findMathTriplet(row, anchor);
@@ -202,6 +381,7 @@ export function discoverGenericInvoiceFieldCandidates(canonicalDocument: Canonic
       const field = `goodsLines.${rowIndex}.${name}`;
       fields[field] = [candidate(field, `${segmentId}:generic:line-${rowIndex + 1}:${name}`, value, segmentId, page, [sourceWord], 0.94)];
     }
+    discoverSemanticFields(fields, rowIndex, semanticRow, anchor, triplet, segmentId, page);
   });
   return { version: "1", fields };
 }
