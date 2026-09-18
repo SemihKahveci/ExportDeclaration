@@ -19,9 +19,19 @@ export interface GenericMigrationFieldComparison {
 }
 
 export interface GenericInvoiceMigrationAudit {
-  version: "1";
-  policy: "SHADOW_COMPARE";
+  version: "2";
+  policy: "CANONICAL_EVIDENCE_GATE_WITH_LEGACY_AUDIT";
+  /**
+   * Readiness of the generic candidate set itself. Legacy disagreement is
+   * retained below as migration telemetry, but is not an authority over a
+   * canonical-evidence-validated result.
+   */
   promotable: boolean;
+  promotion: {
+    authority: "GENERIC_CANONICAL_EVIDENCE";
+    status: "READY" | "REVIEW_REQUIRED";
+    reasons: string[];
+  };
   fields: Record<string, GenericMigrationFieldComparison>;
   summary: {
     fieldCount: number;

@@ -7,7 +7,7 @@ import {
   type GenericEvidenceValidationResult
 } from "../domain/genericEvidenceValidation.types.js";
 
-const REQUIRED_FIELDS = ["hsCode", "quantity", "unitPrice", "lineTotal"] as const;
+const REQUIRED_FIELDS = ["hsCode", "productCode", "description", "quantity", "unit", "unitPrice", "lineTotal"] as const;
 const ROW_FIELD_RE = /^goodsLines\.(\d+)\.([A-Za-z0-9_]+)$/;
 
 function bboxValid(bbox: CanonicalBBox | undefined): boolean {

@@ -40,7 +40,7 @@ assert.ok(f["goodsLines.0.productCode"]?.some((item) => item.value === "C25B4"))
 assert.equal(f["goodsLines.0.unit"]?.[0]?.value, "PCS");
 assert.equal(f["goodsLines.0.description"]?.[0]?.value, "SWITCH");
 assert.equal(f["goodsLines.0.hsCode"]?.[0]?.evidence[0]?.text, "853620900019");
-assert.equal(f["goodsLines.0.hsCode"]?.[0]?.extractor, "invoice-generic-layout-v14");
+assert.equal(f["goodsLines.0.hsCode"]?.[0]?.extractor, "invoice-generic-layout-v15");
 
 
 // OCR regression: values belonging to the same visual goods row may have visibly

@@ -320,12 +320,29 @@ The production INVOICE candidate path now computes a deterministic `genericCandi
 Generic invoice discovery no longer assumes that a product/article-code token must be left of the selected quantity token. Candidate discovery now excludes already-structured HS/unit/math evidence and ranks remaining lexical code candidates by document-local row geometry and namespace strength. This targets continuation/baseline cases without supplier-specific prefixes, country lists, or fixed x coordinates. Migration remains shadow-only and promotion still requires evidence validation plus zero conflicts and zero legacy-only fields.
 
 
-### Foundation 5.2 Hardening v4 — semantic continuation width
+### Foundation 5.2 Hardening v4 — semantic continuation and quantity disambiguation
 
 - Generic invoice discovery remains a single-pass canonical geometry pipeline.
 - Description continuation is no longer clipped to the width of the selected product-code token.
 - The logical description band is bounded by row/quantity geometry and existing structural evidence filters, not supplier names, country lists, or fixed x coordinates.
 - This preserves valid continuation tokens (for example model/spec fragments on later visual lines) while keeping origin/other anchor-line columns outside the description band.
-- Extractor revision: `invoice-generic-layout-v13`.
+- Extractor revision after quantity/unit disambiguation: `invoice-generic-layout-v14`.
 - Added a regression fixture for wide multi-line description continuation.
-- Migration remains shadow-only; promotion still requires evidence `VALID`, zero conflicts, and zero legacy-only fields.
+- Migration remains shadow-only at this point; legacy comparison is retained as audit evidence while the final promotion authority is defined separately.
+
+
+### Foundation 5.2 final — canonical-evidence promotion authority (v15)
+
+Generic invoice readiness is no longer vetoed by disagreement with the legacy extractor. Real DIGITAL and SCANNED fixtures showed that legacy output can contain row leakage and misclassified product-code fragments, so legacy cannot be treated as ground truth.
+
+Rules:
+- `genericCandidateAudit.migration` still records `AGREE`, `EQUIVALENT`, `GENERIC_ONLY`, `LEGACY_ONLY`, and `CONFLICT`; these are migration/audit telemetry and are not discarded.
+- `promotable` is controlled by the generic result's own canonical-evidence validation, not by legacy equality.
+- Evidence validation now requires every discovered goods row to provide `hsCode`, `productCode`, `description`, `quantity`, `unit`, `unitPrice`, and `lineTotal`, with canonical page/bbox/text provenance and arithmetic consistency.
+- A document with no generic goods rows is never promotable.
+- Legacy conflicts remain visible even when the generic result is `READY`; they are useful for migration review but cannot force the new extractor to reproduce legacy mistakes.
+- The production resolver is still unchanged by this audit object; actual review/promotion workflow is handled in the following foundation work.
+- Supplier/country-specific description blacklists are removed from generic discovery. Structural filtering is based on document-local geometry plus generic currency/delivery/transport vocabulary.
+- Extractor revision: `invoice-generic-layout-v15`.
+
+This closes the legacy-as-authority migration design. Human-review routing remains the next stage before generic extraction can replace the legacy production source.

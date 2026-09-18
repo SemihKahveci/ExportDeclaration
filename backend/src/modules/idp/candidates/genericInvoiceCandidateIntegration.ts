@@ -11,7 +11,8 @@ import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
  *
  * Keeping this boundary explicit is important: Foundation 5.1 proves the
  * generic path on normal uploads and persists its audit trail. Foundation 5.2
- * can then define conflict/promotion policy without a hidden behaviour change.
+ * keeps legacy comparison as migration telemetry while canonical evidence
+ * validation owns generic readiness. RESOLVE output is still unchanged here.
  */
 export function buildGenericInvoiceCandidateAudit(
   canonicalDocument: CanonicalDocument,

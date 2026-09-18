@@ -1,7 +1,7 @@
 import type { CanonicalBBox, CanonicalDocument, CanonicalPage, CanonicalWord } from "../domain/canonicalDocument.types.js";
 import type { FieldCandidate, FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 
-const EXTRACTOR = "invoice-generic-layout-v14";
+const EXTRACTOR = "invoice-generic-layout-v15";
 const MONEY_RE = /^(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{1,4})$/;
 const INTEGER_RE = /^\d{1,7}$/;
 const UNIT_ALIASES: Record<string, string> = {
@@ -10,7 +10,7 @@ const UNIT_ALIASES: Record<string, string> = {
 };
 const STRUCTURAL_WORDS = new Set([
   "EUR", "USD", "TRY", "TL", "GBP", "FCA", "EXW", "FOB", "CIF", "CFR", "DAP", "DPU", "DDP", "CPT", "CIP",
-  "KARAYOLU", "ROAD", "SEA", "AIR", "FRANCE", "GERMANY", "ITALY", "INDIA", "POLAND", "CHINA", "TURKEY", "TURKIYE"
+  "KARAYOLU", "ROAD", "SEA", "AIR"
 ]);
 const DATE_TIME_RE = /(?:^|\D)\d{1,2}[./-]\d{1,2}[./-]\d{2,4}(?:\s*\d{1,2}[:.]\d{2})?(?:\D|$)/;
 const CONTIGUOUS_HS_RE = /(?:^|\D)(\d{12})(?:\D|$)/;

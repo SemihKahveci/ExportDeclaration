@@ -176,13 +176,24 @@ export function compareGenericAndLegacyInvoiceCandidates(
     }
   }
 
+  const promotionReasons: string[] = [];
+  if (validation.status !== GenericEvidenceValidationStatus.VALID) {
+    promotionReasons.push("GENERIC_EVIDENCE_REVIEW_REQUIRED");
+  }
+  if (validation.summary.rowCount === 0) {
+    promotionReasons.push("NO_GENERIC_GOODS_ROWS");
+  }
+
+  const promotable = promotionReasons.length === 0;
   return {
-    version: "1",
-    policy: "SHADOW_COMPARE",
-    promotable:
-      validation.status === GenericEvidenceValidationStatus.VALID &&
-      summary.conflictCount === 0 &&
-      summary.legacyOnlyCount === 0,
+    version: "2",
+    policy: "CANONICAL_EVIDENCE_GATE_WITH_LEGACY_AUDIT",
+    promotable,
+    promotion: {
+      authority: "GENERIC_CANONICAL_EVIDENCE",
+      status: promotable ? "READY" : "REVIEW_REQUIRED",
+      reasons: promotionReasons
+    },
     fields,
     summary
   };
