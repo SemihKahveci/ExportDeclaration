@@ -188,7 +188,19 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
           documentType: result.documentType,
           status: result.status,
           extractor: result.extractor,
-          pageNumbers: result.pageNumbers
+          pageNumbers: result.pageNumbers,
+          genericCandidateAudit: (() => {
+            const audit = result.data?.genericCandidateAudit as
+              | { mode?: string; validation?: { status?: string; summary?: unknown } }
+              | undefined;
+            return audit
+              ? {
+                  mode: audit.mode,
+                  status: audit.validation?.status,
+                  summary: audit.validation?.summary
+                }
+              : undefined;
+          })()
         }))
       });
 

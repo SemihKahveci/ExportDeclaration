@@ -1,7 +1,7 @@
 import type { CanonicalBBox, CanonicalDocument, CanonicalPage, CanonicalWord } from "../domain/canonicalDocument.types.js";
 import type { FieldCandidate, FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 
-const EXTRACTOR = "invoice-generic-layout-v11";
+const EXTRACTOR = "invoice-generic-layout-v14";
 const MONEY_RE = /^(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{1,4})$/;
 const INTEGER_RE = /^\d{1,7}$/;
 const UNIT_ALIASES: Record<string, string> = {
@@ -196,7 +196,7 @@ function addCandidate(fields: Record<string, FieldCandidate[]>, field: string, v
   (fields[field] ??= []).push(item);
 }
 
-function discoverSemanticFields(fields: Record<string, FieldCandidate[]>, rowIndex: number, row: CanonicalWord[], anchor: CanonicalWord, triplet: ReturnType<typeof findMathTriplet>, segmentId: string, page: CanonicalPage) {
+function discoverSemanticFields(fields: Record<string, FieldCandidate[]>, rowIndex: number, row: CanonicalWord[], anchor: CanonicalWord, triplet: ReturnType<typeof findMathTriplet>, segmentId: string, page: CanonicalPage, productCodeRow: CanonicalWord[] = row) {
   if (!triplet) return;
   const quantity = triplet.quantity;
   const structured = new Set<CanonicalWord>([anchor, triplet.quantity, triplet.unitPrice, triplet.amount]);
@@ -215,8 +215,13 @@ function discoverSemanticFields(fields: Record<string, FieldCandidate[]>, rowInd
 
   // Product codes are discovered by lexical shape, not a fixed column. Multiple
   // plausible representations are intentionally retained as candidates.
-  const productWords = row
-    .filter(word => !structured.has(word) && word.bbox.x1 <= quantity.bbox.x0 + 0.02)
+  const productSourceWords = [...new Set([...productCodeRow, ...row])];
+  const productWords = productSourceWords
+    // Do not assume the article-code column is left of quantity. Some invoice
+    // layouts place it elsewhere and OCR/PDF extraction can shift baselines.
+    // Structured numeric/HS/unit evidence is excluded first; lexical shape +
+    // row geometry then decides the strongest source token.
+    .filter(word => !structured.has(word) && !hsCodeFromText(word.text) && !unitFromText(word.text))
     .flatMap(word => productCodeValues(word.text).map((value, variant) => ({ word, value, variant })))
     .sort((a, b) => {
       // The anchor line is the logical row start. A code-like token on that line
@@ -225,14 +230,21 @@ function discoverSemanticFields(fields: Record<string, FieldCandidate[]>, rowInd
       const aDy = Math.abs(centerY(a.word) - centerY(anchor));
       const bDy = Math.abs(centerY(b.word) - centerY(anchor));
       if (Math.abs(aDy - bDy) > 0.002) return aDy - bDy;
-      const aScore = (/[.,_\/]/.test(a.word.text) ? 1 : 0) + (a.value.length >= 4 ? 1 : 0);
-      const bScore = (/[.,_\/]/.test(b.word.text) ? 1 : 0) + (b.value.length >= 4 ? 1 : 0);
+      const aScore = (/[.,_\/]/.test(a.word.text) ? 2 : 0) + (a.value.length >= 5 ? 1 : 0);
+      const bScore = (/[.,_\/]/.test(b.word.text) ? 2 : 0) + (b.value.length >= 5 ? 1 : 0);
       return bScore - aScore || a.word.bbox.x0 - b.word.bbox.x0 || a.variant - b.variant;
     });
   const productField = `goodsLines.${rowIndex}.productCode`;
-  productWords.slice(0, 6).forEach((entry, index) => addCandidate(fields, productField, entry.value, `${segmentId}:generic:line-${rowIndex + 1}:productCode:${index + 1}`, segmentId, page, [entry.word], index === 0 ? 0.90 : 0.82, entry.value !== entry.word.text.trim()));
-
   const primaryProductCodeSourceWord = productWords[0]?.word;
+  // A lexical namespace and its suffixes are one candidate family, not
+  // independent competing product codes. Once the strongest source token is
+  // selected, keep only variants derived from that same canonical evidence.
+  // This prevents model/spec tokens such as ACTI9, 100A or 300MA-S from being
+  // promoted to peer product-code candidates merely because they are alphanumeric.
+  const primaryProductFamily = primaryProductCodeSourceWord
+    ? productWords.filter(entry => entry.word === primaryProductCodeSourceWord)
+    : [];
+  primaryProductFamily.slice(0, 6).forEach((entry, index) => addCandidate(fields, productField, entry.value, `${segmentId}:generic:line-${rowIndex + 1}:productCode:${index + 1}`, segmentId, page, [entry.word], index === 0 ? 0.90 : 0.82, entry.value !== entry.word.text.trim()));
 
   // When a logical row has continuation lines, the item-description band is
   // revealed by words that continue below the product-code anchor. Anchor-line
@@ -241,14 +253,14 @@ function discoverSemanticFields(fields: Record<string, FieldCandidate[]>, rowInd
   // This is geometry-derived per row: no country list, supplier prefix or fixed x.
   const anchorY = centerY(anchor);
   const continuationWords = row.filter(word => centerY(word) > anchorY + 0.0025 && word.bbox.x0 < quantity.bbox.x0);
-  const alignedContinuationWords = primaryProductCodeSourceWord
-    ? continuationWords.filter(word => {
-        const sourceWidth = Math.max(0.01, primaryProductCodeSourceWord.bbox.x1 - primaryProductCodeSourceWord.bbox.x0);
-        const alignmentSlack = Math.max(0.015, sourceWidth * 0.65);
-        return word.bbox.x0 <= primaryProductCodeSourceWord.bbox.x1 + alignmentSlack;
-      })
-    : continuationWords;
-  const hasSemanticContinuation = alignedContinuationWords.some(word =>
+  // A description continuation can be wider than the product-code token itself
+  // (e.g. code on the first continuation line, model/spec words on later lines).
+  // Do not clip that semantic band to the product-code token width: doing so
+  // silently drops valid description tokens such as BASIC FRAME, 100-250 or 3P.
+  // The quantity boundary remains document-local and structural/unit/HS tokens
+  // are filtered below, so this is still header/supplier independent.
+  const semanticContinuationWords = continuationWords;
+  const hasSemanticContinuation = semanticContinuationWords.some(word =>
     /[A-Za-zÀ-žÇĞİÖŞÜçğıöşü]/.test(word.text) && !unitFromText(word.text)
   );
 
@@ -263,7 +275,7 @@ function discoverSemanticFields(fields: Record<string, FieldCandidate[]>, rowInd
     if (hasSemanticContinuation) {
       const isContinuation = centerY(word) > anchorY + 0.0025;
       if (!isContinuation) return false;
-      if (!alignedContinuationWords.includes(word)) return false;
+      if (!semanticContinuationWords.includes(word)) return false;
     }
     const text = word.text.trim();
     if (!text || INTEGER_RE.test(text) || hsCodeFromText(text)) return false;
@@ -339,7 +351,21 @@ function findMathTriplet(words: CanonicalWord[], anchor: CanonicalWord): { quant
         // Prefer actual quantity/price/amount columns over incidental numbers in
         // descriptions/addresses when multiple exact arithmetic identities exist.
         const sameWordPenalty = p.word === a.word ? 0.01 : 0;
-        const score = diff + orderingPenalty + compactness + sameWordPenalty;
+
+        // A quantity token is commonly followed by a unit token (PCS, Adet, KG,
+        // etc.). This is semantic evidence, not a fixed-column assumption. It
+        // also disambiguates cases where the line number happens to equal the
+        // quantity (for example "4 ... 4 Adet ..."), which otherwise produces
+        // the exact same arithmetic identity.
+        const nearestUnitDistance = words
+          .filter(word => unitFromText(word.text))
+          .map(word => Math.abs(word.bbox.x0 - q.word.bbox.x1) + Math.abs(centerY(word) - centerY(q.word)))
+          .reduce((best, distance) => Math.min(best, distance), Number.POSITIVE_INFINITY);
+        const quantityUnitPenalty = Number.isFinite(nearestUnitDistance)
+          ? Math.min(0.05, nearestUnitDistance)
+          : 0.05;
+
+        const score = diff + orderingPenalty + compactness + sameWordPenalty + quantityUnitPenalty;
         if (!best || score < best.score) best = { quantity: q.word, unitPrice: p.word, amount: a.word, q: q.value, p: p.value, a: a.value, score };
       }
     }
@@ -381,7 +407,7 @@ export function discoverGenericInvoiceFieldCandidates(canonicalDocument: Canonic
       const field = `goodsLines.${rowIndex}.${name}`;
       fields[field] = [candidate(field, `${segmentId}:generic:line-${rowIndex + 1}:${name}`, value, segmentId, page, [sourceWord], 0.94)];
     }
-    discoverSemanticFields(fields, rowIndex, semanticRow, anchor, triplet, segmentId, page);
+    discoverSemanticFields(fields, rowIndex, semanticRow, anchor, triplet, segmentId, page, row);
   });
   return { version: "1", fields };
 }

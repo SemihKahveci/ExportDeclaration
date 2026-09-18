@@ -40,7 +40,7 @@ assert.ok(f["goodsLines.0.productCode"]?.some((item) => item.value === "C25B4"))
 assert.equal(f["goodsLines.0.unit"]?.[0]?.value, "PCS");
 assert.equal(f["goodsLines.0.description"]?.[0]?.value, "SWITCH");
 assert.equal(f["goodsLines.0.hsCode"]?.[0]?.evidence[0]?.text, "853620900019");
-assert.equal(f["goodsLines.0.hsCode"]?.[0]?.extractor, "invoice-generic-layout-v11");
+assert.equal(f["goodsLines.0.hsCode"]?.[0]?.extractor, "invoice-generic-layout-v14");
 
 
 // OCR regression: values belonging to the same visual goods row may have visibly
@@ -130,6 +130,38 @@ assert.doesNotMatch(semanticDescription0, /216385/);
 assert.match(semanticDescription1, /M22-CK01/);
 assert.doesNotMatch(semanticDescription1, /216384/);
 assert.doesNotMatch(semanticDescription0, /MOROCCO/);
+
+
+// Wide-continuation regression: semantic description lines may extend farther
+// right than the product-code token. They still belong to the same logical
+// description band and must not be clipped to the code token width.
+const wideContinuationDocument: CanonicalDocument = {
+  schemaVersion: "1.0",
+  source: { fileName: "wide-semantic-continuation.pdf", mimeType: "application/pdf" },
+  analysis: { contentKind: "DIGITAL", pageCount: 1, digitalPageCount: 1, scannedPageCount: 0, mixedPageCount: 0, nativeTextPageCount: 1, ocrPageCount: 0, ocrWordCount: 0 },
+  pages: [{
+    pageNumber: 1, width: 1000, height: 1400, rotation: 0, nativeText: "", nativeCharCount: 0, nativeWordCount: 0, hasNativeText: true,
+    imageCount: 0, imageCoverage: 0, contentKind: "DIGITAL",
+    words: [
+      word("4", .03, .05, .400), word("AG.SCH.C25B4", .065, .145, .400), word("POLAND", .198, .240, .400),
+      word("4", .269, .278, .400), word("Adet", .280, .305, .400), word("106,8000", .318, .360, .400),
+      word("427,20", .592, .630, .400), word("853620900019", .889, .980, .400),
+      word("C25B4", .065, .103, .412), word("BASIC", .106, .143, .412), word("FRAME", .146, .184, .412),
+      word("NSX250B", .061, .113, .424), word("25kA", .118, .148, .424), word("AC", .151, .168, .424), word("4P", .171, .187, .424),
+      word("250A", .061, .095, .436)
+    ],
+    lines: []
+  }]
+};
+const wideContinuationResult = discoverGenericInvoiceFieldCandidates(wideContinuationDocument, "segment-wide");
+const wideDescription = String(wideContinuationResult.fields["goodsLines.0.description"]?.[0]?.value ?? "");
+assert.match(wideDescription, /BASIC/);
+assert.match(wideDescription, /FRAME/);
+assert.match(wideDescription, /NSX250B/);
+assert.match(wideDescription, /25kA/);
+assert.match(wideDescription, /4P/);
+assert.match(wideDescription, /250A/);
+assert.doesNotMatch(wideDescription, /POLAND/);
 
 console.log(JSON.stringify({
   event: "idp.generic-invoice-candidate-discovery.regression.passed",
