@@ -51,5 +51,6 @@ const ProcessingRunSchema = new Schema({
 
 ProcessingRunSchema.index({ uploadedFileId: 1, createdAt: -1 });
 
-export const ProcessingRunModel = mongoose.models.ProcessingRun ??
+export const ProcessingRunModel: mongoose.Model<ProcessingRunDoc> =
+  (mongoose.models.ProcessingRun as mongoose.Model<ProcessingRunDoc> | undefined) ??
   mongoose.model<ProcessingRunDoc>("ProcessingRun", ProcessingRunSchema);

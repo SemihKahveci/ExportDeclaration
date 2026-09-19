@@ -258,7 +258,7 @@ Rules:
 Regression utility: `backend/scripts/idp/verifyFieldLlmResolverIntegration.ts`.
 
 
-## Foundation 4.6 — Generic Invoice Candidate Discovery (IN PROGRESS)
+## Foundation 4.6 — Generic Invoice Candidate Discovery (COMPLETED)
 
 The next extraction layer starts moving candidate discovery away from supplier/header-specific rules and onto canonical layout/evidence.
 
@@ -359,3 +359,11 @@ Declaration-scoped API:
 - `POST /api/declarations/:id/idp-reviews/:runId/decisions`
 
 Foundation 5.3 does not treat legacy/generic migration conflicts as review issues by themselves: after Foundation 5.2, legacy is audit telemetry, while canonical evidence validation is the promotion authority.
+
+## Foundation 5.4 — NormalizedDeclaration promotion
+
+Invoice goods lines now enter `NormalizedDeclaration` from the canonical generic candidate path instead of treating legacy extraction as ground truth. Generic candidate evidence remains immutable; the effective value layer overlays the latest append-only Human Review decision for a field when one exists. Pending review issues block normalization with HTTP 409, unresolved multi-value fields fail closed, and effective quantity/unit-price/line-total arithmetic is revalidated after review overrides.
+
+Product-code namespace suffixes remain candidate alternatives, while the observed non-derived canonical token is the deterministic effective value unless Human Review explicitly selects or overrides it. `productCode` is now part of the normalized goods-line contract and declaration schema. Source trace entries for promoted fields preserve candidate/evidence or Human Review provenance plus processing-run and uploaded-file identity. Multiple invoice files are appended deterministically into declaration goods lines instead of silently allowing the last invoice to overwrite earlier rows.
+
+Legacy extracted data is still used for document/header fields that have not yet migrated to generic IDP discovery; this milestone promotes the invoice goods-line domain only. ProcessingRun, canonical evidence, candidates, migration audit, and HumanReviewDecision history remain immutable inputs to normalization.

@@ -61,6 +61,7 @@ function normalizeGoodsLine(row: Record<string, unknown>, fallbackLineNo: number
   return {
     lineNo,
     hsCode: stringOrUndef(row.hsCode ?? row.HSCode),
+    productCode: stringOrUndef(row.productCode ?? row.ProductCode),
     description: stringOrUndef(row.description ?? row.Description),
     quantity: numberOrUndef(row.quantity ?? row.Quantity),
     unit: stringOrUndef(row.unit ?? row.Unit),

@@ -10,6 +10,7 @@ export interface Party {
 export interface GoodsLine {
   lineNo: number;
   hsCode?: string;
+  productCode?: string;
   description?: string;
   quantity?: number;
   unit?: string;

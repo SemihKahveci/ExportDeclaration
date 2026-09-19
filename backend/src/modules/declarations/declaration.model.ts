@@ -137,6 +137,7 @@ const DeclarationSchema = new Schema(
         {
           lineNo: Number,
           hsCode: String,
+          productCode: String,
           description: String,
           quantity: Number,
           unit: String,

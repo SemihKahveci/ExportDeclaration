@@ -15,6 +15,10 @@ import { generateEvrimXmlDraft } from "../xml/evrimXml.generator.js";
 import { DeclarationModel, type DeclarationDoc, type OperationMetaDoc } from "./declaration.model.js";
 import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.model.js";
 import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
+import { HumanReviewDecisionModel } from "../idp/domain/humanReviewDecision.model.js";
+import { buildHumanReviewIssues } from "../idp/review/humanReview.service.js";
+import { buildEffectiveInvoiceGoodsLines } from "../idp/normalization/effectiveInvoiceNormalizer.js";
+import type { GenericInvoiceCandidateAudit } from "../idp/domain/genericCandidateIntegration.types.js";
 import { ProcessingStatus } from "../idp/domain/idp.types.js";
 import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
 import type { OperationTypeValue } from "../../common/enums/operationMeta.js";
@@ -240,6 +244,68 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
   }
 
   const { normalized, sourceTrace } = buildNormalizedDeclaration(sources);
+
+  // Foundation 5.4: invoice goods lines are promoted from the canonical generic
+  // candidate path. Legacy extractedData remains available for non-migrated
+  // header/document fields, but it is no longer authoritative for invoice rows.
+  const invoiceDocs = docs.filter(d => d.type === "INVOICE");
+  let genericGoodsPromoted = false;
+  for (const invoiceDoc of invoiceDocs) {
+    const run = await ProcessingRunModel.findOne({
+      companyId,
+      declarationId: dec._id,
+      uploadedFileId: invoiceDoc._id,
+      status: ProcessingStatus.COMPLETED
+    }).sort({ createdAt: -1 }).lean();
+    if (!run) continue;
+
+    const segments = (run.candidates as any)?.segments;
+    const audit = Array.isArray(segments)
+      ? segments.map((segment: any) => segment?.data?.genericCandidateAudit as GenericInvoiceCandidateAudit | undefined).find(Boolean)
+      : undefined;
+    if (!audit) continue;
+
+    const issues = buildHumanReviewIssues(run);
+    const decisions = await HumanReviewDecisionModel.find({ companyId, processingRunId: run._id }).sort({ createdAt: 1 }).lean();
+    const decidedIssueIds = new Set(decisions.map(decision => decision.issueId));
+    const pendingIssues = issues.filter(issue => !decidedIssueIds.has(issue.issueId));
+    if (pendingIssues.length) {
+      throw new HttpError(409, `IDP human review tamamlanmadan normalize edilemez (${pendingIssues.length} bekleyen issue).`);
+    }
+    if (!audit.migration.promotable && issues.length === 0) {
+      throw new HttpError(409, `Generic invoice sonucu promotion için hazır değil: ${audit.migration.promotion.reasons.join(", ") || "REVIEW_REQUIRED"}.`);
+    }
+
+    try {
+      const effective = buildEffectiveInvoiceGoodsLines(audit, decisions);
+      if (!genericGoodsPromoted) {
+        normalized.goodsLines = [];
+        genericGoodsPromoted = true;
+      }
+      const rowOffset = normalized.goodsLines.length;
+      normalized.goodsLines.push(...effective.goodsLines.map((line, index) => ({ ...line, lineNo: rowOffset + index + 1 })));
+      for (const [field, trace] of Object.entries(effective.trace)) {
+        const match = /^goodsLines\.(\d+)\.(.+)$/.exec(field);
+        const targetField = match ? `goodsLines.${rowOffset + Number(match[1])}.${match[2]}` : field;
+        (sourceTrace as Record<string, any>)[targetField] = {
+          ...trace,
+          processingRunId: String(run._id),
+          uploadedFileId: String(invoiceDoc._id)
+        };
+      }
+    } catch (error) {
+      throw new HttpError(409, error instanceof Error ? error.message : "Generic invoice normalization tamamlanamadı.");
+    }
+  }
+
+  if (genericGoodsPromoted) {
+    (sourceTrace as Record<string, any>)["goodsLines"] = {
+      value: normalized.goodsLines,
+      source: "IDP_GENERIC",
+      provenance: "CANONICAL_CANDIDATES_WITH_HUMAN_REVIEW_OVERLAY"
+    };
+  }
+
   dec.normalizedData = normalized as DeclarationDoc["normalizedData"];
   dec.sourceTrace = sourceTrace;
   dec.status = DeclarationStatus.READY;

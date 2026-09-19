@@ -37,5 +37,6 @@ const HumanReviewDecisionSchema = new Schema({
 HumanReviewDecisionSchema.index({ companyId: 1, processingRunId: 1, createdAt: 1 });
 HumanReviewDecisionSchema.index({ companyId: 1, processingRunId: 1, issueId: 1, createdAt: -1 });
 
-export const HumanReviewDecisionModel = mongoose.models.HumanReviewDecision ??
+export const HumanReviewDecisionModel: mongoose.Model<HumanReviewDecisionDoc> =
+  (mongoose.models.HumanReviewDecision as mongoose.Model<HumanReviewDecisionDoc> | undefined) ??
   mongoose.model<HumanReviewDecisionDoc>("HumanReviewDecision", HumanReviewDecisionSchema);
