@@ -16,6 +16,7 @@ router.post("/:id/extract", asyncHandler(ctrl.postExtract));
 router.post("/:id/normalize", asyncHandler(ctrl.postNormalize));
 router.post("/:id/validate", asyncHandler(ctrl.postValidate));
 router.post("/:id/generate-xml", asyncHandler(ctrl.postGenerateXml));
+router.post("/:id/exports/evrim-excel", asyncHandler(ctrl.postExportEvrimExcel));
 
 router.use("/:id/documents", documentSubRouter);
 router.use("/:id/idp-reviews", humanReviewRouter);
