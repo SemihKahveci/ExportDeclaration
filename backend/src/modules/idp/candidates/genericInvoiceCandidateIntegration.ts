@@ -2,6 +2,7 @@ import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
 import type { GenericInvoiceCandidateAudit } from "../domain/genericCandidateIntegration.types.js";
 import { validateGenericInvoiceEvidence } from "../validator/genericInvoiceEvidenceValidator.js";
 import { discoverGenericInvoiceFieldCandidates } from "./genericInvoiceCandidateDiscovery.js";
+import { discoverInvoiceShipmentFieldCandidates } from "./invoiceShipmentCandidateDiscovery.js";
 import { compareGenericAndLegacyInvoiceCandidates } from "./genericInvoiceCandidateMigration.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 
@@ -20,6 +21,7 @@ export function buildGenericInvoiceCandidateAudit(
   legacyCandidates: FieldCandidateEnvelope
 ): GenericInvoiceCandidateAudit {
   const candidates = discoverGenericInvoiceFieldCandidates(canonicalDocument, segmentId);
+  const shipmentCandidates = discoverInvoiceShipmentFieldCandidates(canonicalDocument, segmentId);
   const validation = validateGenericInvoiceEvidence(canonicalDocument, candidates);
   const migration = compareGenericAndLegacyInvoiceCandidates(legacyCandidates, candidates, validation);
 
@@ -27,6 +29,7 @@ export function buildGenericInvoiceCandidateAudit(
     version: "1",
     mode: "SHADOW",
     candidates,
+    shipmentCandidates,
     validation,
     migration
   };

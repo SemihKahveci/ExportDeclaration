@@ -14,6 +14,7 @@ export interface GenericInvoiceCandidateAudit {
   version: "1";
   mode: "SHADOW";
   candidates: FieldCandidateEnvelope;
+  shipmentCandidates?: FieldCandidateEnvelope;
   validation: GenericEvidenceValidationResult;
   migration: GenericInvoiceMigrationAudit;
 }

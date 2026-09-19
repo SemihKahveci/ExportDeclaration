@@ -17,7 +17,8 @@ import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.m
 import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
 import { HumanReviewDecisionModel } from "../idp/domain/humanReviewDecision.model.js";
 import { buildHumanReviewIssues } from "../idp/review/humanReview.service.js";
-import { buildEffectiveInvoiceGoodsLines } from "../idp/normalization/effectiveInvoiceNormalizer.js";
+import { buildEffectiveInvoiceGoodsLines, buildEffectiveInvoiceShipmentInfo } from "../idp/normalization/effectiveInvoiceNormalizer.js";
+import { discoverInvoiceShipmentFieldCandidates } from "../idp/candidates/invoiceShipmentCandidateDiscovery.js";
 import type { GenericInvoiceCandidateAudit } from "../idp/domain/genericCandidateIntegration.types.js";
 import { ProcessingStatus } from "../idp/domain/idp.types.js";
 import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
@@ -277,6 +278,21 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
     }
 
     try {
+      // Foundation 5.5A: package/shipment metadata is canonical evidence too.
+      // Older completed runs predate these candidates; derive only the missing
+      // document-level fields from the persisted canonical document so OCR and
+      // extraction never need to run again. Future runs already persist them.
+      const shipmentFields = audit.shipmentCandidates ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument as any, String((segments?.[0] as any)?.segmentId ?? "invoice"));
+      const effectiveAudit: GenericInvoiceCandidateAudit = {
+        ...audit,
+        candidates: { ...audit.candidates, fields: { ...audit.candidates.fields, ...shipmentFields.fields } }
+      };
+      const shipment = buildEffectiveInvoiceShipmentInfo(effectiveAudit, decisions);
+      normalized.packageInfo = { ...normalized.packageInfo, ...shipment.packageInfo };
+      for (const [field, trace] of Object.entries(shipment.trace)) {
+        (sourceTrace as Record<string, any>)[field] = { ...trace, processingRunId: String(run._id), uploadedFileId: String(invoiceDoc._id) };
+      }
+
       const effective = buildEffectiveInvoiceGoodsLines(audit, decisions);
       if (!genericGoodsPromoted) {
         normalized.goodsLines = [];

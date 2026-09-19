@@ -75,3 +75,45 @@ export function buildEffectiveInvoiceGoodsLines(audit: GenericInvoiceCandidateAu
   });
   return { goodsLines, trace };
 }
+
+const SHIPMENT_FIELDS = ["packageInfo.packageType", "packageInfo.totalPackage", "packageInfo.grossKg", "packageInfo.netKg"] as const;
+export interface EffectiveShipmentInfo { packageType?: string; totalPackage?: number; grossKg?: number; netKg?: number; }
+
+/** Resolve document-level shipment/package candidates with the same fail-closed
+ * semantics used for goods lines. Human-review decisions, when present, are the
+ * latest effective value; otherwise canonical candidates must be unambiguous. */
+export function buildEffectiveInvoiceShipmentInfo(audit: GenericInvoiceCandidateAudit, decisions: DecisionLike[] = []): { packageInfo: EffectiveShipmentInfo; trace: Record<string, EffectiveFieldTrace> } {
+  const decisionByField = latestDecisionByField(decisions);
+  const packageInfo: EffectiveShipmentInfo = {};
+  const trace: Record<string, EffectiveFieldTrace> = {};
+  for (const field of SHIPMENT_FIELDS) {
+    const decision = decisionByField.get(field);
+    let value: unknown;
+    let fieldTrace: EffectiveFieldTrace | undefined;
+    if (decision && decision.value !== undefined && decision.value !== null && decision.value !== "") {
+      value = decision.value;
+      fieldTrace = { value, source: "HUMAN_REVIEW", candidateId: decision.candidateId, decisionAction: decision.action };
+    } else {
+      const candidates = audit.candidates.fields[field] ?? [];
+      if (!candidates.length) continue;
+      const selected = preferredCandidate(field, candidates);
+      if (!selected) throw new Error(`Generic candidates for ${field} are unresolved; human review is required.`);
+      value = selected.value;
+      fieldTrace = { value, source: "IDP_GENERIC", candidateId: selected.candidateId, extractor: selected.extractor, evidence: selected.evidence };
+    }
+    if (field === "packageInfo.packageType") {
+      if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string.`);
+      packageInfo.packageType = value.trim();
+    } else {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new Error(`${field} must be a non-negative finite number.`);
+      if (field === "packageInfo.totalPackage") packageInfo.totalPackage = value;
+      if (field === "packageInfo.grossKg") packageInfo.grossKg = value;
+      if (field === "packageInfo.netKg") packageInfo.netKg = value;
+    }
+    trace[field] = fieldTrace;
+  }
+  if (packageInfo.grossKg !== undefined && packageInfo.netKg !== undefined && packageInfo.netKg > packageInfo.grossKg) {
+    throw new Error("packageInfo.netKg cannot exceed packageInfo.grossKg.");
+  }
+  return { packageInfo, trace };
+}
