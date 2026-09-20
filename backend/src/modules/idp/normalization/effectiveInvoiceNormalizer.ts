@@ -2,10 +2,10 @@ import type { FieldCandidate } from "../domain/fieldCandidate.types.js";
 import type { GenericInvoiceCandidateAudit } from "../domain/genericCandidateIntegration.types.js";
 
 const ROW_FIELD_RE = /^goodsLines\.(\d+)\.([A-Za-z0-9_]+)$/;
-const REQUIRED = ["hsCode", "productCode", "description", "quantity", "unit", "unitPrice", "lineTotal"] as const;
+const REQUIRED = ["hsCode", "productCode", "description", "quantity", "unit", "unitPrice", "lineTotal", "origin"] as const;
 
 type DecisionLike = { field?: string; value?: unknown; candidateId?: string; action?: string; createdAt?: Date | string };
-export interface EffectiveGoodsLine { lineNo: number; hsCode: string; productCode: string; description: string; quantity: number; unit: string; unitPrice: number; lineTotal: number; }
+export interface EffectiveGoodsLine { lineNo: number; hsCode: string; productCode: string; description: string; quantity: number; unit: string; unitPrice: number; lineTotal: number; origin: string; }
 export interface EffectiveFieldTrace { value: unknown; source: "IDP_GENERIC" | "HUMAN_REVIEW"; candidateId?: string; extractor?: string; evidence?: unknown; decisionAction?: string; }
 
 function key(value: unknown): string {

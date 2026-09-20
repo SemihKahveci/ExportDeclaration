@@ -412,3 +412,7 @@ Verified mappings in this adapter include `UBLVersionID=2.1`, `CustomizationID=T
 - New runs persist `headerPartyCandidates`; older completed runs derive them from the persisted CanonicalDocument without rerunning OCR.
 - Normalization uses the same fail-closed candidate/human-review overlay semantics as goods and shipment fields.
 - This closes the required header/party gap discovered by the unsigned UBL-IHRACAT regression before XML export is allowed to proceed.
+
+
+## Foundation 5.5A.4 — Row-level Origin / Menşe
+Canonical goods-row geometry now discovers per-line origin with evidence, promotes it through human-review-aware normalization, and carries it through the export contract to Evrim Excel `MENŞE`. Missing/ambiguous origin fails closed into review/export readiness; no supplier names, country-name list, or fixed x coordinate is used.

@@ -70,6 +70,13 @@ export function buildExportDeclarationContract(
     requireValue(issues, `${prefix}.lineTotal`, line.lineTotal, "NORMALIZED_DECLARATION");
 
     const extra = lineSupplementFor(supplements, line);
+    const effectiveOrigin = extra.origin ?? line.origin ?? normalized.trade.origin;
+    requireValue(
+      issues,
+      `${prefix}.origin`,
+      effectiveOrigin,
+      extra.origin ? "HUMAN_INPUT" : "NORMALIZED_DECLARATION"
+    );
 
     return {
       lineNo,
@@ -80,7 +87,7 @@ export function buildExportDeclarationContract(
       unit: line.unit ?? "",
       unitPrice: line.unitPrice ?? 0,
       lineTotal: line.lineTotal ?? 0,
-      origin: extra.origin ?? line.origin ?? normalized.trade.origin,
+      origin: effectiveOrigin,
       brand: extra.brand,
       exemptionCode: extra.exemptionCode,
       permitCode: extra.permitCode,

@@ -13,7 +13,10 @@ function issueId(parts: Array<string | number | undefined>): string {
 }
 
 function allCandidates(audit?: GenericInvoiceCandidateAudit): Record<string, FieldCandidate[]> {
-  return audit?.candidates?.fields ?? {};
+  return {
+    ...(audit?.candidates?.fields ?? {}),
+    ...(audit?.originCandidates?.fields ?? {})
+  };
 }
 
 function findGenericAudit(run: any): GenericInvoiceCandidateAudit | undefined {
@@ -60,6 +63,36 @@ export function buildHumanReviewIssues(run: any): HumanReviewIssue[] {
       candidates,
       evidence: candidates.flatMap(c => c.evidence)
     });
+  }
+
+  if (audit) {
+    const rowIndexes = [...new Set(
+      Object.keys(audit.candidates.fields)
+        .map(field => /^goodsLines\.(\d+)\./.exec(field)?.[1])
+        .filter((value): value is string => value !== undefined)
+        .map(Number)
+    )].sort((a, b) => a - b);
+    for (const rowIndex of rowIndexes) {
+      const field = `goodsLines.${rowIndex}.origin`;
+      const candidates = genericCandidates[field] ?? [];
+      const distinct = new Set(candidates.map(candidate => JSON.stringify(candidate.value)));
+      if (candidates.length === 1 && distinct.size === 1) continue;
+      const code = candidates.length === 0 ? "ORIGIN_MISSING" : "ORIGIN_AMBIGUOUS";
+      issues.push({
+        issueId: issueId(["GENERIC_EVIDENCE", code, rowIndex, field]),
+        source: "GENERIC_EVIDENCE",
+        code,
+        message: candidates.length === 0
+          ? `Satır ${rowIndex + 1} için menşe canonical evidence ile bulunamadı.`
+          : `Satır ${rowIndex + 1} için menşe birden fazla aday içeriyor.`,
+        field,
+        rowIndex,
+        lineNo: rowIndex + 1,
+        candidateIds: candidates.map(candidate => candidate.candidateId),
+        candidates,
+        evidence: candidates.flatMap(candidate => candidate.evidence)
+      });
+    }
   }
 
   for (const row of audit?.validation?.rows ?? []) {

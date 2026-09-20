@@ -21,6 +21,7 @@ import { buildEffectiveInvoiceGoodsLines, buildEffectiveInvoiceShipmentInfo, bui
 import { discoverInvoiceShipmentFieldCandidates } from "../idp/candidates/invoiceShipmentCandidateDiscovery.js";
 import { discoverInvoiceHeaderPartyFieldCandidates } from "../idp/candidates/invoiceHeaderPartyCandidateDiscovery.js";
 import { discoverInvoiceCommercialTermsFieldCandidates } from "../idp/candidates/invoiceCommercialTermsCandidateDiscovery.js";
+import { discoverInvoiceOriginFieldCandidates } from "../idp/candidates/invoiceOriginCandidateDiscovery.js";
 import type { GenericInvoiceCandidateAudit } from "../idp/domain/genericCandidateIntegration.types.js";
 import { ProcessingStatus } from "../idp/domain/idp.types.js";
 import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
@@ -268,7 +269,31 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       : undefined;
     if (!audit) continue;
 
-    const issues = buildHumanReviewIssues(run);
+    // Foundation 5.5A.4: old completed runs predate persisted origin candidates.
+    // Derive them from persisted canonical + generic goods evidence without OCR/reparse.
+    const segmentId = String((segments?.[0] as any)?.segmentId ?? "invoice");
+    const originFields = audit.originCandidates ?? discoverInvoiceOriginFieldCandidates(
+      run.canonicalDocument as any,
+      segmentId,
+      audit.candidates
+    );
+    const effectiveAuditForReview: GenericInvoiceCandidateAudit = {
+      ...audit,
+      originCandidates: originFields,
+      candidates: {
+        ...audit.candidates,
+        fields: { ...audit.candidates.fields, ...originFields.fields }
+      }
+    };
+
+    const issues = buildHumanReviewIssues({ ...run, candidates: {
+      ...(run.candidates as any),
+      segments: (segments as any[]).map((segment: any) =>
+        segment?.data?.genericCandidateAudit === audit
+          ? { ...segment, data: { ...segment.data, genericCandidateAudit: effectiveAuditForReview } }
+          : segment
+      )
+    }});
     const decisions = await HumanReviewDecisionModel.find({ companyId, processingRunId: run._id }).sort({ createdAt: 1 }).lean();
     const decidedIssueIds = new Set(decisions.map(decision => decision.issueId));
     const pendingIssues = issues.filter(issue => !decidedIssueIds.has(issue.issueId));
@@ -284,14 +309,17 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       // Older completed runs predate these candidates; derive only the missing
       // document-level fields from the persisted canonical document so OCR and
       // extraction never need to run again. Future runs already persist them.
-      const shipmentFields = audit.shipmentCandidates ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument as any, String((segments?.[0] as any)?.segmentId ?? "invoice"));
+      const shipmentFields = audit.shipmentCandidates ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument as any, segmentId);
       const effectiveAudit: GenericInvoiceCandidateAudit = {
-        ...audit,
-        candidates: { ...audit.candidates, fields: { ...audit.candidates.fields, ...shipmentFields.fields } }
+        ...effectiveAuditForReview,
+        candidates: {
+          ...effectiveAuditForReview.candidates,
+          fields: { ...effectiveAuditForReview.candidates.fields, ...shipmentFields.fields }
+        }
       };
-      const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, String((segments?.[0] as any)?.segmentId ?? "invoice"));
+      const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, segmentId);
       effectiveAudit.candidates.fields = { ...effectiveAudit.candidates.fields, ...headerPartyFields.fields };
-      const commercialTermsFields = audit.commercialTermsCandidates ?? discoverInvoiceCommercialTermsFieldCandidates(run.canonicalDocument as any, String((segments?.[0] as any)?.segmentId ?? "invoice"));
+      const commercialTermsFields = audit.commercialTermsCandidates ?? discoverInvoiceCommercialTermsFieldCandidates(run.canonicalDocument as any, segmentId);
       effectiveAudit.candidates.fields = { ...effectiveAudit.candidates.fields, ...commercialTermsFields.fields };
       const headerParty = buildEffectiveInvoiceHeaderParty(effectiveAudit, decisions);
       normalized.header = { ...normalized.header, ...headerParty.data.header };
@@ -314,7 +342,7 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
         (sourceTrace as Record<string, any>)[field] = { ...trace, processingRunId: String(run._id), uploadedFileId: String(invoiceDoc._id) };
       }
 
-      const effective = buildEffectiveInvoiceGoodsLines(audit, decisions);
+      const effective = buildEffectiveInvoiceGoodsLines(effectiveAudit, decisions);
       if (!genericGoodsPromoted) {
         normalized.goodsLines = [];
         genericGoodsPromoted = true;
