@@ -16,6 +16,7 @@ export interface GenericInvoiceCandidateAudit {
   candidates: FieldCandidateEnvelope;
   shipmentCandidates?: FieldCandidateEnvelope;
   headerPartyCandidates?: FieldCandidateEnvelope;
+  commercialTermsCandidates?: FieldCandidateEnvelope;
   validation: GenericEvidenceValidationResult;
   migration: GenericInvoiceMigrationAudit;
 }

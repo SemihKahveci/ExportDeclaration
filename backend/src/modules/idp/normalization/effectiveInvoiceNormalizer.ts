@@ -145,3 +145,39 @@ export function buildEffectiveInvoiceHeaderParty(audit: GenericInvoiceCandidateA
   }
   return {data,trace};
 }
+
+
+const COMMERCIAL_TERM_FIELDS = ["header.currency", "header.totalAmount", "trade.deliveryTerm", "transport.mode"] as const;
+export interface EffectiveInvoiceCommercialTerms { header: { currency?: string; totalAmount?: number }; trade: { deliveryTerm?: string }; transport: { mode?: string } }
+
+export function buildEffectiveInvoiceCommercialTerms(audit: GenericInvoiceCandidateAudit, decisions: DecisionLike[] = []): { data: EffectiveInvoiceCommercialTerms; trace: Record<string, EffectiveFieldTrace> } {
+  const decisionByField = latestDecisionByField(decisions);
+  const data: EffectiveInvoiceCommercialTerms = { header: {}, trade: {}, transport: {} };
+  const trace: Record<string, EffectiveFieldTrace> = {};
+  for (const field of COMMERCIAL_TERM_FIELDS) {
+    const decision = decisionByField.get(field);
+    let value: unknown; let fieldTrace: EffectiveFieldTrace;
+    if (decision && decision.value !== undefined && decision.value !== null && decision.value !== "") {
+      value = decision.value;
+      fieldTrace = { value, source: "HUMAN_REVIEW", candidateId: decision.candidateId, decisionAction: decision.action };
+    } else {
+      const selected = preferredCandidate(field, audit.candidates.fields[field] ?? []);
+      if (!selected) throw new Error(`Generic candidates for ${field} are unresolved or missing; human review is required.`);
+      value = selected.value;
+      fieldTrace = { value, source: "IDP_GENERIC", candidateId: selected.candidateId, extractor: selected.extractor, evidence: selected.evidence };
+    }
+    if (field === "header.totalAmount") {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new Error(`${field} must be a non-negative finite number.`);
+      data.header.totalAmount = value;
+    } else {
+      if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string.`);
+      const v = value.trim();
+      if (field === "header.currency") data.header.currency = v;
+      if (field === "trade.deliveryTerm") data.trade.deliveryTerm = v;
+      if (field === "transport.mode") data.transport.mode = v;
+      value = v;
+    }
+    trace[field] = { ...fieldTrace, value };
+  }
+  return { data, trace };
+}

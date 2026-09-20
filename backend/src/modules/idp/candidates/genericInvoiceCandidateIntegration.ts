@@ -4,6 +4,7 @@ import { validateGenericInvoiceEvidence } from "../validator/genericInvoiceEvide
 import { discoverGenericInvoiceFieldCandidates } from "./genericInvoiceCandidateDiscovery.js";
 import { discoverInvoiceShipmentFieldCandidates } from "./invoiceShipmentCandidateDiscovery.js";
 import { discoverInvoiceHeaderPartyFieldCandidates } from "./invoiceHeaderPartyCandidateDiscovery.js";
+import { discoverInvoiceCommercialTermsFieldCandidates } from "./invoiceCommercialTermsCandidateDiscovery.js";
 import { compareGenericAndLegacyInvoiceCandidates } from "./genericInvoiceCandidateMigration.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 
@@ -24,6 +25,7 @@ export function buildGenericInvoiceCandidateAudit(
   const candidates = discoverGenericInvoiceFieldCandidates(canonicalDocument, segmentId);
   const shipmentCandidates = discoverInvoiceShipmentFieldCandidates(canonicalDocument, segmentId);
   const headerPartyCandidates = discoverInvoiceHeaderPartyFieldCandidates(canonicalDocument, segmentId);
+  const commercialTermsCandidates = discoverInvoiceCommercialTermsFieldCandidates(canonicalDocument, segmentId);
   const validation = validateGenericInvoiceEvidence(canonicalDocument, candidates);
   const migration = compareGenericAndLegacyInvoiceCandidates(legacyCandidates, candidates, validation);
 
@@ -33,6 +35,7 @@ export function buildGenericInvoiceCandidateAudit(
     candidates,
     shipmentCandidates,
     headerPartyCandidates,
+    commercialTermsCandidates,
     validation,
     migration
   };

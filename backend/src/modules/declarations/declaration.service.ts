@@ -17,9 +17,10 @@ import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.m
 import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
 import { HumanReviewDecisionModel } from "../idp/domain/humanReviewDecision.model.js";
 import { buildHumanReviewIssues } from "../idp/review/humanReview.service.js";
-import { buildEffectiveInvoiceGoodsLines, buildEffectiveInvoiceShipmentInfo, buildEffectiveInvoiceHeaderParty } from "../idp/normalization/effectiveInvoiceNormalizer.js";
+import { buildEffectiveInvoiceGoodsLines, buildEffectiveInvoiceShipmentInfo, buildEffectiveInvoiceHeaderParty, buildEffectiveInvoiceCommercialTerms } from "../idp/normalization/effectiveInvoiceNormalizer.js";
 import { discoverInvoiceShipmentFieldCandidates } from "../idp/candidates/invoiceShipmentCandidateDiscovery.js";
 import { discoverInvoiceHeaderPartyFieldCandidates } from "../idp/candidates/invoiceHeaderPartyCandidateDiscovery.js";
+import { discoverInvoiceCommercialTermsFieldCandidates } from "../idp/candidates/invoiceCommercialTermsCandidateDiscovery.js";
 import type { GenericInvoiceCandidateAudit } from "../idp/domain/genericCandidateIntegration.types.js";
 import { ProcessingStatus } from "../idp/domain/idp.types.js";
 import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
@@ -290,10 +291,20 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       };
       const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, String((segments?.[0] as any)?.segmentId ?? "invoice"));
       effectiveAudit.candidates.fields = { ...effectiveAudit.candidates.fields, ...headerPartyFields.fields };
+      const commercialTermsFields = audit.commercialTermsCandidates ?? discoverInvoiceCommercialTermsFieldCandidates(run.canonicalDocument as any, String((segments?.[0] as any)?.segmentId ?? "invoice"));
+      effectiveAudit.candidates.fields = { ...effectiveAudit.candidates.fields, ...commercialTermsFields.fields };
       const headerParty = buildEffectiveInvoiceHeaderParty(effectiveAudit, decisions);
       normalized.header = { ...normalized.header, ...headerParty.data.header };
       normalized.parties = { ...normalized.parties, ...headerParty.data.parties };
       for (const [field, trace] of Object.entries(headerParty.trace)) {
+        (sourceTrace as Record<string, any>)[field] = { ...trace, processingRunId: String(run._id), uploadedFileId: String(invoiceDoc._id) };
+      }
+
+      const commercialTerms = buildEffectiveInvoiceCommercialTerms(effectiveAudit, decisions);
+      normalized.header = { ...normalized.header, ...commercialTerms.data.header };
+      normalized.trade = { ...normalized.trade, ...commercialTerms.data.trade };
+      normalized.transport = { ...normalized.transport, ...commercialTerms.data.transport };
+      for (const [field, trace] of Object.entries(commercialTerms.trace)) {
         (sourceTrace as Record<string, any>)[field] = { ...trace, processingRunId: String(run._id), uploadedFileId: String(invoiceDoc._id) };
       }
 
