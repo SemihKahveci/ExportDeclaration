@@ -10,7 +10,7 @@ import type {
   FieldCandidateEnvelope,
 } from "../domain/fieldCandidate.types.js";
 
-const EXTRACTOR = "invoice-header-party-generic-v4";
+const EXTRACTOR = "invoice-header-party-generic-v5";
 
 type EvidenceLine = {
   text: string;
@@ -308,6 +308,81 @@ function buyerParty(
   return candidates[0]?.line;
 }
 
+
+function between(
+  lines: EvidenceLine[],
+  top: number,
+  bottom: number,
+  pageNumber?: number,
+): EvidenceLine[] {
+  return lines
+    .filter(line => pageNumber === undefined || line.pageNumber === pageNumber)
+    .filter(line => centerY(line.bbox) >= top && centerY(line.bbox) < bottom)
+    .sort((a,b) => centerY(a.bbox)-centerY(b.bbox) || a.bbox.x0-b.bbox.x0);
+}
+
+function sellerTaxNo(lines: EvidenceLine[], seller: EvidenceLine | undefined, sayin: EvidenceLine | undefined): {value:string; line:EvidenceLine}|undefined {
+  if (!seller || !sayin) return undefined;
+  const block = between(lines, centerY(seller.bbox), centerY(sayin.bbox), seller.pageNumber);
+  for (const line of block) {
+    const m = norm(line.text).match(/\b(?:VKN|TAX(?:\s*NO)?|VAT(?:\s*NO)?)\s*[:#-]?\s*([A-Z0-9][A-Z0-9 .-]{5,20})/);
+    if (!m) continue;
+    const value = m[1]!.replace(/[^A-Z0-9]/g,"");
+    if (value.length >= 6) return {value, line};
+  }
+  return undefined;
+}
+
+function addressLines(block: EvidenceLine[], party: EvidenceLine): EvidenceLine[] {
+  const py = centerY(party.bbox);
+  return block.filter(line => {
+    if (centerY(line.bbox) <= py + 0.002) return false;
+    if (Math.abs(line.bbox.x0-party.bbox.x0) > 0.16) return false;
+    const v=norm(line.text);
+    if (/^(TEL|FAX|WEB|E-?POSTA|VKN|VERGI|TICARET|E-?FATURA|ETTN|FATURA|IRSALIYE|OZELLESTIRME|SENARYO)/.test(v)) return false;
+    return true;
+  });
+}
+
+function partyAddress(
+  block: EvidenceLine[],
+  party: EvidenceLine,
+  excludedLine?: EvidenceLine,
+): {value:string; lines:EvidenceLine[]}|undefined {
+  const rows=addressLines(block,party).filter(line => line !== excludedLine);
+  if (!rows.length) return undefined;
+  const value=rows.map(x=>x.text.trim()).join(", ").replace(/\s+/g," ").trim();
+  return value ? {value,lines:rows} : undefined;
+}
+function buyerCountry(block: EvidenceLine[], buyer: EvidenceLine): {value:string; line:EvidenceLine}|undefined {
+  const py=centerY(buyer.bbox);
+  const candidates=block
+    .filter(line => centerY(line.bbox)>py+0.002)
+    .filter(line => Math.abs(line.bbox.x0-buyer.bbox.x0)<=0.035)
+    .sort((a,b)=>centerY(a.bbox)-centerY(b.bbox));
+
+  // Party address rows form a compact vertical run under the party name.
+  // Stop at the first meaningful vertical gap so goods/header text below cannot leak in.
+  const rows:EvidenceLine[]=[];
+  let prevY=py;
+  for(const line of candidates){
+    const y=centerY(line.bbox);
+    if(y-prevY>0.030) break;
+    const n=norm(line.text);
+    if(/^(TEL|FAX|WEB|E-?POSTA|VKN|VERGI|TICARET|FATURA|IRSALIYE|ETTN)/.test(n)) break;
+    rows.push(line);
+    prevY=y;
+  }
+
+  // Country is a short alphabetic terminal row inside that compact address run.
+  for(const line of [...rows].reverse()){
+    const v=line.text.trim();
+    if(!/^[A-Za-zÇĞİÖŞÜçğıöşü .'-]{3,40}$/.test(v)) continue;
+    if(/\d/.test(v)||v.split(/\s+/).length>4) continue;
+    return {value:v,line};
+  }
+  return undefined;
+}
 export function discoverInvoiceHeaderPartyFieldCandidates(
   canonical: CanonicalDocument,
   segmentId: string,
@@ -362,17 +437,42 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
 
   const buyer = buyerParty(lines);
   if (buyer) {
-    add(
-      fields,
-      candidate(
-        "parties.buyer.name",
-        buyer.text.trim(),
-        "party-buyer-name",
-        segmentId,
-        buyer,
-        0.96,
-      ),
-    );
+    add(fields, candidate("parties.buyer.name", buyer.text.trim(), "party-buyer-name", segmentId, buyer, 0.96));
+  }
+
+  const sayin = findSayin(lines);
+  const taxNo = sellerTaxNo(lines, seller, sayin);
+  if (taxNo) add(fields, candidate("parties.seller.taxNo", taxNo.value, "party-seller-tax-no", segmentId, taxNo.line, 0.99));
+
+  if (seller && sayin) {
+    const block=between(lines, centerY(seller.bbox), centerY(sayin.bbox), seller.pageNumber);
+    const address=partyAddress(block,seller);
+    if (address) {
+      const ev={...address.lines[0]!, text:address.lines.map(x=>x.text).join(" | "), bbox:{
+        x0:Math.min(...address.lines.map(x=>x.bbox.x0)), y0:Math.min(...address.lines.map(x=>x.bbox.y0)),
+        x1:Math.max(...address.lines.map(x=>x.bbox.x1)), y1:Math.max(...address.lines.map(x=>x.bbox.y1))
+      }};
+      add(fields,candidate("parties.seller.address",address.value,"party-seller-address",segmentId,ev,0.94));
+    }
+  }
+
+  if (buyer && sayin) {
+    const nextBoundary = lines
+      .filter(x=>x.pageNumber===buyer.pageNumber)
+      .filter(x=>centerY(x.bbox)>centerY(buyer.bbox) && /MALZEME|HIZMET/.test(norm(x.text)))
+      .sort((a,b)=>centerY(a.bbox)-centerY(b.bbox))[0];
+    const bottom=nextBoundary ? centerY(nextBoundary.bbox) : centerY(buyer.bbox)+0.14;
+    const block=between(lines,centerY(buyer.bbox),bottom,buyer.pageNumber);
+    const country=buyerCountry(block,buyer);
+    const address=partyAddress(block,buyer,country?.line);
+    if (address) {
+      const ev={...address.lines[0]!, text:address.lines.map(x=>x.text).join(" | "), bbox:{
+        x0:Math.min(...address.lines.map(x=>x.bbox.x0)), y0:Math.min(...address.lines.map(x=>x.bbox.y0)),
+        x1:Math.max(...address.lines.map(x=>x.bbox.x1)), y1:Math.max(...address.lines.map(x=>x.bbox.y1))
+      }};
+      add(fields,candidate("parties.buyer.address",address.value,"party-buyer-address",segmentId,ev,0.94));
+    }
+    if (country) add(fields,candidate("parties.buyer.country",country.value,"party-buyer-country",segmentId,country.line,0.94));
   }
 
   return {

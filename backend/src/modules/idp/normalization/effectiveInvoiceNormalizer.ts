@@ -119,7 +119,8 @@ export function buildEffectiveInvoiceShipmentInfo(audit: GenericInvoiceCandidate
 }
 
 const HEADER_PARTY_FIELDS = ["header.invoiceNo", "header.invoiceDate", "parties.seller.name", "parties.buyer.name"] as const;
-export interface EffectiveInvoiceHeaderParty { header: { invoiceNo?: string; invoiceDate?: string }; parties: { seller?: { name?: string }; buyer?: { name?: string } } }
+const OPTIONAL_PARTY_FIELDS = ["parties.seller.taxNo", "parties.seller.address", "parties.seller.country", "parties.buyer.taxNo", "parties.buyer.address", "parties.buyer.country"] as const;
+export interface EffectiveInvoiceHeaderParty { header: { invoiceNo?: string; invoiceDate?: string }; parties: { seller?: { name?: string; taxNo?: string; address?: string; country?: string }; buyer?: { name?: string; taxNo?: string; address?: string; country?: string } } }
 
 export function buildEffectiveInvoiceHeaderParty(audit: GenericInvoiceCandidateAudit, decisions: DecisionLike[] = []): { data: EffectiveInvoiceHeaderParty; trace: Record<string, EffectiveFieldTrace> } {
   const decisionByField = latestDecisionByField(decisions);
@@ -142,6 +143,21 @@ export function buildEffectiveInvoiceHeaderParty(audit: GenericInvoiceCandidateA
     if(field==="parties.seller.name") data.parties.seller={name:v};
     if(field==="parties.buyer.name") data.parties.buyer={name:v};
     trace[field]={...fieldTrace,value:v};
+  }
+  for (const field of OPTIONAL_PARTY_FIELDS) {
+    const decision=decisionByField.get(field);
+    const selected=decision && decision.value !== undefined && decision.value !== null && decision.value !== ""
+      ? undefined : preferredCandidate(field,audit.candidates.fields[field]??[]);
+    const value=decision?.value ?? selected?.value;
+    if(value===undefined||value===null||value==="") continue;
+    if(typeof value!=="string"||!value.trim()) throw new Error(`${field} must be a non-empty string.`);
+    const v=value.trim();
+    const [,party,key]=field.split(".");
+    const target=party==="seller" ? (data.parties.seller??={}) : (data.parties.buyer??={});
+    (target as Record<string,unknown>)[key!]=v;
+    trace[field]=decision
+      ? {value:v,source:"HUMAN_REVIEW",candidateId:decision.candidateId,decisionAction:decision.action}
+      : {value:v,source:"IDP_GENERIC",candidateId:selected!.candidateId,extractor:selected!.extractor,evidence:selected!.evidence};
   }
   return {data,trace};
 }

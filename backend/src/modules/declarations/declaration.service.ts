@@ -277,12 +277,24 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       segmentId,
       audit.candidates
     );
+    const shipmentFields = audit.shipmentCandidates ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument as any, segmentId);
+    const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, segmentId);
+    const commercialTermsFields = audit.commercialTermsCandidates ?? discoverInvoiceCommercialTermsFieldCandidates(run.canonicalDocument as any, segmentId);
     const effectiveAuditForReview: GenericInvoiceCandidateAudit = {
       ...audit,
       originCandidates: originFields,
+      shipmentCandidates: shipmentFields,
+      headerPartyCandidates: headerPartyFields,
+      commercialTermsCandidates: commercialTermsFields,
       candidates: {
         ...audit.candidates,
-        fields: { ...audit.candidates.fields, ...originFields.fields }
+        fields: {
+          ...audit.candidates.fields,
+          ...originFields.fields,
+          ...shipmentFields.fields,
+          ...headerPartyFields.fields,
+          ...commercialTermsFields.fields
+        }
       }
     };
 
@@ -309,18 +321,7 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       // Older completed runs predate these candidates; derive only the missing
       // document-level fields from the persisted canonical document so OCR and
       // extraction never need to run again. Future runs already persist them.
-      const shipmentFields = audit.shipmentCandidates ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument as any, segmentId);
-      const effectiveAudit: GenericInvoiceCandidateAudit = {
-        ...effectiveAuditForReview,
-        candidates: {
-          ...effectiveAuditForReview.candidates,
-          fields: { ...effectiveAuditForReview.candidates.fields, ...shipmentFields.fields }
-        }
-      };
-      const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, segmentId);
-      effectiveAudit.candidates.fields = { ...effectiveAudit.candidates.fields, ...headerPartyFields.fields };
-      const commercialTermsFields = audit.commercialTermsCandidates ?? discoverInvoiceCommercialTermsFieldCandidates(run.canonicalDocument as any, segmentId);
-      effectiveAudit.candidates.fields = { ...effectiveAudit.candidates.fields, ...commercialTermsFields.fields };
+      const effectiveAudit: GenericInvoiceCandidateAudit = effectiveAuditForReview;
       const headerParty = buildEffectiveInvoiceHeaderParty(effectiveAudit, decisions);
       normalized.header = { ...normalized.header, ...headerParty.data.header };
       normalized.parties = { ...normalized.parties, ...headerParty.data.parties };

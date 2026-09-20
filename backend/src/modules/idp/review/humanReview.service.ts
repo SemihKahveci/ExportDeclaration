@@ -7,6 +7,10 @@ import type { FieldCandidate, FieldCandidateEnvelope } from "../domain/fieldCand
 import type { CandidateResolutionEnvelope } from "../domain/candidateResolution.types.js";
 import type { ValidationEnvelope } from "../domain/validation.types.js";
 import type { GenericInvoiceCandidateAudit } from "../domain/genericCandidateIntegration.types.js";
+import { discoverInvoiceOriginFieldCandidates } from "../candidates/invoiceOriginCandidateDiscovery.js";
+import { discoverInvoiceShipmentFieldCandidates } from "../candidates/invoiceShipmentCandidateDiscovery.js";
+import { discoverInvoiceHeaderPartyFieldCandidates } from "../candidates/invoiceHeaderPartyCandidateDiscovery.js";
+import { discoverInvoiceCommercialTermsFieldCandidates } from "../candidates/invoiceCommercialTermsCandidateDiscovery.js";
 
 function issueId(parts: Array<string | number | undefined>): string {
   return parts.filter(v => v !== undefined).map(String).join(":");
@@ -15,6 +19,9 @@ function issueId(parts: Array<string | number | undefined>): string {
 function allCandidates(audit?: GenericInvoiceCandidateAudit): Record<string, FieldCandidate[]> {
   return {
     ...(audit?.candidates?.fields ?? {}),
+    ...(audit?.headerPartyCandidates?.fields ?? {}),
+    ...(audit?.commercialTermsCandidates?.fields ?? {}),
+    ...(audit?.shipmentCandidates?.fields ?? {}),
     ...(audit?.originCandidates?.fields ?? {})
   };
 }
@@ -29,11 +36,31 @@ function findGenericAudit(run: any): GenericInvoiceCandidateAudit | undefined {
   return undefined;
 }
 
+function materializeReviewAudit(run: any, audit?: GenericInvoiceCandidateAudit): GenericInvoiceCandidateAudit | undefined {
+  if (!audit || !run?.canonicalDocument) return audit;
+  const segments=run?.candidates?.segments;
+  const owner=Array.isArray(segments)
+    ? segments.find((segment:any)=>segment?.data?.genericCandidateAudit===audit)
+    : undefined;
+  const segmentId=String(owner?.segmentId ?? "invoice");
+
+  const originCandidates=audit.originCandidates
+    ?? discoverInvoiceOriginFieldCandidates(run.canonicalDocument,segmentId,audit.candidates);
+  const shipmentCandidates=audit.shipmentCandidates
+    ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument,segmentId);
+  const headerPartyCandidates=audit.headerPartyCandidates
+    ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument,segmentId);
+  const commercialTermsCandidates=audit.commercialTermsCandidates
+    ?? discoverInvoiceCommercialTermsFieldCandidates(run.canonicalDocument,segmentId);
+
+  return {...audit,originCandidates,shipmentCandidates,headerPartyCandidates,commercialTermsCandidates};
+}
+
 export function buildHumanReviewIssues(run: any): HumanReviewIssue[] {
   const issues: HumanReviewIssue[] = [];
   const resolution = run.resolvedResult as CandidateResolutionEnvelope | undefined;
   const validation = run.validationResult as ValidationEnvelope | undefined;
-  const audit = findGenericAudit(run);
+  const audit = materializeReviewAudit(run,findGenericAudit(run));
   const genericCandidates = allCandidates(audit);
 
   for (const item of resolution?.issues ?? []) {
@@ -93,6 +120,22 @@ export function buildHumanReviewIssues(run: any): HumanReviewIssue[] {
         evidence: candidates.flatMap(candidate => candidate.evidence)
       });
     }
+  }
+
+  for (const field of ["parties.seller.taxNo","parties.seller.address","parties.seller.country","parties.buyer.taxNo","parties.buyer.address","parties.buyer.country"]) {
+    const candidates=genericCandidates[field]??[];
+    const distinct=new Set(candidates.map(candidate=>JSON.stringify(candidate.value)));
+    if(distinct.size<=1) continue;
+    issues.push({
+      issueId: issueId(["GENERIC_EVIDENCE","PARTY_FIELD_AMBIGUOUS",field]),
+      source:"GENERIC_EVIDENCE",
+      code:"PARTY_FIELD_AMBIGUOUS",
+      message:`${field} için birden fazla canonical aday bulundu.`,
+      field,
+      candidateIds:candidates.map(candidate=>candidate.candidateId),
+      candidates,
+      evidence:candidates.flatMap(candidate=>candidate.evidence)
+    });
   }
 
   for (const row of audit?.validation?.rows ?? []) {
