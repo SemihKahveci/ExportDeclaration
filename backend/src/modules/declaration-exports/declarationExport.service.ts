@@ -8,6 +8,7 @@ import type { ExportContractIssue, ExportDeclarationSupplements } from "../expor
 import type { NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
 import { buildUnsignedUblIhracat } from "../ubl-ihracat/ublIhracatAdapter.service.js";
 import type { UblIhracatAdapterOptions, UblIhracatIssue } from "../ubl-ihracat/ublIhracatAdapter.types.js";
+import { overlayHumanSupplements, resolveCustomsMasterData } from "../customs-master-data/customsMasterData.service.js";
 
 export interface EvrimExcelExportInput {
   supplements?: ExportDeclarationSupplements;
@@ -40,7 +41,9 @@ export async function exportDeclarationAsEvrimExcel(
   if (!declaration.normalizedData) throw new HttpError(409, "Beyanname henüz normalize edilmemiş.");
 
   const normalized = declaration.normalizedData as NormalizedDeclaration;
-  const contract = buildExportDeclarationContract(normalized, input.supplements ?? {});
+  const master = await resolveCustomsMasterData(companyId, declaration.operation?.customerId, normalized);
+  const supplements = overlayHumanSupplements(master.supplements, input.supplements ?? {});
+  const contract = buildExportDeclarationContract(normalized, supplements);
 
   if (!contract.readiness.ready) {
     return { ready: false, issues: contract.readiness.issues };
@@ -90,7 +93,9 @@ export async function exportDeclarationAsUnsignedUblIhracat(
   if (!declaration.normalizedData) throw new HttpError(409, "Beyanname henüz normalize edilmemiş.");
 
   const normalized = declaration.normalizedData as NormalizedDeclaration;
-  const contract = buildExportDeclarationContract(normalized, input.supplements ?? {});
+  const master = await resolveCustomsMasterData(companyId, declaration.operation?.customerId, normalized);
+  const supplements = overlayHumanSupplements(master.supplements, input.supplements ?? {});
+  const contract = buildExportDeclarationContract(normalized, supplements);
 
   if (!contract.readiness.ready) {
     return { ready: false, issues: contract.readiness.issues };

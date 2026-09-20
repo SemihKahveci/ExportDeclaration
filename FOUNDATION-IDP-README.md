@@ -416,3 +416,20 @@ Verified mappings in this adapter include `UBLVersionID=2.1`, `CustomizationID=T
 
 ## Foundation 5.5A.4 — Row-level Origin / Menşe
 Canonical goods-row geometry now discovers per-line origin with evidence, promotes it through human-review-aware normalization, and carries it through the export contract to Evrim Excel `MENŞE`. Missing/ambiguous origin fails closed into review/export readiness; no supplier names, country-name list, or fixed x coordinate is used.
+
+
+## Foundation 5.6A — Customs Master Data enrichment foundation
+
+Customs/master-data enrichment is a separate authority from invoice IDP. Tenant-scoped `CustomsMasterData` records may provide declaration defaults and line-level customs values by product code or HS code; invoice extraction never invents these values. Customer-specific rules override company-wide rules, product rules override HS rules, and explicit human/export-request supplements are the final authority.
+
+Initial master-data values are declaration type/export type/customs office/regime plus line-level brand, exemption, permit, ÜTS and used-goods flag. The resolver emits an independent `MASTER_DATA` trace containing source record/scope/key. Evrim Excel and unsigned UBL export boundaries resolve master data automatically before overlaying explicit human supplements. Master data is not written back into immutable IDP evidence or `NormalizedDeclaration`.
+
+
+### Foundation 5.6A.2 — Master Data CRUD API
+
+Authenticated tenant-scoped CRUD is exposed at `/api/customs-master-data`. Create/update validation rejects unknown fields and scope-incompatible values; duplicate tenant/customer/scope/key records return conflict rather than silently overwriting. Record IDs are always resolved together with `operationalCompanyId`, preserving tenant isolation. Master-data keys/scope are immutable after creation; values and active state are editable.
+
+
+### Foundation 5.6A.3 — Production Evrim export proof
+
+The production HTTP path is covered end-to-end: authenticated master-data CRUD creates temporary HS/product records, the real declaration export endpoint resolves those records into the format-neutral export contract, and the generated Evrim workbook is inspected at the exact `ÜTS NO`, `MUAFİYET`, `MARKA`, `KULLANILMIŞ` and `ÖN İZİN` columns. A second export supplies explicit human line supplements and verifies that human input overrides master data without losing unrelated master values. Temporary records are deleted after the proof.
