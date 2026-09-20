@@ -17,8 +17,9 @@ import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.m
 import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
 import { HumanReviewDecisionModel } from "../idp/domain/humanReviewDecision.model.js";
 import { buildHumanReviewIssues } from "../idp/review/humanReview.service.js";
-import { buildEffectiveInvoiceGoodsLines, buildEffectiveInvoiceShipmentInfo } from "../idp/normalization/effectiveInvoiceNormalizer.js";
+import { buildEffectiveInvoiceGoodsLines, buildEffectiveInvoiceShipmentInfo, buildEffectiveInvoiceHeaderParty } from "../idp/normalization/effectiveInvoiceNormalizer.js";
 import { discoverInvoiceShipmentFieldCandidates } from "../idp/candidates/invoiceShipmentCandidateDiscovery.js";
+import { discoverInvoiceHeaderPartyFieldCandidates } from "../idp/candidates/invoiceHeaderPartyCandidateDiscovery.js";
 import type { GenericInvoiceCandidateAudit } from "../idp/domain/genericCandidateIntegration.types.js";
 import { ProcessingStatus } from "../idp/domain/idp.types.js";
 import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
@@ -287,6 +288,15 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
         ...audit,
         candidates: { ...audit.candidates, fields: { ...audit.candidates.fields, ...shipmentFields.fields } }
       };
+      const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, String((segments?.[0] as any)?.segmentId ?? "invoice"));
+      effectiveAudit.candidates.fields = { ...effectiveAudit.candidates.fields, ...headerPartyFields.fields };
+      const headerParty = buildEffectiveInvoiceHeaderParty(effectiveAudit, decisions);
+      normalized.header = { ...normalized.header, ...headerParty.data.header };
+      normalized.parties = { ...normalized.parties, ...headerParty.data.parties };
+      for (const [field, trace] of Object.entries(headerParty.trace)) {
+        (sourceTrace as Record<string, any>)[field] = { ...trace, processingRunId: String(run._id), uploadedFileId: String(invoiceDoc._id) };
+      }
+
       const shipment = buildEffectiveInvoiceShipmentInfo(effectiveAudit, decisions);
       normalized.packageInfo = { ...normalized.packageInfo, ...shipment.packageInfo };
       for (const [field, trace] of Object.entries(shipment.trace)) {

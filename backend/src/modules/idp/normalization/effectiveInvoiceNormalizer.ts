@@ -117,3 +117,31 @@ export function buildEffectiveInvoiceShipmentInfo(audit: GenericInvoiceCandidate
   }
   return { packageInfo, trace };
 }
+
+const HEADER_PARTY_FIELDS = ["header.invoiceNo", "header.invoiceDate", "parties.seller.name", "parties.buyer.name"] as const;
+export interface EffectiveInvoiceHeaderParty { header: { invoiceNo?: string; invoiceDate?: string }; parties: { seller?: { name?: string }; buyer?: { name?: string } } }
+
+export function buildEffectiveInvoiceHeaderParty(audit: GenericInvoiceCandidateAudit, decisions: DecisionLike[] = []): { data: EffectiveInvoiceHeaderParty; trace: Record<string, EffectiveFieldTrace> } {
+  const decisionByField = latestDecisionByField(decisions);
+  const data: EffectiveInvoiceHeaderParty = { header: {}, parties: {} };
+  const trace: Record<string, EffectiveFieldTrace> = {};
+  for (const field of HEADER_PARTY_FIELDS) {
+    const decision = decisionByField.get(field);
+    let value: unknown; let fieldTrace: EffectiveFieldTrace;
+    if (decision && decision.value !== undefined && decision.value !== null && decision.value !== "") {
+      value=decision.value; fieldTrace={value,source:"HUMAN_REVIEW",candidateId:decision.candidateId,decisionAction:decision.action};
+    } else {
+      const selected=preferredCandidate(field,audit.candidates.fields[field]??[]);
+      if(!selected) throw new Error(`Generic candidates for ${field} are unresolved or missing; human review is required.`);
+      value=selected.value; fieldTrace={value,source:"IDP_GENERIC",candidateId:selected.candidateId,extractor:selected.extractor,evidence:selected.evidence};
+    }
+    if(typeof value!=="string"||!value.trim()) throw new Error(`${field} must be a non-empty string.`);
+    const v=value.trim();
+    if(field==="header.invoiceNo") data.header.invoiceNo=v;
+    if(field==="header.invoiceDate") data.header.invoiceDate=v;
+    if(field==="parties.seller.name") data.parties.seller={name:v};
+    if(field==="parties.buyer.name") data.parties.buyer={name:v};
+    trace[field]={...fieldTrace,value:v};
+  }
+  return {data,trace};
+}
