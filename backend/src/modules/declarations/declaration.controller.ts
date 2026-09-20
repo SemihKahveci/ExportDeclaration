@@ -11,7 +11,12 @@ import {
   runValidate
 } from "./declaration.service.js";
 import fs from "node:fs/promises";
-import { exportDeclarationAsEvrimExcel, type EvrimExcelExportInput } from "../declaration-exports/declarationExport.service.js";
+import {
+  exportDeclarationAsEvrimExcel,
+  exportDeclarationAsUnsignedUblIhracat,
+  type EvrimExcelExportInput,
+  type UblIhracatExportInput
+} from "../declaration-exports/declarationExport.service.js";
 
 export async function postDeclaration(req: Request, res: Response): Promise<void> {
   const companyId = req.auth!.operationalCompanyId;
@@ -81,5 +86,30 @@ export async function postExportEvrimExcel(req: Request, res: Response): Promise
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
   res.setHeader("X-Export-Row-Count", String(result.rowCount));
+  res.send(result.buffer);
+}
+
+
+export async function postExportUblIhracat(req: Request, res: Response): Promise<void> {
+  const result = await exportDeclarationAsUnsignedUblIhracat(
+    req.auth!.operationalCompanyId,
+    req.params.id!,
+    (req.body ?? {}) as UblIhracatExportInput
+  );
+
+  if (!result.ready) {
+    res.status(409).json({
+      ok: false,
+      code: "EXPORT_NOT_READY",
+      issues: result.issues
+    });
+    return;
+  }
+
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+  res.setHeader("X-Export-Row-Count", String(result.lineCount));
+  res.setHeader("X-UBL-Profile", result.profileId);
+  res.setHeader("X-UBL-Signed", String(result.signed));
   res.send(result.buffer);
 }
