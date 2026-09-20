@@ -126,8 +126,6 @@ export function buildNormalizedDeclaration(sources: ExtractedSource[]): {
     "header.currency",
     "header.totalAmount",
     "trade.deliveryTerm",
-    "trade.paymentType",
-    "trade.origin",
     "transport.mode",
     "packageInfo.totalPackage",
     "packageInfo.packageType",
@@ -139,7 +137,6 @@ export function buildNormalizedDeclaration(sources: ExtractedSource[]): {
 
   setPartyNested(normalized.parties, "seller", sources, trace);
   setPartyNested(normalized.parties, "buyer", sources, trace);
-  setPartyNested(normalized.parties, "notify", sources, trace);
 
 
   const { lines, source } = resolveGoodsLines(sources);

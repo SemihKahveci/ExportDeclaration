@@ -22,14 +22,7 @@ export const sourcePriorityRules: Record<string, DocumentTypeValue[]> = {
   "parties.buyer.address": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
   "parties.buyer.country": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
 
-  "parties.notify": ["BILL_OF_LADING_INSTRUCTION", "EXPORT_INVOICE", "INVOICE", "E_INVOICE_XML"],
-  "parties.notify.name": ["BILL_OF_LADING_INSTRUCTION", "EXPORT_INVOICE", "INVOICE", "E_INVOICE_XML"],
-  "parties.notify.address": ["BILL_OF_LADING_INSTRUCTION", "EXPORT_INVOICE", "INVOICE", "E_INVOICE_XML"],
-
   "trade.deliveryTerm": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PROFORMA"],
-  "trade.paymentType": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PROFORMA"],
-  "trade.origin": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-
   "transport.mode": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "BILL_OF_LADING_INSTRUCTION"],
 
   "packageInfo.totalPackage": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PACKING_LIST"],

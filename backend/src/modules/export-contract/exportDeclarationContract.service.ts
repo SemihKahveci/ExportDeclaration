@@ -70,7 +70,7 @@ export function buildExportDeclarationContract(
     requireValue(issues, `${prefix}.lineTotal`, line.lineTotal, "NORMALIZED_DECLARATION");
 
     const extra = lineSupplementFor(supplements, line);
-    const effectiveOrigin = extra.origin ?? line.origin ?? normalized.trade.origin;
+    const effectiveOrigin = extra.origin ?? line.origin;
     requireValue(
       issues,
       `${prefix}.origin`,
