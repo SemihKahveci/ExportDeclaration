@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Database, FileSearch, Loader2, Pencil, RefreshCw, Send, UserRound } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Database, FileSearch, History, Loader2, Pencil, RefreshCw, RotateCcw, Send, UserRound } from 'lucide-react';
 import { getDeclarationControlProjection, type ControlProvenanceEntry, type DeclarationControlProjection } from '../../api/declarationControlApi';
+import { appendCustomsSupplementDecision, listCustomsSupplementDecisions, type CustomsSupplementDecision } from '../../api/customsSupplementApi';
 import DocumentEvidenceViewer, { type DocumentEvidenceSelection } from '../../components/documents/DocumentEvidenceViewer';
 import { Card, CardBody, CardHead } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import Modal from '../../components/ui/Modal';
 
 interface ControlTabProps {
   declarationId: string;
@@ -15,6 +17,15 @@ const AUTHORITY_LABEL: Record<ControlProvenanceEntry['authority'], string> = {
   MASTER_DATA: 'Master Data',
   PERSISTENT_HUMAN: 'Manuel Gümrük Kararı',
 };
+
+
+const DECLARATION_SUPPLEMENT_FIELDS = new Set(['customs.declarationType','customs.exportType','customs.customsOffice','customs.regimeCode','customs.fileReference','customs.declarationDate']);
+const LINE_SUPPLEMENT_FIELDS = new Set(['origin','brand','exemptionCode','permitCode','utsNo','usedFlag']);
+function supplementPath(path: string): string | null {
+  if (DECLARATION_SUPPLEMENT_FIELDS.has(path)) return path.slice('customs.'.length);
+  const m = /^lines\.(\d+)\.([A-Za-z][A-Za-z0-9]*)$/.exec(path);
+  return m && LINE_SUPPLEMENT_FIELDS.has(m[2]) ? path : null;
+}
 
 function AuthorityIcon({ authority }: { authority: ControlProvenanceEntry['authority'] }) {
   if (authority === 'MASTER_DATA') return <Database size={14} />;
@@ -107,12 +118,23 @@ export default function ControlTab({ declarationId, onSistemeGonder }: ControlTa
   const [activePath, setActivePath] = useState<string | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [viewerMode, setViewerMode] = useState<'selected' | 'all'>('selected');
+  const [editOpen, setEditOpen] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [decisions, setDecisions] = useState<CustomsSupplementDecision[]>([]);
+  const [clearingDecision, setClearingDecision] = useState(false);
 
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const data = await getDeclarationControlProjection(declarationId);
+      const [data, history] = await Promise.all([
+        getDeclarationControlProjection(declarationId),
+        listCustomsSupplementDecisions(declarationId),
+      ]);
       setProjection(data);
+      setDecisions(history);
       setActivePath((current) => current && data.entries.some((x) => x.path === current) ? current : data.entries[0]?.path ?? null);
     } catch (err) {
       console.error(err);
@@ -128,6 +150,45 @@ export default function ControlTab({ declarationId, onSistemeGonder }: ControlTa
     () => projection?.entries.find((entry) => entry.path === activePath) ?? null,
     [projection, activePath],
   );
+
+  const activeSupplementPath = active ? supplementPath(active.path) : null;
+  const activeDecisionHistory = useMemo(
+    () => activeSupplementPath ? decisions.filter((d) => d.fieldPath === activeSupplementPath).slice().reverse() : [],
+    [decisions, activeSupplementPath],
+  );
+
+  const clearManualDecision = async () => {
+    if (!activeSupplementPath || active?.authority !== 'PERSISTENT_HUMAN') return;
+    setClearingDecision(true); setEditError(null);
+    try {
+      await appendCustomsSupplementDecision(declarationId, {
+        fieldPath: activeSupplementPath,
+        action: 'CLEAR',
+        reason: 'MT Kontrol üzerinden manuel karar kaldırıldı',
+      });
+      await load();
+    } catch (err) {
+      console.error(err);
+      setEditError('Manuel karar kaldırılamadı.');
+    } finally {
+      setClearingDecision(false);
+    }
+  };
+
+  const openManualEdit = () => {
+    if (!active || !activeSupplementPath) return;
+    setEditValue(displayValue(active.value) === '—' ? '' : displayValue(active.value));
+    setEditReason(''); setEditError(null); setEditOpen(true);
+  };
+  const saveManualEdit = async () => {
+    if (!activeSupplementPath || !editValue.trim()) { setEditError('Yeni değer gerekli.'); return; }
+    setSavingEdit(true); setEditError(null);
+    try {
+      await appendCustomsSupplementDecision(declarationId, { fieldPath: activeSupplementPath, action: 'SET', value: editValue.trim(), reason: editReason.trim() || undefined });
+      setEditOpen(false); await load();
+    } catch (err) { console.error(err); setEditError('Manuel gümrük kararı kaydedilemedi.'); }
+    finally { setSavingEdit(false); }
+  };
 
   const evidenceSelection: DocumentEvidenceSelection | null = active?.evidence ? {
     pageNumber: active.evidence.pageNumber,
@@ -187,6 +248,29 @@ export default function ControlTab({ declarationId, onSistemeGonder }: ControlTa
                   </div>
                 </div>
                 <AuthorityDetail entry={active} onOpenEvidence={() => { setViewerMode('selected'); setEvidenceOpen(true); }} />
+                {activeSupplementPath && (
+                  <div className="border border-line rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 bg-surface-2 border-b border-line flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2"><History size={15} className="text-accent" /><span className="text-[12.5px] font-bold text-text-strong">Karar Geçmişi</span></div>
+                      <span className="text-[10.5px] text-muted">{activeDecisionHistory.length} kayıt</span>
+                    </div>
+                    {activeDecisionHistory.length ? (
+                      <div className="max-h-48 overflow-auto divide-y divide-line">
+                        {activeDecisionHistory.map((decision) => (
+                          <div key={decision.id} className="px-4 py-3 text-[11.5px]">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`font-bold ${decision.action === 'SET' ? 'text-text-strong' : 'text-muted'}`}>{decision.action === 'SET' ? 'Değer Atandı' : 'Manuel Karar Kaldırıldı'}</span>
+                              <span className="text-[10px] text-muted">{new Date(decision.createdAt).toLocaleString('tr-TR')}</span>
+                            </div>
+                            {decision.value !== undefined && <div className="mt-1 font-mono text-text-strong break-all">{decision.value}</div>}
+                            {decision.actorEmail && <div className="mt-1 text-muted">{decision.actorEmail}</div>}
+                            {decision.reason && <div className="mt-1 text-muted">Gerekçe: {decision.reason}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : <div className="px-4 py-3 text-[11.5px] text-muted">Bu alan için henüz manuel gümrük kararı yok.</div>}
+                  </div>
+                )}
               </>
             ) : <div className="border border-dashed border-line-strong rounded-xl p-8 text-center text-[12px] text-muted">Kontrol edilecek bir alan seçin.</div>}
           </div>
@@ -195,13 +279,34 @@ export default function ControlTab({ declarationId, onSistemeGonder }: ControlTa
             <CardHead title="Kontrol Kararı" />
             <CardBody>
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="warn" icon={Pencil} size="sm">Manuel Düzelt</Button>
+                {active?.authority === 'PERSISTENT_HUMAN' && activeSupplementPath && (
+                  <Button icon={clearingDecision ? Loader2 : RotateCcw} size="sm" onClick={() => void clearManualDecision()} disabled={clearingDecision}>Manuel Kararı Kaldır</Button>
+                )}
+                <Button variant="warn" icon={Pencil} size="sm" onClick={openManualEdit} disabled={!activeSupplementPath} title={!activeSupplementPath ? 'Bu alan customs supplement ile değiştirilemez; belge/IDP gerçeği ayrı korunur.' : undefined}>Manuel Düzelt</Button>
                 <Button variant="primary" icon={Send} size="sm" onClick={onSistemeGonder}>Kontrolü Onayla</Button>
               </div>
             </CardBody>
           </Card>
         </div>
       </div>
+
+      <Modal open={editOpen} onClose={() => !savingEdit && setEditOpen(false)} title="Manuel Gümrük Kararı" footer={<>
+        <Button onClick={() => setEditOpen(false)} disabled={savingEdit}>Vazgeç</Button>
+        <Button variant="primary" icon={savingEdit ? Loader2 : CheckCircle2} onClick={() => void saveManualEdit()} disabled={savingEdit || !editValue.trim()}>Kararı Kaydet</Button>
+      </>}>
+        <div className="flex flex-col gap-4">
+          <div className="rounded-lg border border-line bg-surface-2 p-3 text-[12px]">
+            <div className="font-semibold text-text-strong">{active?.label}</div>
+            <div className="font-mono text-[10.5px] text-muted mt-1">{activeSupplementPath}</div>
+            <div className="mt-2"><span className="text-muted">Mevcut efektif değer: </span><span className="font-mono font-semibold">{active ? displayValue(active.value) : '—'}</span></div>
+            <div className="mt-1"><span className="text-muted">Mevcut otorite: </span><span className="font-semibold">{active ? AUTHORITY_LABEL[active.authority] : '—'}</span></div>
+          </div>
+          <label className="flex flex-col gap-1.5 text-[12px]"><span className="font-semibold text-text-strong">Yeni değer</span><input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} className="h-9 rounded border border-line bg-surface px-3 text-[13px] font-mono outline-none focus:border-accent" /></label>
+          <label className="flex flex-col gap-1.5 text-[12px]"><span className="font-semibold text-text-strong">Gerekçe <span className="font-normal text-muted">(opsiyonel)</span></span><textarea value={editReason} onChange={e => setEditReason(e.target.value)} rows={3} className="rounded border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent" placeholder="Örn. müşteri teyidi / gümrük operasyon kararı" /></label>
+          <div className="text-[11.5px] text-muted">Bu işlem IDP sonucunu değiştirmez. Yeni karar append-only olarak saklanır ve efektif beyannamede <b>Manuel Gümrük Kararı</b> otoritesiyle uygulanır.</div>
+          {editError && <div className="rounded border border-danger/30 bg-danger/5 p-2.5 text-[12px] text-danger">{editError}</div>}
+        </div>
+      </Modal>
 
       {active?.evidence && (
         <DocumentEvidenceViewer

@@ -594,3 +594,18 @@ MT provenance now applies the same canonical-only reconstruction for missing `he
 ##### 5.7D synchronized evidence comparison
 
 The original and parsed panes now synchronize vertical and horizontal scroll positions proportionally in both directions. Because both panes render the same physical PDF page, this keeps corresponding source locations aligned during visual comparison without changing evidence/provenance semantics.
+
+##### 5.7E MT persistent manual customs decision
+
+MT Control `Manuel Düzelt` is now wired to the existing append-only Customs Supplement API. Only fields allowed by the production supplement boundary are editable: declaration customs fields and line `origin`, `brand`, `exemptionCode`, `permitCode`, `utsNo`, `usedFlag`. Invoice/package/document-truth fields and non-supplement line fields remain non-editable in MT; IDP evidence is never mutated.
+
+After a SET decision the control projection refreshes and reports `PERSISTENT_HUMAN`. A later CLEAR decision restores the lower-precedence source (master data or normalized document evidence) without mutating history. Regression: `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/customs-master-data/verifyMtManualCustomsDecision.ts`.
+
+
+#### 5.7E MT persistent manual customs decisions — closeout
+
+MT Control exposes append-only customs decision history for the selected supplement-capable field: SET/CLEAR action, value, actor email, reason and timestamp. An active `PERSISTENT_HUMAN` decision can be removed by appending `CLEAR`, restoring the underlying authority without deleting history.
+
+The 5.7E integration regression waits for backend readiness to avoid the Compose post-rebuild `ECONNREFUSED` startup race.
+
+Cleanup boundary: the legacy MT mapping path is no longer used by `Beyanname Yazım > MT Kontrol`. `MtKontrolMapping`, `getMtKontrolMappings()` and `PAGE_IMAGES` are intentionally retained because `Beyanname Onay` still uses that legacy presentation path; deleting them during 5.7E would break an active screen.
