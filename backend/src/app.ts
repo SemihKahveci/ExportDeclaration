@@ -18,6 +18,7 @@ import { licenseMiddleware } from "./common/middlewares/licenseMiddleware.js";
 import { licenseRouter } from "./modules/license/license.routes.js";
 import { mailRouter } from "./modules/mail/mail.routes.js";
 import { customsMasterDataRouter } from "./modules/customs-master-data/customsMasterData.routes.js";
+import { customsSupplementRouter } from "./modules/customs-supplements/customsSupplement.routes.js";
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use("/api/document-processes", documentProcessRouter);
 app.use("/api/declaration-approval-rules", declarationApprovalRulesRouter);
 app.use("/api/customers", customerRouter);
 app.use("/api/customs-master-data", customsMasterDataRouter);
+app.use("/api/declarations", customsSupplementRouter);
 
 app.use(errorHandler);
 

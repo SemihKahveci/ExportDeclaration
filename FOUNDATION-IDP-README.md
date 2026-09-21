@@ -433,3 +433,54 @@ Deleting a customer now also deletes that customer's customs master-data records
 `GET /api/customs-master-data/effective` exposes the effective declaration/line customs profile for a `customerId + productCode/hsCode` lookup before an export is generated. The endpoint calls the same production master-data resolver used by exports, so precedence is not duplicated. It returns both effective values and the winning `MASTER_DATA` provenance entry per field.
 
 Inactive records are excluded by the shared resolver, HS lookup input is canonicalized with the same 12-digit rule used at write time, and customer references remain tenant-scoped.
+
+
+### Foundation 5.6B — COMPLETE
+
+Foundation 5.6B is closed with all regression gates passing together:
+
+- Exact 24-column Evrim authority inventory is enforced in code; unproven customs semantics remain fail-closed.
+- Verified Evrim output mappings are isolated under `export-code-tables`, separate from invoice evidence and tenant master data.
+- Customer-scoped master data has tenant referential integrity and customer-delete cascade cleanup.
+- HS/GTİP keys use one canonical 12-digit representation while product keys remain opaque business identifiers.
+- The effective-profile API reuses the production resolver and exposes field-level winning master-data provenance.
+- Active/inactive fallback follows the production precedence chain.
+- Real 0146 production export still produces 56 rows and verifies `HUMAN_INPUT > MASTER_DATA > NORMALIZED_DECLARATION`.
+
+Closing regression set:
+`verifyEvrimAuthorityMatrix.ts`,
+`verifyCustomsMasterDataIntegrity.ts`,
+`verifyCustomsMasterDataEffectivePreview.ts`,
+`verifyCustomsMasterDataEvrimExport.ts`.
+
+
+### Foundation 5.6C.1 — Persistent append-only human customs supplements
+
+Human customs input is now a separate audited domain from IDP Human Review. Declaration-scoped decisions are append-only `SET`/`CLEAR` events with tenant/declaration boundaries, optional actor/reason metadata, and a deterministic latest-decision projection.
+
+Supported persistent fields are limited to the format-neutral Export Contract supplement surface: declaration fields (`declarationType`, `exportType`, `customsOffice`, `regimeCode`, `fileReference`, `declarationDate`) and proven line fields (`origin`, `brand`, `exemptionCode`, `permitCode`, `utsNo`, `usedFlag`). Unresolved Evrim-only semantics remain rejected.
+
+5.6C.1 deliberately establishes persistence/audit only. Automatic export consumption is the next gate, so persistence can be proven independently before changing production export precedence.
+
+
+### Foundation 5.6C.2 — Persistent human supplements in production exports
+
+Both production export boundaries (Evrim Excel and unsigned UBL-TR IHRACAT) now consume the declaration's persisted human customs supplement projection before applying any explicit request-time supplements.
+
+Effective precedence is:
+
+`REQUEST_HUMAN > PERSISTENT_HUMAN > MASTER_DATA > NORMALIZED_DECLARATION`
+
+`CLEAR` removes the persistent override for that field and therefore reveals the next lower authority (for example master data); it does not erase canonical/master data itself. The production export regression proves this on the real 0146 declaration / 56-line Evrim workbook.
+
+
+### Foundation 5.6C.3 — Immutable export audit snapshot
+
+Every successful production Evrim Excel or unsigned UBL export now records an immutable audit snapshot. The snapshot freezes the normalized declaration, resolved master-data supplements and trace, persistent human projection, request-time human overrides, final effective supplements, final format-neutral export contract, output metadata, and SHA-256 of the exact emitted file bytes.
+
+Failed/not-ready exports do not create a successful export snapshot. Snapshot documents are append-only/immutable; later changes to master data or human decisions cannot rewrite the historical basis of an already emitted export.
+
+
+#### 5.6C.3 snapshot persistence hardening
+
+Export audit schemas use `minimize:false` so semantically meaningful empty snapshot objects (`{}`), including an empty master-data trace when no master-data rule participated, are preserved in MongoDB instead of being removed by Mongoose object minimization. The integration regression verifies snapshot completeness, the 56-line contract, exact emitted-file SHA-256, and immutable history.

@@ -9,6 +9,8 @@ import type { NormalizedDeclaration } from "../normalization/normalizedDeclarati
 import { buildUnsignedUblIhracat } from "../ubl-ihracat/ublIhracatAdapter.service.js";
 import type { UblIhracatAdapterOptions, UblIhracatIssue } from "../ubl-ihracat/ublIhracatAdapter.types.js";
 import { overlayHumanSupplements, resolveCustomsMasterData } from "../customs-master-data/customsMasterData.service.js";
+import { resolvePersistentCustomsSupplements } from "../customs-supplements/customsSupplement.service.js";
+import { recordExportAudit } from "../export-audit/exportAudit.service.js";
 
 export interface EvrimExcelExportInput {
   supplements?: ExportDeclarationSupplements;
@@ -42,7 +44,9 @@ export async function exportDeclarationAsEvrimExcel(
 
   const normalized = declaration.normalizedData as NormalizedDeclaration;
   const master = await resolveCustomsMasterData(companyId, declaration.operation?.customerId, normalized);
-  const supplements = overlayHumanSupplements(master.supplements, input.supplements ?? {});
+  const persistentHuman = await resolvePersistentCustomsSupplements(companyId, declarationId);
+  const masterWithPersistentHuman = overlayHumanSupplements(master.supplements, persistentHuman);
+  const supplements = overlayHumanSupplements(masterWithPersistentHuman, input.supplements ?? {});
   const contract = buildExportDeclarationContract(normalized, supplements);
 
   if (!contract.readiness.ready) {
@@ -52,12 +56,19 @@ export async function exportDeclarationAsEvrimExcel(
   const excel = buildEvrimExcel(contract, { lineOverrides: input.lineOverrides });
   const invoiceNo = safeFilenamePart(contract.invoice.invoiceNo);
 
-  return {
-    ready: true,
-    buffer: excel.buffer,
-    filename: `${invoiceNo}-evrim.xlsx`,
-    rowCount: excel.rowCount
-  };
+  const filename = `${invoiceNo}-evrim.xlsx`;
+  await recordExportAudit({
+    companyId, declarationId, format: "EVRIM_EXCEL",
+    normalizedSnapshot: normalized,
+    masterDataSnapshot: master.supplements,
+    persistentHumanSnapshot: persistentHuman,
+    requestHumanSnapshot: input.supplements ?? {},
+    effectiveSupplementsSnapshot: supplements,
+    contractSnapshot: contract,
+    masterDataTraceSnapshot: master.trace,
+    output: { filename, rowCount: excel.rowCount, buffer: excel.buffer },
+  });
+  return { ready: true, buffer: excel.buffer, filename, rowCount: excel.rowCount };
 }
 
 
@@ -94,7 +105,9 @@ export async function exportDeclarationAsUnsignedUblIhracat(
 
   const normalized = declaration.normalizedData as NormalizedDeclaration;
   const master = await resolveCustomsMasterData(companyId, declaration.operation?.customerId, normalized);
-  const supplements = overlayHumanSupplements(master.supplements, input.supplements ?? {});
+  const persistentHuman = await resolvePersistentCustomsSupplements(companyId, declarationId);
+  const masterWithPersistentHuman = overlayHumanSupplements(master.supplements, persistentHuman);
+  const supplements = overlayHumanSupplements(masterWithPersistentHuman, input.supplements ?? {});
   const contract = buildExportDeclarationContract(normalized, supplements);
 
   if (!contract.readiness.ready) {
@@ -113,12 +126,18 @@ export async function exportDeclarationAsUnsignedUblIhracat(
   }
 
   const invoiceNo = safeFilenamePart(contract.invoice.invoiceNo);
-  return {
-    ready: true,
-    buffer: Buffer.from(ubl.xml, "utf8"),
-    filename: `${invoiceNo}-ubl-ihracat.xml`,
-    lineCount: ubl.lineCount,
-    profileId: ubl.profileId,
-    signed: ubl.signed,
-  };
+  const buffer = Buffer.from(ubl.xml, "utf8");
+  const filename = `${invoiceNo}-ubl-ihracat.xml`;
+  await recordExportAudit({
+    companyId, declarationId, format: "UBL_IHRACAT",
+    normalizedSnapshot: normalized,
+    masterDataSnapshot: master.supplements,
+    persistentHumanSnapshot: persistentHuman,
+    requestHumanSnapshot: input.supplements ?? {},
+    effectiveSupplementsSnapshot: supplements,
+    contractSnapshot: contract,
+    masterDataTraceSnapshot: master.trace,
+    output: { filename, lineCount: ubl.lineCount, buffer },
+  });
+  return { ready: true, buffer, filename, lineCount: ubl.lineCount, profileId: ubl.profileId, signed: ubl.signed };
 }
