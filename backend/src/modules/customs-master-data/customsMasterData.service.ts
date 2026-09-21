@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import type { NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
 import type { ExportDeclarationSupplements, ExportLineSupplement } from "../export-contract/exportDeclarationContract.types.js";
+import { CustomerModel } from "../customers/customer.models.js";
 import { CUSTOMS_MASTER_SCOPES, CustomsMasterDataModel, type CustomsMasterDataDoc, type CustomsMasterScope } from "./customsMasterData.model.js";
 
 export interface MasterDataTraceEntry { source:"MASTER_DATA"; masterDataId:string; scope:"DECLARATION_DEFAULT"|"PRODUCT"|"HS"; key:string; customerId?:string; }
@@ -20,6 +21,28 @@ const ALL_VALUE_FIELDS=[...DECLARATION_FIELDS,...LINE_FIELDS] as const;
 function requiredText(v:unknown,n:string):string{if(typeof v!=="string"||!v.trim())throw new HttpError(400,`${n} gerekli.`);return v.trim();}
 function optionalText(v:unknown,n:string):string|undefined{if(v===undefined||v===null||v==="")return undefined;if(typeof v!=="string")throw new HttpError(400,`${n} metin olmalı.`);return v.trim()||undefined;}
 function assertScope(v:unknown):CustomsMasterScope{if(typeof v!=="string"||!CUSTOMS_MASTER_SCOPES.includes(v as CustomsMasterScope))throw new HttpError(400,"Geçersiz master data scope.");return v as CustomsMasterScope;}
+function normalizeScopeKey(scope:CustomsMasterScope,value:unknown):string{
+ const raw=requiredText(value,"key");
+ if(scope==="DECLARATION_DEFAULT"){
+  if(raw!=="DEFAULT")throw new HttpError(400,"DECLARATION_DEFAULT key değeri DEFAULT olmalı.");
+  return "DEFAULT";
+ }
+ if(scope==="HS"){
+  if(!/^[0-9.\s]+$/.test(raw))throw new HttpError(400,"HS/GTİP key yalnız rakam, nokta ve boşluk içerebilir.");
+  const digits=raw.replace(/[.\s]/g,"");
+  if(!/^\d{12}$/.test(digits))throw new HttpError(400,"HS/GTİP key 12 haneli olmalı.");
+  return digits;
+ }
+ return raw;
+}
+async function validatedCustomerId(companyId:mongoose.Types.ObjectId,value:unknown):Promise<string|undefined>{
+ const customerId=optionalText(value,"customerId");
+ if(!customerId)return undefined;
+ if(!mongoose.isValidObjectId(customerId))throw new HttpError(400,"Geçersiz customerId.");
+ const exists=await CustomerModel.exists({_id:customerId,companyId});
+ if(!exists)throw new HttpError(404,"Müşteri bulunamadı.");
+ return customerId;
+}
 function validatedValues(scope:CustomsMasterScope,input:unknown):CustomsMasterDataDoc["values"]{
  if(!input||typeof input!=="object"||Array.isArray(input))throw new HttpError(400,"values nesnesi gerekli.");
  const body=input as Record<string,unknown>,out:Record<string,string>={};
@@ -30,12 +53,20 @@ function validatedValues(scope:CustomsMasterScope,input:unknown):CustomsMasterDa
 }
 function dto(row:any){return {id:String(row._id),customerId:row.customerId,scope:row.scope,key:row.key,values:row.values,active:row.active,createdAt:row.createdAt,updatedAt:row.updatedAt};}
 export async function listCustomsMasterData(companyId:mongoose.Types.ObjectId,filter:{customerId?:string;scope?:string;key?:string}={}){
- const q:any={companyId};if(filter.customerId!==undefined)q.customerId=filter.customerId.trim()||undefined;if(filter.scope!==undefined)q.scope=assertScope(filter.scope);if(filter.key!==undefined)q.key=filter.key.trim();
+ const q:any={companyId};
+ if(filter.customerId!==undefined){
+  const customerId=filter.customerId.trim();
+  if(customerId&&!mongoose.isValidObjectId(customerId))throw new HttpError(400,"Geçersiz customerId.");
+  q.customerId=customerId||undefined;
+ }
+ const scope=filter.scope!==undefined?assertScope(filter.scope):undefined;
+ if(scope)q.scope=scope;
+ if(filter.key!==undefined)q.key=scope?normalizeScopeKey(scope,filter.key):filter.key.trim();
  return (await CustomsMasterDataModel.find(q).sort({scope:1,key:1,customerId:1,updatedAt:-1})).map(dto);
 }
 export async function createCustomsMasterData(companyId:mongoose.Types.ObjectId,body:any){
- const scope=assertScope(body.scope),key=requiredText(body.key,"key");if(scope==="DECLARATION_DEFAULT"&&key!=="DEFAULT")throw new HttpError(400,"DECLARATION_DEFAULT key değeri DEFAULT olmalı.");
- const customerId=optionalText(body.customerId,"customerId"),values=validatedValues(scope,body.values);
+ const scope=assertScope(body.scope),key=normalizeScopeKey(scope,body.key);
+ const customerId=await validatedCustomerId(companyId,body.customerId),values=validatedValues(scope,body.values);
  try{return dto(await CustomsMasterDataModel.create({companyId,customerId,scope,key,values,active:body.active!==false}));}catch(e:any){if(e?.code===11000)throw new HttpError(409,"Aynı tenant/customer/scope/key için master data zaten mevcut.");throw e;}
 }
 export async function updateCustomsMasterData(companyId:mongoose.Types.ObjectId,id:string,body:any){
@@ -60,6 +91,45 @@ export async function resolveCustomsMasterData(companyId:mongoose.Types.ObjectId
  }
  if(!Object.keys(supplements.lines!).length)delete supplements.lines;return {supplements,trace};
 }
+
+export interface CustomsMasterDataPreviewInput { customerId?:string; productCode?:string; hsCode?:string; }
+export async function previewEffectiveCustomsMasterData(companyId:mongoose.Types.ObjectId,input:CustomsMasterDataPreviewInput){
+ const customerId=await validatedCustomerId(companyId,input.customerId);
+ const productCode=optionalText(input.productCode,"productCode");
+ const hsCode=input.hsCode===undefined?undefined:normalizeScopeKey("HS",input.hsCode);
+ if(!productCode&&!hsCode)throw new HttpError(400,"productCode veya hsCode alanlarından en az biri gerekli.");
+
+ // The preview intentionally calls the same resolver used by production exports.
+ // A minimal synthetic normalized line is sufficient because master-data matching
+ // only consumes lineNo/productCode/hsCode.
+ const normalized:NormalizedDeclaration={
+  header:{},parties:{},trade:{},transport:{},packageInfo:{},
+  goodsLines:[{lineNo:1,productCode,hsCode}]
+ };
+ const resolved=await resolveCustomsMasterData(companyId,customerId,normalized);
+ const line=resolved.supplements.lines?.["line:1"]??{};
+ const lineTrace:Record<string,MasterDataTraceEntry>={};
+ const declarationTrace:Record<string,MasterDataTraceEntry>={};
+ for(const [path,entry] of Object.entries(resolved.trace)){
+  if(path.startsWith("lines.1."))lineTrace[path.slice("lines.1.".length)]=entry;
+  else if(path.startsWith("customs."))declarationTrace[path.slice("customs.".length)]=entry;
+ }
+ return {
+  input:{customerId,productCode,hsCode},
+  effective:{
+   declaration:{
+    declarationType:resolved.supplements.declarationType,
+    exportType:resolved.supplements.exportType,
+    customsOffice:resolved.supplements.customsOffice,
+    regimeCode:resolved.supplements.regimeCode,
+   },
+   line,
+  },
+  trace:{declaration:declarationTrace,line:lineTrace},
+  precedence:"CUSTOMER_PRODUCT > COMPANY_PRODUCT > CUSTOMER_HS > COMPANY_HS",
+ };
+}
+
 export function overlayHumanSupplements(master:ExportDeclarationSupplements,human:ExportDeclarationSupplements={}):ExportDeclarationSupplements{
  const lines={...(master.lines??{})};for(const [k,v] of Object.entries(human.lines??{}))lines[k]=mergeDefined(lines[k]??{},v);
  return {...master,...human,lines:Object.keys(lines).length?lines:undefined};

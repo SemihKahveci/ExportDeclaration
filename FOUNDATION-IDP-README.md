@@ -414,22 +414,22 @@ Verified mappings in this adapter include `UBLVersionID=2.1`, `CustomizationID=T
 - This closes the required header/party gap discovered by the unsigned UBL-IHRACAT regression before XML export is allowed to proceed.
 
 
-## Foundation 5.5A.4 — Row-level Origin / Menşe
-Canonical goods-row geometry now discovers per-line origin with evidence, promotes it through human-review-aware normalization, and carries it through the export contract to Evrim Excel `MENŞE`. Missing/ambiguous origin fails closed into review/export readiness; no supplier names, country-name list, or fixed x coordinate is used.
+### Foundation 5.6B.1 — Evrim authority matrix + format code-table boundary
+
+The exact 24-column Evrim workbook surface is now classified by authority: canonical invoice evidence, customs master data, explicit human input, output-format mapping, or deliberately unresolved. Unproven fields remain unresolved rather than being guessed.
+
+Verified output translations (`Bin -> BI`, `PCS/Adet -> ADET`) were moved out of the Excel adapter into `export-code-tables`. This removes duplicated format knowledge from the adapter and establishes the boundary for future verified code lists. Customs/business values remain in master data; invoice facts remain in NormalizedDeclaration.
 
 
-## Foundation 5.6A — Customs Master Data enrichment foundation
+### Foundation 5.6B.2 — Customs master-data integrity
 
-Customs/master-data enrichment is a separate authority from invoice IDP. Tenant-scoped `CustomsMasterData` records may provide declaration defaults and line-level customs values by product code or HS code; invoice extraction never invents these values. Customer-specific rules override company-wide rules, product rules override HS rules, and explicit human/export-request supplements are the final authority.
+Customer-scoped customs profiles now have referential integrity: `customerId` must be a real customer belonging to the same tenant. HS/GTİP profile keys are canonicalized to the project's 12-digit representation (dotted/space-separated input is accepted, non-numeric or wrong-length input is rejected). Product keys remain opaque supplier/business identifiers and are only trimmed; no unproven case conversion is applied.
 
-Initial master-data values are declaration type/export type/customs office/regime plus line-level brand, exemption, permit, ÜTS and used-goods flag. The resolver emits an independent `MASTER_DATA` trace containing source record/scope/key. Evrim Excel and unsigned UBL export boundaries resolve master data automatically before overlaying explicit human supplements. Master data is not written back into immutable IDP evidence or `NormalizedDeclaration`.
-
-
-### Foundation 5.6A.2 — Master Data CRUD API
-
-Authenticated tenant-scoped CRUD is exposed at `/api/customs-master-data`. Create/update validation rejects unknown fields and scope-incompatible values; duplicate tenant/customer/scope/key records return conflict rather than silently overwriting. Record IDs are always resolved together with `operationalCompanyId`, preserving tenant isolation. Master-data keys/scope are immutable after creation; values and active state are editable.
+Deleting a customer now also deletes that customer's customs master-data records, preventing orphan profiles. Scope-aware list filtering applies the same HS key canonicalization used at write time.
 
 
-### Foundation 5.6A.3 — Production Evrim export proof
+### Foundation 5.6B.3 — Effective customs profile preview
 
-The production HTTP path is covered end-to-end: authenticated master-data CRUD creates temporary HS/product records, the real declaration export endpoint resolves those records into the format-neutral export contract, and the generated Evrim workbook is inspected at the exact `ÜTS NO`, `MUAFİYET`, `MARKA`, `KULLANILMIŞ` and `ÖN İZİN` columns. A second export supplies explicit human line supplements and verifies that human input overrides master data without losing unrelated master values. Temporary records are deleted after the proof.
+`GET /api/customs-master-data/effective` exposes the effective declaration/line customs profile for a `customerId + productCode/hsCode` lookup before an export is generated. The endpoint calls the same production master-data resolver used by exports, so precedence is not duplicated. It returns both effective values and the winning `MASTER_DATA` provenance entry per field.
+
+Inactive records are excluded by the shared resolver, HS lookup input is canonicalized with the same 12-digit rule used at write time, and customer references remain tenant-scoped.

@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { assertExportDeclarationReady } from "../export-contract/exportDeclarationContract.service.js";
+import { mapEvrimPackageType, mapEvrimQuantityUnit } from "../export-code-tables/exportCodeTables.js";
 import type { ExportDeclarationLine } from "../export-contract/exportDeclarationContract.types.js";
 import {
   EVRIM_EXCEL_HEADERS,
@@ -9,32 +10,12 @@ import {
   type EvrimExportContract
 } from "./evrimExcelAdapter.types.js";
 
-const PACKAGE_TYPE_CODES: Record<string, string> = {
-  bin: "BI"
-};
-
-const UNIT_CODES: Record<string, string> = {
-  adet: "ADET",
-  pcs: "ADET",
-  piece: "ADET",
-  pieces: "ADET"
-};
-
 function clean(value: string | undefined): string {
   return (value ?? "").trim();
 }
 
-function key(value: string | undefined): string {
-  return clean(value).toLocaleLowerCase("tr-TR");
-}
-
-export function toEvrimPackageType(value: string): string {
-  return PACKAGE_TYPE_CODES[key(value)] ?? value;
-}
-
-export function toEvrimQuantityUnit(value: string): string {
-  return UNIT_CODES[key(value)] ?? value.toLocaleUpperCase("tr-TR");
-}
+export const toEvrimPackageType = mapEvrimPackageType;
+export const toEvrimQuantityUnit = mapEvrimQuantityUnit;
 
 function overrideFor(
   options: EvrimExcelAdapterOptions,

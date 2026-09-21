@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
+import { CustomsMasterDataModel } from "../customs-master-data/customsMasterData.model.js";
 import {
   CustomerAddressModel,
   CustomerDocumentRuleModel,
@@ -135,7 +136,8 @@ export async function deleteCustomer(
     CustomerMailModel.deleteMany({ companyId, customerId: id }),
     CustomerDocumentRuleModel.deleteMany({ companyId, customerId: id }),
     CustomerNotificationRuleModel.deleteMany({ companyId, customerId: id }),
-    DeclarationFieldRuleModel.deleteMany({ companyId, customerId: id })
+    DeclarationFieldRuleModel.deleteMany({ companyId, customerId: id }),
+    CustomsMasterDataModel.deleteMany({ companyId, customerId: id })
   ]);
 }
 
