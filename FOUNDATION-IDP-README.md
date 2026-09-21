@@ -609,3 +609,18 @@ MT Control exposes append-only customs decision history for the selected supplem
 The 5.7E integration regression waits for backend readiness to avoid the Compose post-rebuild `ECONNREFUSED` startup race.
 
 Cleanup boundary: the legacy MT mapping path is no longer used by `Beyanname Yazım > MT Kontrol`. `MtKontrolMapping`, `getMtKontrolMappings()` and `PAGE_IMAGES` are intentionally retained because `Beyanname Onay` still uses that legacy presentation path; deleting them during 5.7E would break an active screen.
+
+
+### Foundation 5.7F — Beyanname Onay production provenance + legacy MT cleanup
+
+`Beyanname Onay` no longer consumes `MtKontrolMapping`, `getMtKontrolMappings()` or the static MT declaration-image mapping path. The approval detail loads the same tenant-scoped `/api/declarations/:id/control-provenance` projection used by production MT Control and displays the effective value together with its real authority (`NORMALIZED_DECLARATION`, `MASTER_DATA`, `PERSISTENT_HUMAN`).
+
+Document-backed fields open the shared `DocumentEvidenceViewer` against the exact `uploadedFileId`, page and persisted bbox. Master-data and persistent-human authorities are shown as non-document provenance and no fake PDF evidence is synthesized.
+
+Cleanup performed in 5.7F:
+- removed `MtKontrolMapping`, `MtKontrolStatus` and `MtKontrolSourceType`;
+- removed `beyannameService.getMtKontrolMappings()`;
+- removed Beyanname Onay's dependency on `PAGE_IMAGES`;
+- removed the mock declaration-region/source-document mapping UI.
+
+`PAGE_IMAGES` itself is intentionally retained because `Beyanname Yazım` still uses it only for its separate declaration-form preview presentation. It is no longer an MT/approval provenance source.

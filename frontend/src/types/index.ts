@@ -712,31 +712,6 @@ export interface SourceRegion {
   height: number;
 }
 
-export type MtKontrolStatus = 'uyumlu' | 'uyumsuz' | 'kontrol-bekliyor';
-
-export type MtKontrolSourceType = 'document' | 'database_record';
-
-/**
- * Maps a clickable field area on the declaration image to the source document
- * region that supplied that value. Drives the MT Kontrol tab interaction.
- */
-export interface MtKontrolMapping {
-  id: string;
-  declarationFieldName: string;
-  declarationValue: string;
-  declarationPage: number;
-  declarationRegion: DeclRegion;
-  sourceDocumentName: string;
-  /** 'document' shows an image preview; 'database_record' shows a compact card */
-  sourceDocumentType: MtKontrolSourceType;
-  /** Base64 or URL of the source document image. Only used when sourceDocumentType === 'document'. */
-  sourceDocumentPreviewImage?: string;
-  sourceDocumentPage: number;
-  sourceDocumentFieldLabel: string;
-  sourceDocumentValue: string;
-  sourceDocumentRegion: SourceRegion;
-  status: MtKontrolStatus;
-}
 export interface DocumentFieldRegion {
   id: string;
   /** Document type this region belongs to, e.g. 'Fatura' */

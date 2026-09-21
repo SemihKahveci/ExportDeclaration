@@ -5,7 +5,6 @@ import type {
   FieldBox, ParsedSourceCard,
   TescilRecord, TescilPageStats,
   KapanicFile, KapanicDoc, KapanicCostItem, KapanicControlItem, KapanicPageStats,
-  MtKontrolMapping,
 } from '../types';
 import {
   apiCreateDeclaration,
@@ -79,9 +78,6 @@ export const beyannameService = {
     if (!recordId) return [];
     const live = await fetchSourceCardsById(recordId);
     return live ?? [];
-  },
-  getMtKontrolMappings: async (): Promise<MtKontrolMapping[]> => {
-    return [];
   },
 };
 

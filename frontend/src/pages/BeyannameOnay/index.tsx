@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeft, Loader2, AlertTriangle, Truck, Ship, Plane, Search, X } from 'lucide-react';
-import type { BeyannameListeItem, BeyannameRecord, MtKontrolMapping, TransportMode } from '../../types';
+import type { BeyannameListeItem, BeyannameRecord, TransportMode } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead } from '../../components/ui/Card';
@@ -38,7 +38,6 @@ export default function BeyannameOnayPage() {
   const [loading,    setLoading]    = useState(true);
   const [listeItems, setListeItems] = useState<BeyannameListeItem[]>([]);
   const [records,    setRecords]    = useState<BeyannameRecord[]>([]);
-  const [mappings,   setMappings]   = useState<MtKontrolMapping[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [viewMode,   setViewMode]   = useState<ViewMode>('list');
 
@@ -54,11 +53,9 @@ export default function BeyannameOnayPage() {
     Promise.all([
       beyannameListeService.getItems(),
       beyannameService.getRecords(),
-      beyannameService.getMtKontrolMappings(),
-    ]).then(([liste, recs, maps]) => {
+    ]).then(([liste, recs]) => {
       setListeItems(liste);
       setRecords(recs);
-      setMappings(maps);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -356,7 +353,7 @@ export default function BeyannameOnayPage() {
           />
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
             <ApprovalTab
-              mappings={mappings}
+              declarationId={selected.id}
               approvalNote={selectedItem ? (approvalNotes[selectedItem.id] ?? '') : ''}
               requiresSecondApproval={requiresSecondApproval}
               approvalStep={approvalStep}
