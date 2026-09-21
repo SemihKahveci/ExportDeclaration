@@ -11,6 +11,7 @@ documentSubRouter.post("/", upload.single("file"), asyncHandler(ctrl.postDocumen
 documentSubRouter.get("/", asyncHandler(ctrl.getDocuments));
 documentSubRouter.get("/:documentId/content", asyncHandler(ctrl.getDocumentContent));
 documentSubRouter.get("/:documentId/pages/:pageNumber/image", asyncHandler(ctrl.getDocumentPageImage));
+documentSubRouter.get("/:documentId/pages/:pageNumber/evidence", asyncHandler(ctrl.getDocumentPageEvidence));
 
 documentSubRouter.post("/:documentId/process", asyncHandler(ctrl.postProcessDocument));
 documentSubRouter.get("/:documentId/processing-runs", asyncHandler(ctrl.getProcessingRuns));

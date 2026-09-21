@@ -1,347 +1,218 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, AlertTriangle, Send, Pencil, CheckCircle2, MousePointer2, FileText, Database } from 'lucide-react';
-import type { MtKontrolMapping, MtKontrolStatus } from '../../types';
-import { Card, CardHead, CardBody } from '../../components/ui/Card';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Database, FileSearch, Loader2, Pencil, RefreshCw, Send, UserRound } from 'lucide-react';
+import { getDeclarationControlProjection, type ControlProvenanceEntry, type DeclarationControlProjection } from '../../api/declarationControlApi';
+import DocumentEvidenceViewer, { type DocumentEvidenceSelection } from '../../components/documents/DocumentEvidenceViewer';
+import { Card, CardBody, CardHead } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import { PAGE_IMAGES } from './pageImages';
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
-
-const STATUS_COLORS: Record<MtKontrolStatus, string> = {
-  'uyumlu':           'text-ok bg-ok/8 border-ok/20',
-  'uyumsuz':          'text-warn bg-warn-tint border-warn/30',
-  'kontrol-bekliyor': 'text-muted bg-surface-2 border-line-strong',
-};
-
-const STATUS_LABELS: Record<MtKontrolStatus, string> = {
-  'uyumlu':           'Uyumlu',
-  'uyumsuz':          'Uyuşmazlık',
-  'kontrol-bekliyor': 'Kontrol Bekliyor',
-};
-
-function StatusBadge({ status }: { status: MtKontrolStatus }) {
-  return (
-    <span className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_COLORS[status]}`}>
-      {status === 'uyumsuz' && <AlertTriangle size={10} strokeWidth={2} className="mr-1" />}
-      {status === 'uyumlu'  && <CheckCircle2  size={10} strokeWidth={2} className="mr-1" />}
-      {STATUS_LABELS[status]}
-    </span>
-  );
+interface ControlTabProps {
+  declarationId: string;
+  onSistemeGonder: () => void;
 }
 
-// ─── Source document preview panel ────────────────────────────────────────────
+const AUTHORITY_LABEL: Record<ControlProvenanceEntry['authority'], string> = {
+  NORMALIZED_DECLARATION: 'Belge / IDP',
+  MASTER_DATA: 'Master Data',
+  PERSISTENT_HUMAN: 'Manuel Gümrük Kararı',
+};
 
-function SourceDocPreview({ mapping }: { mapping: MtKontrolMapping }) {
-  if (mapping.sourceDocumentType === 'database_record') {
+function AuthorityIcon({ authority }: { authority: ControlProvenanceEntry['authority'] }) {
+  if (authority === 'MASTER_DATA') return <Database size={14} />;
+  if (authority === 'PERSISTENT_HUMAN') return <UserRound size={14} />;
+  return <FileSearch size={14} />;
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Evet' : 'Hayır';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function AuthorityDetail({
+  entry,
+  onOpenEvidence,
+}: {
+  entry: ControlProvenanceEntry;
+  onOpenEvidence: () => void;
+}) {
+  if (entry.authority === 'MASTER_DATA' && entry.masterData) {
     return (
-      <div className="border border-line rounded-xl overflow-hidden shrink-0">
-        <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-2 border-b border-line">
-          <div className="w-8 h-8 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-            <Database size={15} strokeWidth={1.75} className="text-accent" />
-          </div>
-          <div>
-            <p className="text-[12.5px] font-bold text-text-strong leading-tight">{mapping.sourceDocumentName}</p>
-            <p className="text-[11px] text-muted leading-tight mt-0.5">Veritabanı kaydı</p>
-          </div>
+      <div className="border border-line rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-surface-2 border-b border-line flex items-center gap-2">
+          <Database size={15} className="text-accent" />
+          <span className="text-[12.5px] font-bold text-text-strong">Master Data Kaydı</span>
         </div>
-        <div className="px-4 py-3 flex flex-col gap-2">
-          <div className="flex items-start justify-between gap-3 text-[12px]">
-            <span className="text-muted shrink-0">{mapping.sourceDocumentFieldLabel}</span>
-            <span className="text-right font-semibold text-text-strong font-mono text-[11.5px]">{mapping.sourceDocumentValue}</span>
-          </div>
-          <div className="mt-1">
-            <StatusBadge status={mapping.status} />
-          </div>
+        <div className="divide-y divide-line">
+          {[
+            ['Scope', entry.masterData.scope],
+            ['Key', entry.masterData.key],
+            ['Kayıt ID', entry.masterData.masterDataId],
+          ].map(([label, value]) => (
+            <div key={label} className="px-4 py-2.5 flex justify-between gap-3 text-[12px]">
+              <span className="text-muted">{label}</span>
+              <span className="font-mono text-right text-text-strong break-all">{value}</span>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
-  // document type — show preview image if available, else a placeholder card
-  if (mapping.sourceDocumentPreviewImage) {
+  if (entry.authority === 'PERSISTENT_HUMAN' && entry.human) {
     return (
-      <div
-        className="relative bg-[#f0ede8] border border-line rounded-xl overflow-hidden shrink-0"
-        style={{ aspectRatio: '1 / 1.0' }}
-      >
-        <img
-          src={mapping.sourceDocumentPreviewImage}
-          alt={mapping.sourceDocumentName}
-          className="w-full h-full object-contain"
-          draggable={false}
-        />
-        <div
-          className="absolute border-2 border-amber-500 bg-amber-400/20 rounded pointer-events-none z-10 transition-all duration-200"
-          style={{
-            left:   `${mapping.sourceDocumentRegion.x}%`,
-            top:    `${mapping.sourceDocumentRegion.y}%`,
-            width:  `${mapping.sourceDocumentRegion.width}%`,
-            height: `${mapping.sourceDocumentRegion.height}%`,
-          }}
-        >
-          <span className="absolute -top-5 left-0 bg-amber-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap leading-none">
-            {mapping.sourceDocumentFieldLabel}
-          </span>
+      <div className="border border-line rounded-xl overflow-hidden">
+        <div className="px-4 py-3 bg-surface-2 border-b border-line flex items-center gap-2">
+          <UserRound size={15} className="text-accent" />
+          <span className="text-[12.5px] font-bold text-text-strong">Kalıcı Manuel Karar</span>
+        </div>
+        <div className="divide-y divide-line">
+          {entry.human.actorEmail && <div className="px-4 py-2.5 flex justify-between gap-3 text-[12px]"><span className="text-muted">Kullanıcı</span><span className="text-right text-text-strong">{entry.human.actorEmail}</span></div>}
+          {entry.human.reason && <div className="px-4 py-2.5 flex justify-between gap-3 text-[12px]"><span className="text-muted">Gerekçe</span><span className="text-right text-text-strong">{entry.human.reason}</span></div>}
+          <div className="px-4 py-2.5 flex justify-between gap-3 text-[12px]"><span className="text-muted">Karar ID</span><span className="font-mono text-right text-text-strong break-all">{entry.human.decisionId}</span></div>
         </div>
       </div>
     );
   }
 
-  // No actual preview image available for this source document
   return (
-    <div className="border border-line rounded-xl overflow-hidden shrink-0">
-      <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-2 border-b border-line">
-        <div className="w-8 h-8 rounded-lg bg-surface border border-line-strong flex items-center justify-center shrink-0">
-          <FileText size={15} strokeWidth={1.75} className="text-muted" />
-        </div>
-        <div>
-          <p className="text-[12.5px] font-bold text-text-strong leading-tight">{mapping.sourceDocumentName}</p>
-          <p className="text-[11px] text-muted leading-tight mt-0.5">Kaynak belge</p>
-        </div>
-        <div className="ml-auto">
-          <StatusBadge status={mapping.status} />
-        </div>
+    <div className="border border-line rounded-xl overflow-hidden">
+      <div className="px-4 py-3 bg-surface-2 border-b border-line flex items-center gap-2">
+        <FileSearch size={15} className="text-accent" />
+        <span className="text-[12.5px] font-bold text-text-strong">Belge / IDP Kaynağı</span>
       </div>
-
-      {/* Parsed field rows from this source document */}
-      <div className="divide-y divide-line">
-        <div className="flex items-start justify-between gap-3 px-4 py-3 text-[12px]">
-          <span className="text-muted shrink-0">Okunan Alan</span>
-          <span className="text-right font-semibold text-text">{mapping.sourceDocumentFieldLabel}</span>
-        </div>
-        <div className="flex items-start justify-between gap-3 px-4 py-3 text-[12px]">
-          <span className="text-muted shrink-0">Belgedeki Değer</span>
-          <span className="text-right font-semibold text-text-strong font-mono text-[11.5px]">{mapping.sourceDocumentValue}</span>
-        </div>
-        <div className="flex items-start justify-between gap-3 px-4 py-3 text-[12px]">
-          <span className="text-muted shrink-0">Beyanname Değeri</span>
-          <span className={[
-            'text-right font-semibold font-mono text-[11.5px]',
-            mapping.status === 'uyumsuz' ? 'text-warn' : 'text-ok',
-          ].join(' ')}>{mapping.declarationValue}</span>
-        </div>
-      </div>
-
-      {mapping.status === 'uyumsuz' && (
-        <div className="px-4 pb-3">
-          <div className="flex items-start gap-2 p-2.5 rounded-lg text-[11.5px]" style={{ background: 'var(--warn-tint)', border: '1px solid #e8d0a2', color: '#7a5a16' }}>
-            <AlertTriangle size={13} strokeWidth={2} className="shrink-0 mt-0.5" />
-            <span>Beyanname değeri ile kaynak belge değeri uyuşmuyor.</span>
+      {entry.evidence ? (
+        <div className="p-4 flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-2 text-[12px]">
+            <div><span className="text-muted">Sayfa</span><div className="font-semibold text-text-strong">{entry.evidence.pageNumber}</div></div>
+            <div><span className="text-muted">Kaynak</span><div className="font-semibold text-text-strong">{entry.evidence.contentSource ?? '—'}</div></div>
           </div>
+          {entry.evidence.text && <div className="text-[12px] bg-surface-2 border border-line rounded-lg p-2.5"><span className="text-muted">Kanıt: </span><span className="font-mono text-text-strong">“{entry.evidence.text}”</span></div>}
+          <Button variant="primary" icon={FileSearch} size="sm" onClick={onOpenEvidence}>Belgede Göster</Button>
+        </div>
+      ) : (
+        <div className="p-4 flex items-start gap-2 text-[12px] text-muted">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <span>Bu normalize alan için fiziksel belge bbox kanıtı bulunamadı. Sistem sahte belge eşlemesi üretmedi.</span>
         </div>
       )}
     </div>
   );
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+export default function ControlTab({ declarationId, onSistemeGonder }: ControlTabProps) {
+  const [projection, setProjection] = useState<DeclarationControlProjection | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activePath, setActivePath] = useState<string | null>(null);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [viewerMode, setViewerMode] = useState<'selected' | 'all'>('selected');
 
-interface ControlTabProps {
-  mappings: MtKontrolMapping[];
-  onSistemeGonder: () => void;
-}
+  const load = async () => {
+    setLoading(true); setError(null);
+    try {
+      const data = await getDeclarationControlProjection(declarationId);
+      setProjection(data);
+      setActivePath((current) => current && data.entries.some((x) => x.path === current) ? current : data.entries[0]?.path ?? null);
+    } catch (err) {
+      console.error(err);
+      setError('MT kontrol verisi yüklenemedi.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+  useEffect(() => { void load(); }, [declarationId]);
 
-export default function ControlTab({ mappings, onSistemeGonder }: ControlTabProps) {
-  const [activePage, setActivePage] = useState(0);
-  const [activeId,   setActiveId]   = useState<string | null>(null);
+  const active = useMemo(
+    () => projection?.entries.find((entry) => entry.path === activePath) ?? null,
+    [projection, activePath],
+  );
 
-  const active = mappings.find((m) => m.id === activeId) ?? null;
-  const pageBoxes = mappings.filter((m) => m.declarationPage === activePage);
+  const evidenceSelection: DocumentEvidenceSelection | null = active?.evidence ? {
+    pageNumber: active.evidence.pageNumber,
+    bbox: active.evidence.bbox,
+    text: active.evidence.text,
+    contentSource: active.evidence.contentSource,
+    label: active.label,
+  } : null;
 
-  function handleBoxClick(mapping: MtKontrolMapping) {
-    setActiveId((prev) => prev === mapping.id ? null : mapping.id);
-  }
+  if (loading) return <div className="h-full min-h-[360px] flex items-center justify-center gap-2 text-muted"><Loader2 size={18} className="animate-spin" /> MT kontrol provenance hazırlanıyor…</div>;
+  if (error || !projection) return <div className="h-full min-h-[360px] flex flex-col items-center justify-center gap-3"><AlertTriangle className="text-warn" /><p className="text-[13px] text-muted">{error ?? 'MT kontrol verisi bulunamadı.'}</p><Button icon={RefreshCw} onClick={() => void load()}>Tekrar Dene</Button></div>;
 
   return (
-    <div className="flex gap-4 h-full">
-
-      {/* ── Left: Declaration image ─────────────────────────────────────────── */}
-      <div className="flex-1 min-w-0 flex flex-col gap-2">
-        <p className="text-[11px] font-semibold text-muted uppercase tracking-wide shrink-0 flex items-center gap-1.5">
-          <MousePointer2 size={11} strokeWidth={2} />
-          Beyanname alanına tıklayın
-        </p>
-
-        <div
-          className="relative bg-[#f0ede8] border border-line rounded-xl overflow-hidden flex-1"
-          style={{ minHeight: 0 }}
-        >
-          <img
-            src={PAGE_IMAGES[activePage]}
-            alt={`Beyanname Sayfa ${activePage + 1}`}
-            className="w-full h-full object-contain"
-            draggable={false}
-          />
-
-          {pageBoxes.map((mapping) => {
-            const r = mapping.declarationRegion;
-            const isActive = activeId === mapping.id;
-            const isConflict = mapping.status === 'uyumsuz';
-            return (
-              <button
-                key={mapping.id}
-                type="button"
-                onClick={() => handleBoxClick(mapping)}
-                className={[
-                  'absolute rounded transition-all duration-150 group',
-                  isActive
-                    ? 'border-2 border-accent bg-accent/15 shadow-lg z-20'
-                    : isConflict
-                    ? 'border-2 border-warn/70 bg-warn-tint/20 hover:bg-warn-tint/40 hover:border-warn z-10'
-                    : 'border border-accent/40 bg-transparent hover:bg-accent/8 hover:border-accent z-10',
-                ].join(' ')}
-                style={{
-                  left:   `${r.x}%`,
-                  top:    `${r.y}%`,
-                  width:  `${r.width}%`,
-                  height: `${r.height}%`,
-                }}
-                title={mapping.declarationFieldName}
-              >
-                <span
-                  className={[
-                    'absolute -top-5 left-0 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap leading-none pointer-events-none transition-opacity',
-                    isActive
-                      ? 'bg-accent opacity-100'
-                      : isConflict
-                      ? 'bg-warn opacity-0 group-hover:opacity-100'
-                      : 'bg-accent opacity-0 group-hover:opacity-100',
-                  ].join(' ')}
-                >
-                  {mapping.declarationFieldName}
-                </span>
-                {isConflict && !isActive && (
-                  <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-warn border border-white" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Page navigation */}
-        <div className="flex items-center justify-center gap-3 shrink-0">
-          <button
-            onClick={() => { setActivePage((p) => Math.max(0, p - 1)); setActiveId(null); }}
-            disabled={activePage === 0}
-            className="w-7 h-7 flex items-center justify-center rounded border border-line text-muted hover:bg-line disabled:opacity-30 transition-colors"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="text-[12.5px] text-muted">
-            Sayfa {activePage + 1} / {PAGE_IMAGES.length}
-          </span>
-          <button
-            onClick={() => { setActivePage((p) => Math.min(PAGE_IMAGES.length - 1, p + 1)); setActiveId(null); }}
-            disabled={activePage === PAGE_IMAGES.length - 1}
-            className="w-7 h-7 flex items-center justify-center rounded border border-line text-muted hover:bg-line disabled:opacity-30 transition-colors"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* ── Right: Source preview + details + control ──────────────────────── */}
-      <div className="w-[310px] shrink-0 flex flex-col gap-3">
-
-        <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
-          <p className="text-[11px] font-semibold text-muted uppercase tracking-wide shrink-0">
-            {active ? `Kaynak: ${active.sourceDocumentName}` : 'Kaynak Belge'}
-          </p>
-
-          {active ? (
-            <>
-              {/* Source document preview — type-aware */}
-              <SourceDocPreview mapping={active} />
-
-              {/* Field details card */}
-              <div className="border border-line rounded-xl overflow-hidden shrink-0">
-                <div className="px-4 py-2.5 bg-surface-2 border-b border-line flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-bold text-text-strong truncate">{active.declarationFieldName}</span>
-                  <StatusBadge status={active.status} />
-                </div>
-                <div className="divide-y divide-line">
-                  {([
-                    { label: 'Beyanname Alanı', value: active.declarationFieldName },
-                    { label: 'Beyanname Değeri', value: active.declarationValue },
-                    { label: 'Kaynak Doküman',  value: active.sourceDocumentName },
-                    { label: 'Kaynak Alan',      value: active.sourceDocumentFieldLabel },
-                    { label: 'Kaynak Değer',     value: active.sourceDocumentValue },
-                  ] as const).map(({ label, value }) => (
-                    <div key={label} className="flex items-start justify-between gap-3 px-4 py-2.5 text-[12px]">
-                      <span className="text-muted shrink-0">{label}</span>
-                      <span className={[
-                        'text-right leading-snug',
-                        label === 'Beyanname Değeri' || label === 'Kaynak Değer'
-                          ? 'font-semibold text-text-strong font-mono text-[11.5px]'
-                          : 'font-medium text-text',
-                      ].join(' ')}>{value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="border border-dashed border-line-strong rounded-xl flex flex-col items-center justify-center gap-3 py-10 px-6 text-center min-h-[200px]">
-              <div className="w-10 h-10 rounded-full bg-surface-2 border border-line flex items-center justify-center">
-                <MousePointer2 size={18} strokeWidth={1.5} className="text-muted-2" />
-              </div>
-              <div>
-                <p className="text-[13px] font-semibold text-text-strong">Alan Seçilmedi</p>
-                <p className="text-[12px] text-muted mt-1 leading-snug">
-                  Sol taraftaki beyanname üzerinden bir alana tıklayın.
-                </p>
-              </div>
+    <>
+      <div className="flex gap-4 h-full min-h-[560px]">
+        <div className="flex-1 min-w-0 border border-line rounded-xl overflow-hidden flex flex-col">
+          <div className="px-4 py-3 bg-surface-2 border-b border-line flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[13px] font-bold text-text-strong">Beyanname Alanları</p>
+              <p className="text-[11.5px] text-muted mt-0.5">Efektif değer ve üretim otoritesi · {projection.entries.length} alan</p>
             </div>
-          )}
-
-          {/* All mappings quick-nav */}
-          <div className="shrink-0 mt-1">
-            <p className="text-[11px] font-semibold text-muted uppercase tracking-wide mb-2">
-              Tüm Alanlar ({mappings.length})
-            </p>
-            <div className="flex flex-col gap-1">
-              {mappings.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => { setActiveId(m.id); setActivePage(m.declarationPage); }}
-                  className={[
-                    'w-full text-left flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg border text-[12px] transition-colors',
-                    activeId === m.id
-                      ? 'border-accent bg-accent/6 text-text-strong'
-                      : 'border-line bg-surface hover:border-line-strong hover:bg-surface-2 text-text',
-                  ].join(' ')}
-                >
-                  <span className="truncate font-medium">{m.declarationFieldName}</span>
-                  <StatusBadge status={m.status} />
+            <div className="flex items-center gap-2">
+              {projection.entries.some((x) => x.evidence) && (
+                <Button icon={FileSearch} size="sm" onClick={() => {
+                  const first = projection.entries.find((x) => x.evidence);
+                  if (first) { setActivePath(first.path); setViewerMode('all'); setEvidenceOpen(true); }
+                }}>Belge Parse Karşılaştır</Button>
+              )}
+              <Button icon={RefreshCw} size="sm" onClick={() => void load()}>Yenile</Button>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 overflow-auto divide-y divide-line">
+            {projection.entries.map((entry) => {
+              const selected = entry.path === activePath;
+              return (
+                <button key={entry.path} type="button" onClick={() => setActivePath(entry.path)}
+                  className={`w-full px-4 py-3 text-left grid grid-cols-[minmax(170px,1.1fr)_minmax(130px,1fr)_170px] gap-3 items-center transition-colors ${selected ? 'bg-accent/6' : 'bg-surface hover:bg-surface-2'}`}>
+                  <div className="min-w-0"><div className="text-[12.5px] font-semibold text-text-strong truncate">{entry.label}</div><div className="text-[10.5px] text-muted font-mono truncate mt-0.5">{entry.path}</div></div>
+                  <div className="text-[12px] font-mono font-semibold text-text-strong truncate">{displayValue(entry.value)}</div>
+                  <div className="flex items-center gap-1.5 text-[11.5px] text-muted"><AuthorityIcon authority={entry.authority}/><span>{AUTHORITY_LABEL[entry.authority]}</span>{entry.evidence && <CheckCircle2 size={12} className="text-ok ml-auto"/>}</div>
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Control action card */}
-        <Card className="shrink-0">
-          <CardHead title="Kontrol Kararı" />
-          <CardBody>
-            <div className="flex items-center gap-2 justify-end">
-              <Button variant="warn" icon={Pencil} size="sm">
-                Manuel Düzelt
-              </Button>
-              <Button
-                variant="primary"
-                icon={Send}
-                size="sm"
-                onClick={onSistemeGonder}
-              >
-                Kontrolü Onayla
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
+        <div className="w-[330px] shrink-0 flex flex-col gap-3">
+          <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3">
+            {active ? (
+              <>
+                <div className="border border-line rounded-xl overflow-hidden">
+                  <div className="px-4 py-3 bg-surface-2 border-b border-line"><p className="text-[13px] font-bold text-text-strong">{active.label}</p><p className="text-[10.5px] text-muted font-mono mt-0.5 break-all">{active.path}</p></div>
+                  <div className="px-4 py-3">
+                    <div className="text-[11px] text-muted uppercase font-semibold">Efektif Beyanname Değeri</div>
+                    <div className="mt-1 text-[14px] font-mono font-bold text-text-strong break-words">{displayValue(active.value)}</div>
+                    <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-full border border-line bg-surface-2 text-[11.5px] font-semibold"><AuthorityIcon authority={active.authority}/>{AUTHORITY_LABEL[active.authority]}</div>
+                  </div>
+                </div>
+                <AuthorityDetail entry={active} onOpenEvidence={() => { setViewerMode('selected'); setEvidenceOpen(true); }} />
+              </>
+            ) : <div className="border border-dashed border-line-strong rounded-xl p-8 text-center text-[12px] text-muted">Kontrol edilecek bir alan seçin.</div>}
+          </div>
+
+          <Card className="shrink-0">
+            <CardHead title="Kontrol Kararı" />
+            <CardBody>
+              <div className="flex items-center gap-2 justify-end">
+                <Button variant="warn" icon={Pencil} size="sm">Manuel Düzelt</Button>
+                <Button variant="primary" icon={Send} size="sm" onClick={onSistemeGonder}>Kontrolü Onayla</Button>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
       </div>
-    </div>
+
+      {active?.evidence && (
+        <DocumentEvidenceViewer
+          open={evidenceOpen}
+          declarationId={declarationId}
+          uploadedFileId={active.evidence.uploadedFileId}
+          evidence={evidenceSelection}
+          onClose={() => setEvidenceOpen(false)}
+          mode={viewerMode}
+        />
+      )}
+    </>
   );
 }

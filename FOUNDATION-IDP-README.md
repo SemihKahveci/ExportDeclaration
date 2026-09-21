@@ -536,3 +536,56 @@ The regression verifies the known real 0110 UploadedFile end-to-end: authenticat
 ##### 5.7C renderer binary-channel hardening
 
 PDF page rendering writes the PNG to an isolated temporary file instead of streaming binary bytes through Python stdout. This prevents runtime/library warning text from corrupting the PNG response. The backend validates the output size and PNG signature, reads the file, and removes the temporary file in `finally`.
+
+
+### Foundation 5.7D — MT Control production provenance projection
+
+Added tenant-scoped `GET /api/declarations/:id/control-provenance`. The projection is built from the same production inputs used by export:
+NormalizedDeclaration → Customs Master Data → Persistent Human Customs Supplement → ExportDeclarationContract.
+
+Each effective field reports authority as `NORMALIZED_DECLARATION`, `MASTER_DATA`, or `PERSISTENT_HUMAN`. Normalized document-backed fields are linked to persisted ProcessingRun evidence (`uploadedFileId`, page, bbox, text); master-data and human authorities are represented as records rather than fake PDF evidence. This is the production boundary that will replace the old MT mock mapping layer.
+
+
+#### 5.7D MT Control UI production provenance integration
+
+`Beyanname Yazım > MT Kontrol` no longer uses `PAGE_IMAGES` or `MtKontrolMapping` as its active control data source. It loads the tenant-scoped production control-provenance projection for the selected declaration. The field list displays the effective contract value and its actual authority.
+
+- `NORMALIZED_DECLARATION`: persisted document evidence is shown only when a real ProcessingRun evidence record exists; `DocumentEvidenceViewer` opens the exact `uploadedFileId`, page and bbox.
+- `MASTER_DATA`: rule scope/key/id are displayed; no fake PDF evidence is created.
+- `PERSISTENT_HUMAN`: append-only human decision metadata is displayed; no fake PDF evidence is created.
+- Missing physical evidence remains explicit instead of being synthesized.
+- The declaration preview modal may still use static declaration form images; those images are presentation-only and are no longer the MT provenance source.
+- The provenance integration regression now waits for backend readiness to avoid the post-rebuild startup race observed in Compose.
+
+
+#### 5.7D shared side-by-side document analysis
+
+`DocumentEvidenceViewer` now has a production side-by-side analysis view. The left pane renders the untouched physical PDF page. The right pane renders the same page with all persisted, non-derived IDP evidence boxes from the latest completed ProcessingRun for the exact `uploadedFileId` and page; the currently selected field is emphasized separately.
+
+The aggregate evidence endpoint is `GET /api/declarations/:id/documents/:documentId/pages/:pageNumber/evidence`. It reuses the same tenant/declaration/document authorization boundary as PDF content rendering and never merges evidence across physical files. This preserves multi-PDF declarations. No annotated derivative PDF is stored; overlays are rendered from persisted normalized bboxes at view time.
+
+
+##### 5.7D viewer UX refinement
+
+The shared viewer now has two explicit purposes instead of showing every persisted bbox for every field click:
+
+- **Belge Parse Karşılaştır**: document-level overview. Original page is shown beside the same page with all persisted IDP evidence boxes.
+- **Belgede Göster** on a selected MT field: field-level verification. Original page is shown beside only the selected field bbox, matching the earlier focused evidence behavior.
+
+This avoids visual overload during normal MT field review while preserving a one-click full parse overview. Missing boxes in the full overview remain an extraction/provenance concern; the UI does not invent boxes for values that do not have persisted physical evidence.
+
+
+##### 5.7D physical evidence coverage diagnostic
+
+Before closing MT provenance, run:
+
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationEvidenceCoverage.ts`
+
+The report measures only effective fields whose authority is `NORMALIZED_DECLARATION`. `MASTER_DATA` and `PERSISTENT_HUMAN` are intentionally excluded from physical-PDF bbox coverage. The diagnostic does not invent evidence and does not require an arbitrary 100% result: missing rows must first be classified as legitimately derived/non-physical or as real extraction/provenance gaps before changing production extraction.
+
+
+##### 5.7D legacy-run provenance reconstruction
+
+The 0110 coverage diagnostic initially reported 287/336 (85.42%) with exactly 49 missing fields: 4 invoice header/commercial fields, 4 shipment fields, and 41 row origins. This was not an extraction failure. Those values were introduced by Foundation 5.5A, while the historical completed ProcessingRun predates persistence of the corresponding enrichment envelopes. Declaration normalization already reconstructs these candidates from the persisted CanonicalDocument.
+
+MT provenance now applies the same canonical-only reconstruction for missing `headerPartyCandidates`, `commercialTermsCandidates`, `shipmentCandidates`, and `originCandidates`. It does not rerun OCR and does not synthesize evidence. The known 0110 regression now requires every effective `NORMALIZED_DECLARATION` field in this fixture to retain physical page+bbox evidence.

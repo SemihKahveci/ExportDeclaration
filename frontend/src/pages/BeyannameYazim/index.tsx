@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Save, Send, FileText, Layers, Loader2, ChevronLeft, X, Bell } from 'lucide-react';
-import type { BeyannameListeItem, BeyannameRecord, MtKontrolMapping } from '../../types';
+import type { BeyannameListeItem, BeyannameRecord } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead } from '../../components/ui/Card';
@@ -35,7 +35,6 @@ export default function BeyannameYazimPage() {
   const [listeItems,       setListeItems]        = useState<BeyannameListeItem[]>([]);
   const [records,          setRecords]           = useState<BeyannameRecord[]>([]);
   const [selectedId,       setSelectedId]        = useState<string>('');
-  const [mtMappings,       setMtMappings]        = useState<MtKontrolMapping[]>([]);
 
   const [viewMode,         setViewMode]          = useState<ViewMode>('list');
   const [activeTab,        setActiveTab]         = useState<'yazim' | 'kontrol'>('yazim');
@@ -51,11 +50,9 @@ export default function BeyannameYazimPage() {
     Promise.all([
       beyannameListeService.getItems(),
       beyannameService.getRecords(),
-      beyannameService.getMtKontrolMappings(),
-    ]).then(([liste, recs, mappings]) => {
+    ]).then(([liste, recs]) => {
       setListeItems(liste);
       setRecords(recs);
-      setMtMappings(mappings);
       if (recs.length) {
         const matchById = declarationIdParam ? recs.find((r) => r.id === declarationIdParam) : null;
         const matchByRef = refParam ? recs.find((r) => r.ref === refParam) : null;
@@ -260,7 +257,7 @@ export default function BeyannameYazimPage() {
               />
             ) : (
               <ControlTab
-                mappings={mtMappings}
+                declarationId={selected.id}
                 onSistemeGonder={handleSistemeGonder}
               />
             )}
