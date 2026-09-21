@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { DocumentType, type DocumentTypeValue } from "../../common/enums/documentType.js";
-import { listDocuments, saveUploadedDocument } from "./document.service.js";
+import { getDocumentContentDescriptor, listDocuments, renderDocumentPage, saveUploadedDocument } from "./document.service.js";
 import { enqueueDocumentProcessing, listProcessingRuns } from "../idp/queue/idpProcessing.service.js";
 
 export async function postDocument(req: Request, res: Response): Promise<void> {
@@ -46,4 +46,20 @@ export async function postProcessDocument(req: Request, res: Response): Promise<
 export async function getProcessingRuns(req: Request, res: Response): Promise<void> {
   const runs = await listProcessingRuns(req.auth!.operationalCompanyId, req.params.documentId!);
   res.json({ ok: true, data: runs });
+}
+
+
+export async function getDocumentContent(req: Request, res: Response): Promise<void> {
+  const file = await getDocumentContentDescriptor(req.auth!.operationalCompanyId, req.params.id!, req.params.documentId!);
+  res.setHeader("Content-Type", file.mimeType);
+  res.setHeader("Content-Disposition", `inline; filename*=UTF-8\'\'${encodeURIComponent(file.fileName)}`);
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.sendFile(file.absolutePath);
+}
+
+export async function getDocumentPageImage(req: Request, res: Response): Promise<void> {
+  const png = await renderDocumentPage(req.auth!.operationalCompanyId, req.params.id!, req.params.documentId!, Number(req.params.pageNumber));
+  res.setHeader("Content-Type", "image/png");
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.send(png);
 }

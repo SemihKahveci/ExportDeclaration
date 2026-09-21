@@ -135,17 +135,18 @@ export const DOCUMENT_TYPE_OPTIONS: string[] = [
 export const evrakService = {
   getFiles: async (): Promise<EvrakFile[]> => {
     const live = await import('./liveApi').then((m) => m.fetchEvrakFiles());
-    if (live?.length) return live;
+    if (live !== null) return live;
     await delay(80);
     return EVRAK_FILES.map((f) => ({ ...f }));
   },
   getDocs: async (fileId: string): Promise<EvrakDocRow[]> => {
     const live = await import('./liveApi').then((m) => m.fetchEvrakDocs(fileId));
-    if (live?.length) return live;
+    if (live !== null) return live;
     await delay(60);
     return (EVRAK_DOCS[fileId] ?? []).map((d) => ({ ...d }));
   },
   getConflicts: async (fileId: string): Promise<EvrakConflictRow[]> => {
+    if (isMongoId(fileId)) return [];
     await delay(60);
     return (EVRAK_CONFLICTS[fileId] ?? []).map((c) => ({ ...c }));
   },

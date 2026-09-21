@@ -27,6 +27,7 @@ export function toCustomsFile(d: BackendDeclaration): CustomsFile {
   const updated = d.updatedAt ?? created;
 
   return {
+    declarationId: d._id,
     ref: displayRef(d),
     customer: op?.customerName ?? "—",
     customerCity: op?.customerCity ?? "—",

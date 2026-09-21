@@ -481,6 +481,58 @@ Every successful production Evrim Excel or unsigned UBL export now records an im
 Failed/not-ready exports do not create a successful export snapshot. Snapshot documents are append-only/immutable; later changes to master data or human decisions cannot rewrite the historical basis of an already emitted export.
 
 
-#### 5.6C.3 snapshot persistence hardening
+### Foundation 5.7A — Human Review UI foundation
 
-Export audit schemas use `minimize:false` so semantically meaningful empty snapshot objects (`{}`), including an empty master-data trace when no master-data rule participated, are preserved in MongoDB instead of being removed by Mongoose object minimization. The integration regression verifies snapshot completeness, the 56-line contract, exact emitted-file SHA-256, and immutable history.
+The existing IDP Human Review backend is now exposed to the React/Vite workflow without mixing document interpretation with customs enrichment.
+
+- `GET /api/declarations/:id/idp-reviews/latest` resolves the latest tenant-scoped ProcessingRun for a declaration; the UI never guesses run IDs.
+- Evrak Hazırlık has a `Belge İncelemesi` tab for live Mongo-backed declarations.
+- Pending issues show source, field/line, canonical candidates, confidence, extractor and page/text evidence.
+- Operators can append `ACCEPT_CANDIDATE` or `OVERRIDE_VALUE` decisions through the existing append-only Human Review API.
+- Already-decided issues remain visible as audit history and are not silently overwritten by the UI.
+- IDP review is explicitly separated from customs/master-data decisions: this screen answers “what did the document say?”
+- Mock/demo Evrak Hazırlık records remain functional; they display a non-live notice rather than calling IDP APIs with fake IDs.
+
+5.7A intentionally does not add PDF bbox highlighting yet. Evidence page/text is surfaced first against the proven backend contract; visual bbox preview is a separate UI gate.
+
+
+### Foundation 5.7B — Declaration workflow integration
+
+Human Review is now attached to the existing declaration workflow rather than behaving like an isolated route.
+
+- Dosya Takip opens Evrak Hazırlık with the stable Mongo `declarationId` plus the human-readable ref.
+- Evrak Hazırlık resolves route context by declaration ID first and keeps the selected declaration in the URL.
+- `Eksik Evrakla Yaz` and `Beyanname Yazmaya Başla` now navigate to the existing Beyanname Yazım & MT Kontrol screen for the same declaration.
+- Beyanname Yazım consumes `declarationId/ref/tab` route context and opens the matching live declaration directly instead of defaulting to the first row.
+- The declaration detail can navigate back to Evrak Hazırlık while preserving the same declaration context.
+- Evrak Hazırlık now uses the existing Beyanname capabilities through `ProtectedRoute`.
+- Live empty document/declaration results are no longer silently replaced by demo Evrak records; demo fallback remains only when the live API itself is unavailable.
+- Evrak summary cards are derived from the currently selected declaration's actual document/conflict rows instead of the old global mock statistics.
+
+Workflow:
+`Dosya Takip -> Evrak Hazırlık -> Belge İncelemesi -> Beyanname Yazım -> MT Kontrol`.
+
+
+### Foundation 5.7C — Shared real document evidence viewer
+
+- Tenant/declaration/document-scoped real document content and PDF page-image endpoints.
+- Reusable `DocumentEvidenceViewer` backed by persisted canonical evidence.
+- Canonical bbox contract aligned as normalized `{x0,y0,x1,y1}` end-to-end.
+- Human Review `Belgede Göster` opens the exact uploaded file/page and overlays its bbox.
+- Derived evidence is not falsely presented as a physical PDF box.
+- Viewer is explicitly keyed by `uploadedFileId`, so one declaration may contain many PDFs without ambiguity.
+- MT Kontrol will reuse this viewer after its current mock mapping layer is replaced with production contract provenance.
+
+
+#### 5.7C runtime regression
+
+Run inside the backend container so the test uses the same mounted storage and service DNS as production-like dev:
+
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDocumentEvidenceViewer.ts`
+
+The regression verifies the known real 0110 UploadedFile end-to-end: authenticated PDF bytes, page-1 PNG rendering, PDF/PNG signatures and SHA-256 values, cross-declaration isolation (`404`), and unknown-document rejection (`404`). It does not create or mutate production data.
+
+
+##### 5.7C renderer binary-channel hardening
+
+PDF page rendering writes the PNG to an isolated temporary file instead of streaming binary bytes through Python stdout. This prevents runtime/library warning text from corrupting the PNG response. The backend validates the output size and PNG signature, reads the file, and removes the temporary file in `finally`.

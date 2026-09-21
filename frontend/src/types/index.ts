@@ -50,6 +50,8 @@ export interface SystemMailRecord {
 export type OperationType = 'ithalat' | 'ihracat' | 'transit' | 'antrepo';
 
 export interface CustomsFile {
+  /** Stable Mongo declaration identity for cross-screen workflow context. Demo rows may omit it. */
+  declarationId?: string;
   ref: string;
   customer: string;
   customerCity: string;

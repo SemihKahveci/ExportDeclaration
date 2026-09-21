@@ -44,7 +44,11 @@ export default function AppRoutes() {
             <GtipHazirlikPage />
           </ProtectedRoute>
         } />
-        <Route path="/evrak-hazirlik" element={<EvrakHazirlikPage />} />
+        <Route path="/evrak-hazirlik" element={
+          <ProtectedRoute requiredCaps={['beyanname.view', 'beyanname.write']}>
+            <EvrakHazirlikPage />
+          </ProtectedRoute>
+        } />
         <Route path="/beyanname" element={
           <ProtectedRoute requiredCaps={['beyanname.view', 'beyanname.write', 'beyanname.approve', 'beyanname.send']}>
             <BeyannameYazimPage />

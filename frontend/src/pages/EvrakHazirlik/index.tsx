@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, CheckSquare, Bell, Loader2, Info } from 'lucide-react';
 import type { EvrakFile, EvrakDocRow, EvrakConflictRow, DocPreviewData, EvrakPageStats } from '../../types';
 import { evrakService } from '../../services/documents';
@@ -11,12 +11,14 @@ import { useToast } from '../../components/ui/Toast';
 import DocStatusTab from './DocStatusTab';
 import ConflictsTab from './ConflictsTab';
 import PreviewDrawer from './PreviewDrawer';
+import IdpReviewTab from './IdpReviewTab';
 
 // ─── Tab bar with tooltip ─────────────────────────────────────────────────────
 
 const TAB_TOOLTIPS: Record<string, string> = {
   docs:      'Bu liste müşteri bazlı evrak kurallarından gelir. Tüm zorunlu evraklar geldiğinde "Beyanname Yazmaya Başla" aktif olur. Eksik varsa yetkiye göre "Eksik Evrakla Yaz" ile başlatılabilir.',
   conflicts: 'Eksik evraklar ve farklı dokümanlarda çelişen alanlar burada birlikte gösterilir. Sonradan gelen evrakların beyannameye dahil edilmesi Beyanname Yazım & Kontrol\'de yönetilir.',
+  review: 'IDP tarafından karar bekleyen belge alanlarını, aday değerleri ve kaynak kanıtlarını gösterir. Buradaki kararlar belgenin ne söylediğini doğrular; gümrük master data değişikliği yapmaz.',
 };
 
 function TabButton({
@@ -127,8 +129,10 @@ function filePillVariant(f: EvrakFile) {
 
 export default function EvrakHazirlikPage() {
   const { toast } = useToast();
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const refParam = searchParams.get('ref');
+  const declarationIdParam = searchParams.get('declarationId');
 
   const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState('docs');
@@ -137,7 +141,6 @@ export default function EvrakHazirlikPage() {
   const [selectedId, setSelectedId] = useState('');
   const [docs, setDocs]         = useState<EvrakDocRow[]>([]);
   const [conflicts, setConflicts] = useState<EvrakConflictRow[]>([]);
-  const [stats, setStats]       = useState<EvrakPageStats | null>(null);
 
   // Preview drawer
   const [previewOpen, setPreviewOpen]  = useState(false);
@@ -145,18 +148,26 @@ export default function EvrakHazirlikPage() {
 
   const selectedFile = files.find((f) => f.id === selectedId);
 
+  const stats: EvrakPageStats | null = selectedFile ? {
+    required: docs.filter((d) => d.required === 'Evet').length,
+    received: docs.filter((d) => d.status === 'Geldi').length,
+    missing: docs.filter((d) => d.status === 'Eksik').length,
+    fieldConflicts: conflicts.filter((c) => c.type === 'Veri Uyumsuzluğu').length,
+    parsedFields: docs.filter((d) => d.status === 'Geldi').length,
+  } : null;
+
   // Initial load
   useEffect(() => {
-    Promise.all([evrakService.getFiles(), evrakService.getStats()]).then(([fs, st]) => {
+    evrakService.getFiles().then((fs) => {
       setFiles(fs);
-      setStats(st);
       if (fs.length) {
-        const match = refParam ? fs.find((f) => f.ref === refParam) : null;
-        setSelectedId(match ? match.id : fs[0].id);
+        const matchById = declarationIdParam ? fs.find((f) => f.id === declarationIdParam) : null;
+        const matchByRef = refParam ? fs.find((f) => f.ref === refParam) : null;
+        setSelectedId((matchById ?? matchByRef ?? fs[0]).id);
       }
       setLoading(false);
     });
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);  // initial route context is intentionally consumed once
 
   // Load docs + conflicts when selected file changes
   useEffect(() => {
@@ -178,7 +189,13 @@ export default function EvrakHazirlikPage() {
 
   function handleSelectFile(id: string, ref: string) {
     setSelectedId(id);
+    setSearchParams({ declarationId: id, ref }, { replace: true });
     toast(ref + ' seçildi');
+  }
+
+  function startDeclaration(tab: 'yazim' | 'kontrol' = 'yazim') {
+    if (!selectedFile) return;
+    navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=${tab}`);
   }
 
   return (
@@ -195,7 +212,7 @@ export default function EvrakHazirlikPage() {
           <Button
             icon={AlertTriangle}
             disabled={selectedFile?.allReady ?? false}
-            onClick={() => toast('Eksik evrakla yazım başlatıldı. Sonradan gelen evraklar yazım ekranında değerlendirilecek.')}
+            onClick={() => startDeclaration('yazim')}
             writeCap="beyanname.write"
             style={
               !(selectedFile?.allReady ?? false)
@@ -209,7 +226,7 @@ export default function EvrakHazirlikPage() {
             variant="primary"
             icon={CheckSquare}
             disabled={!(selectedFile?.allReady ?? false)}
-            onClick={() => toast('Tüm evraklar hazır. Beyanname yazım süreci başlatılır.')}
+            onClick={() => startDeclaration('yazim')}
             writeCap="beyanname.write"
           >
             Beyanname Yazmaya Başla
@@ -303,6 +320,7 @@ export default function EvrakHazirlikPage() {
                 <div className="flex border-b border-line mb-4">
                   <TabButton tabKey="docs"      label="Evrak Durumu"                  active={activeTab === 'docs'}      onClick={() => setActiveTab('docs')} />
                   <TabButton tabKey="conflicts" label="Eksik Evrak & Uyumsuzluklar"   active={activeTab === 'conflicts'} onClick={() => setActiveTab('conflicts')} />
+                  <TabButton tabKey="review"    label="Belge İncelemesi"                active={activeTab === 'review'}    onClick={() => setActiveTab('review')} />
                 </div>
 
                 {activeTab === 'docs' && (
@@ -310,6 +328,9 @@ export default function EvrakHazirlikPage() {
                 )}
                 {activeTab === 'conflicts' && (
                   <ConflictsTab conflicts={conflicts} />
+                )}
+                {activeTab === 'review' && (
+                  <IdpReviewTab declarationId={selectedFile.id} />
                 )}
               </CardBody>
             </Card>

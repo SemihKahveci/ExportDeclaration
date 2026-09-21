@@ -6,6 +6,7 @@ import { UploadedFileModel } from "./document.model.js";
 import type { DocumentTypeValue } from "../../common/enums/documentType.js";
 import { storage } from "../storage/storage.js";
 import { LogicalDocumentModel } from "../idp/domain/logicalDocument.model.js";
+import { renderPdfPage } from "./pdfPageRenderer.js";
 
 export async function saveUploadedDocument(params: {
   companyId: mongoose.Types.ObjectId;
@@ -52,9 +53,42 @@ export async function saveUploadedDocument(params: {
 }
 
 type LeanDecId = { _id: mongoose.Types.ObjectId };
+type LeanUploadedFile = {
+  _id: mongoose.Types.ObjectId;
+  storageKey?: string;
+  fileName?: string;
+  mimeType?: string;
+};
 export async function listDocuments(companyId: mongoose.Types.ObjectId, declarationId: string) {
   if (!mongoose.isValidObjectId(declarationId)) throw new HttpError(400, "Geçersiz beyanname id.");
   const dec = (await DeclarationModel.findOne({ _id: declarationId, companyId }).lean().exec()) as LeanDecId | null;
   if (!dec) throw new HttpError(404, "Beyanname bulunamadı.");
   return UploadedFileModel.find({ companyId, declarationId: dec._id }).sort({ createdAt: 1 }).lean();
+}
+
+
+export async function getDocumentContentDescriptor(companyId: mongoose.Types.ObjectId, declarationId: string, documentId: string) {
+  if (!mongoose.isValidObjectId(declarationId) || !mongoose.isValidObjectId(documentId)) {
+    throw new HttpError(400, "Geçersiz beyanname veya evrak id.");
+  }
+  const doc = (await UploadedFileModel.findOne({
+    _id: documentId,
+    declarationId,
+    companyId,
+  }).lean().exec()) as LeanUploadedFile | null;
+  if (!doc) throw new HttpError(404, "Evrak bulunamadı.");
+  if (!doc.storageKey) throw new HttpError(409, "Evrak storage kaydı bulunmuyor.");
+  return {
+    absolutePath: storage.resolve(doc.storageKey),
+    fileName: doc.fileName ?? "document",
+    mimeType: doc.mimeType ?? "application/octet-stream",
+  };
+}
+
+export async function renderDocumentPage(companyId: mongoose.Types.ObjectId, declarationId: string, documentId: string, pageNumber: number): Promise<Buffer> {
+  const descriptor = await getDocumentContentDescriptor(companyId, declarationId, documentId);
+  if (descriptor.mimeType !== "application/pdf" && !descriptor.fileName.toLowerCase().endsWith(".pdf")) {
+    throw new HttpError(415, "Sayfa önizleme yalnız PDF evraklar için destekleniyor.");
+  }
+  return renderPdfPage(descriptor.absolutePath, pageNumber);
 }

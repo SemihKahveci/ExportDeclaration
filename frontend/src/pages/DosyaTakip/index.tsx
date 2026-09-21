@@ -309,7 +309,7 @@ export default function DosyaTakipPage() {
                       <MissingDocsPill
                         docs={file.missingDocuments}
                         fileRef={file.ref}
-                        onNavigate={(ref) => navigate(`/evrak-hazirlik?ref=${ref}`)}
+                        onNavigate={(ref) => navigate(file.declarationId ? `/evrak-hazirlik?declarationId=${encodeURIComponent(file.declarationId)}&ref=${encodeURIComponent(ref)}` : `/evrak-hazirlik?ref=${encodeURIComponent(ref)}`)}
                       />
                     </Td>
                     <Td><AssigneeCell assignee={file.assignee} /></Td>

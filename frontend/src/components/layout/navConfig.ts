@@ -17,6 +17,7 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ArrowLeftRight,
+  Files,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { DeploymentMode } from '../../types';
@@ -29,6 +30,8 @@ export interface NavItem {
   badge?: number;
   badgeVariant?: 'accent' | 'warn';
   children?: NavItem[];
+  /** Existing capability keys that may expose a workflow-only navigation item. */
+  requiredCaps?: string[];
 }
 
 export interface NavGroup {
@@ -40,6 +43,7 @@ export interface NavGroup {
 
 const ICON_MAP: Record<string, LucideIcon> = {
   '/dosya-takip':                    FolderOpen,
+  '/evrak-hazirlik':                 Files,
   '/beyanname':                      ClipboardList,
   '/beyanname/onay':                 CheckCheck,
   '/tescil':                         Stamp,
@@ -73,6 +77,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Operasyon',
     items: [
       permItem('/dosya-takip'),
+      {
+        label: 'Evrak Hazırlık',
+        path: '/evrak-hazirlik',
+        icon: ICON_MAP['/evrak-hazirlik'],
+        requiredCaps: ['beyanname.view', 'beyanname.write'],
+      },
       permItem('/beyanname'),
       permItem('/beyanname/onay'),
       permItem('/tescil'),
@@ -122,6 +132,9 @@ function filterItems(items: NavItem[], capSet: Set<string>): NavItem[] {
         const visibleChildren = filterItems(item.children, capSet);
         if (visibleChildren.length === 0) return null;
         return { ...item, children: visibleChildren };
+      }
+      if (item.requiredCaps?.length) {
+        return item.requiredCaps.some((cap) => capSet.has(cap)) ? item : null;
       }
       const screen = PERMISSIONS.find((s) => s.route === item.path);
       if (!screen) return item;

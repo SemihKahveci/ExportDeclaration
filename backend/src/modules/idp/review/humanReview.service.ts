@@ -170,6 +170,20 @@ async function loadRun(companyId: mongoose.Types.ObjectId, processingRunId: stri
   return run as any;
 }
 
+
+export async function getLatestHumanReviewCase(
+  companyId: mongoose.Types.ObjectId,
+  declarationId: string
+): Promise<HumanReviewCase | null> {
+  if (!mongoose.isValidObjectId(declarationId)) throw new HttpError(400, "Geçersiz declaration id.");
+  const run = await ProcessingRunModel.findOne({ companyId, declarationId })
+    .sort({ createdAt: -1, _id: -1 })
+    .select({ _id: 1 })
+    .lean();
+  if (!run) return null;
+  return getHumanReviewCase(companyId, String(run._id), declarationId);
+}
+
 export async function getHumanReviewCase(companyId: mongoose.Types.ObjectId, processingRunId: string, declarationId?: string): Promise<HumanReviewCase> {
   const run = await loadRun(companyId, processingRunId, declarationId);
   const issues = buildHumanReviewIssues(run);

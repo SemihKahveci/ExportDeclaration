@@ -9,6 +9,8 @@ export const documentSubRouter = Router({ mergeParams: true });
 
 documentSubRouter.post("/", upload.single("file"), asyncHandler(ctrl.postDocument));
 documentSubRouter.get("/", asyncHandler(ctrl.getDocuments));
+documentSubRouter.get("/:documentId/content", asyncHandler(ctrl.getDocumentContent));
+documentSubRouter.get("/:documentId/pages/:pageNumber/image", asyncHandler(ctrl.getDocumentPageImage));
 
 documentSubRouter.post("/:documentId/process", asyncHandler(ctrl.postProcessDocument));
 documentSubRouter.get("/:documentId/processing-runs", asyncHandler(ctrl.getProcessingRuns));

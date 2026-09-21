@@ -1,5 +1,10 @@
 import type { Request, Response } from "express";
-import { appendHumanReviewDecision, getHumanReviewCase, listHumanReviewDecisions } from "./humanReview.service.js";
+import { appendHumanReviewDecision, getHumanReviewCase, getLatestHumanReviewCase, listHumanReviewDecisions } from "./humanReview.service.js";
+
+export async function getLatestReview(req: Request, res: Response): Promise<void> {
+  const data = await getLatestHumanReviewCase(req.auth!.operationalCompanyId, req.params.id!);
+  res.json({ ok: true, data });
+}
 
 export async function getReview(req: Request, res: Response): Promise<void> {
   const data = await getHumanReviewCase(req.auth!.operationalCompanyId, req.params.runId!, req.params.id!);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Save, Send, FileText, Layers, Loader2, ChevronLeft, X, Bell } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameRecord, MtKontrolMapping } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
@@ -24,6 +25,11 @@ type ViewMode = 'list' | 'detail';
 
 export default function BeyannameYazimPage() {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const declarationIdParam = searchParams.get('declarationId');
+  const refParam = searchParams.get('ref');
+  const requestedTab = searchParams.get('tab') === 'kontrol' ? 'kontrol' : 'yazim';
 
   const [loading,          setLoading]          = useState(true);
   const [listeItems,       setListeItems]        = useState<BeyannameListeItem[]>([]);
@@ -50,7 +56,16 @@ export default function BeyannameYazimPage() {
       setListeItems(liste);
       setRecords(recs);
       setMtMappings(mappings);
-      if (recs.length) setSelectedId(recs[0].id);
+      if (recs.length) {
+        const matchById = declarationIdParam ? recs.find((r) => r.id === declarationIdParam) : null;
+        const matchByRef = refParam ? recs.find((r) => r.ref === refParam) : null;
+        const target = matchById ?? matchByRef;
+        setSelectedId((target ?? recs[0]).id);
+        if (target) {
+          setActiveTab(requestedTab);
+          setViewMode('detail');
+        }
+      }
     }).finally(() => setLoading(false));
   }, []);
 
@@ -155,13 +170,24 @@ export default function BeyannameYazimPage() {
       {/* Header row */}
       <div className="flex items-start justify-between gap-4 mb-3 shrink-0">
         <div>
-          <button
-            onClick={() => setViewMode('list')}
-            className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-accent transition-colors mb-1.5"
-          >
-            <ChevronLeft size={14} strokeWidth={2.5} />
-            <span>Beyanname Listesine Dön</span>
-          </button>
+          <div className="flex items-center gap-4 mb-1.5">
+            <button
+              onClick={() => setViewMode('list')}
+              className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-accent transition-colors"
+            >
+              <ChevronLeft size={14} strokeWidth={2.5} />
+              <span>Beyanname Listesine Dön</span>
+            </button>
+            {selected && (
+              <button
+                onClick={() => navigate(`/evrak-hazirlik?declarationId=${encodeURIComponent(selected.id)}&ref=${encodeURIComponent(selected.ref)}`)}
+                className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-accent transition-colors"
+              >
+                <ChevronLeft size={14} strokeWidth={2.5} />
+                <span>Evrak Hazırlığa Dön</span>
+              </button>
+            )}
+          </div>
           <h1 className="text-[23px] font-extrabold text-text-strong tracking-tight">
             Beyanname Yazım & Kontrol
           </h1>
