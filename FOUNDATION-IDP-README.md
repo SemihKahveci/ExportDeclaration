@@ -608,7 +608,7 @@ MT Control exposes append-only customs decision history for the selected supplem
 
 The 5.7E integration regression waits for backend readiness to avoid the Compose post-rebuild `ECONNREFUSED` startup race.
 
-Cleanup boundary: the legacy MT mapping path is no longer used by `Beyanname Yazım > MT Kontrol`. `MtKontrolMapping`, `getMtKontrolMappings()` and `PAGE_IMAGES` are intentionally retained because `Beyanname Onay` still uses that legacy presentation path; deleting them during 5.7E would break an active screen.
+5.7E cleanup boundary at the time: `Beyanname Onay` still depended on the legacy MT mapping path. That dependency was subsequently removed in 5.7F; see the 5.7F closeout below.
 
 
 ### Foundation 5.7F — Beyanname Onay production provenance + legacy MT cleanup
@@ -624,3 +624,18 @@ Cleanup performed in 5.7F:
 - removed the mock declaration-region/source-document mapping UI.
 
 `PAGE_IMAGES` itself is intentionally retained because `Beyanname Yazım` still uses it only for its separate declaration-form preview presentation. It is no longer an MT/approval provenance source.
+
+
+### Foundation 5.7 final closeout
+
+5.7A–5.7F now share the same production chain: document truth is reviewed in Evrak Hazırlık, customs truth is projected in MT Control, persistent customs decisions are append-only, and Beyanname Onay consumes the same effective production provenance.
+
+Final hardening:
+- `/api/declarations/:id/control-provenance` requires a Beyanname capability;
+- declaration document/evidence endpoints use read/write capability boundaries;
+- IDP Human Review GET/POST uses read/write capability boundaries;
+- Persistent Customs Supplement GET/POST uses read/write capability boundaries;
+- `/beyanname/onay` is protected by `beyanname.approve`;
+- `verifyFoundation57Closeout.ts` validates the real 0110 declaration, 336 effective fields, physical provenance for every normalized-authority field, exact uploaded-file access, cross-declaration rejection, Human Review access and supplement history access.
+
+Generated `frontend/dist` is not an application source of truth and is excluded from legacy-source checks. `PAGE_IMAGES` remains only for the separate declaration-form preview presentation; it is not used as MT/approval provenance.

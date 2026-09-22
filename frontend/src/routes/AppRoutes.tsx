@@ -54,7 +54,11 @@ export default function AppRoutes() {
             <BeyannameYazimPage />
           </ProtectedRoute>
         } />
-        <Route path="/beyanname/onay" element={<BeyannameOnayPage />} />
+        <Route path="/beyanname/onay" element={
+          <ProtectedRoute requiredCaps={['beyanname.approve']}>
+            <BeyannameOnayPage />
+          </ProtectedRoute>
+        } />
         <Route path="/tescil" element={
           <ProtectedRoute requiredCaps={['tescil.view', 'tescil.notify']}>
             <BeyannameTescilPage />

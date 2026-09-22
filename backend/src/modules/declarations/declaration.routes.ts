@@ -4,13 +4,17 @@ import * as ctrl from "./declaration.controller.js";
 import { documentSubRouter } from "../documents/document.routes.js";
 import { humanReviewRouter } from "../idp/review/humanReview.routes.js";
 import { getControlProjection } from "../declaration-control/declarationControl.controller.js";
+import { requireAnyCapability } from "../../common/middlewares/authorization.js";
 
 const router = Router();
 
 router.post("/", asyncHandler(ctrl.postDeclaration));
 router.get("/", asyncHandler(ctrl.getDeclarations));
 router.get("/:id/download-xml", asyncHandler(ctrl.getDownloadXml));
-router.get("/:id/control-provenance", asyncHandler(getControlProjection));
+router.get("/:id/control-provenance",
+  requireAnyCapability("beyanname.view", "beyanname.write", "beyanname.approve"),
+  asyncHandler(getControlProjection)
+);
 router.get("/:id", asyncHandler(ctrl.getDeclarationById));
 router.patch("/:id", asyncHandler(ctrl.patchDeclarationById));
 

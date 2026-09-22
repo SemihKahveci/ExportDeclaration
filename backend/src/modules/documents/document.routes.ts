@@ -1,11 +1,16 @@
 import { Router } from "express";
 import multer from "multer";
 import { asyncHandler } from "../../common/utils/asyncHandler.js";
+import { requireReadWriteCapabilities } from "../../common/middlewares/authorization.js";
 import * as ctrl from "./document.controller.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 export const documentSubRouter = Router({ mergeParams: true });
+documentSubRouter.use(requireReadWriteCapabilities(
+  ["beyanname.view", "beyanname.write", "beyanname.approve"],
+  ["beyanname.write", "beyanname.approve"],
+));
 
 documentSubRouter.post("/", upload.single("file"), asyncHandler(ctrl.postDocument));
 documentSubRouter.get("/", asyncHandler(ctrl.getDocuments));
