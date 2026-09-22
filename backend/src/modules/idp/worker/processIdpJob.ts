@@ -16,6 +16,8 @@ import { CandidateResolutionStatus } from "../domain/candidateResolution.types.j
 import { validateResolvedCandidate } from "../validator/documentValidatorRegistry.js";
 import { ValidationStatus } from "../domain/validation.types.js";
 import { materializeLogicalDocuments } from "../domain/logicalDocumentMaterializer.js";
+import { tryOrchestrateDeclarationAfterProcessing } from "../domain/declarationFieldLifecycle.service.js";
+import { buildProcessingRunCandidateSnapshot } from "../domain/processingRunCandidateSnapshot.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -189,7 +191,9 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       );
 
       run.candidates = candidateEnvelope;
+      run.declarationCandidates = buildProcessingRunCandidateSnapshot(candidateEnvelope);
       run.markModified("candidates");
+      run.markModified("declarationCandidates");
       await run.save();
 
       log("idp.candidate_extract.completed", {
@@ -314,6 +318,24 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       jobId: processingRunId,
       durationMs: Date.now() - jobStartedAt
     });
+
+    // A completed file may make the whole declaration ready for cross-document
+    // resolution. Readiness is evaluated from persisted logical documents/runs;
+    // duplicate worker completion is safe because Foundation 6.8 is idempotent.
+    try {
+      const lifecycle = await tryOrchestrateDeclarationAfterProcessing({
+        companyId: run.companyId,
+        declarationId: run.declarationId
+      });
+      log("idp.declaration.lifecycle", { jobId: processingRunId, ...lifecycle });
+    } catch (lifecycleError) {
+      // File extraction is already durably COMPLETED. Declaration orchestration
+      // fails closed independently and must never rewrite that run as FAILED.
+      log("idp.declaration.lifecycle.failed", {
+        jobId: processingRunId,
+        error: lifecycleError instanceof Error ? lifecycleError.message : String(lifecycleError)
+      });
+    }
   } catch (error) {
     run.status = ProcessingStatus.FAILED;
     run.error = {

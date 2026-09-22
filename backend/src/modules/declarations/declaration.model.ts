@@ -71,6 +71,13 @@ export interface DeclarationDoc extends mongoose.Document {
   sourceTrace?: Record<string, { value: unknown; source: DocumentTypeValue | string | null }>;
   generatedXmlPath?: string;
   approvalWorkflow?: ApprovalWorkflowDoc;
+  idpResolution?: {
+    version: "1";
+    resolutionRunId: mongoose.Types.ObjectId;
+    reviewRequiredFields: string[];
+    fields: Record<string, unknown>;
+    resolvedAt: Date;
+  };
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -223,10 +230,19 @@ const DeclarationSchema = new Schema(
 
     approvalWorkflow: { type: ApprovalWorkflowSchema, default: () => ({}) },
 
+    idpResolution: {
+      version: { type: String, enum: ["1"] },
+      resolutionRunId: { type: Schema.Types.ObjectId, ref: "DeclarationFieldResolutionRun" },
+      reviewRequiredFields: { type: [String], default: [] },
+      fields: Schema.Types.Mixed,
+      resolvedAt: Date
+    },
+
     createdBy: { type: Schema.Types.ObjectId }
   },
   { timestamps: true }
 );
 
-export const DeclarationModel =
-  mongoose.models.Declaration ?? mongoose.model<DeclarationDoc>("Declaration", DeclarationSchema);
+export const DeclarationModel: mongoose.Model<DeclarationDoc> =
+  (mongoose.models.Declaration as mongoose.Model<DeclarationDoc> | undefined) ??
+  mongoose.model<DeclarationDoc>("Declaration", DeclarationSchema);

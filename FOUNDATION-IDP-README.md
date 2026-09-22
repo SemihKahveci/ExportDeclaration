@@ -737,3 +737,73 @@ A physical `UploadedFile` is no longer permanently treated as one semantic docum
 Each logical document persists exact physical-file identity, page range, deterministic confidence/evidence and the source ProcessingRun. The upload-time logical record remains only a provisional `UPLOAD_DECLARED` placeholder and is replaced by materialized ranges after classification. This establishes the multi-document boundary without yet inventing field-authority rules for customs documents; those belong to subsequent Foundation 6 steps.
 
 Foundation 5.8 cleanup in the same patch removes the accidental list-item approval-history field, replaces browser prompts on registration with a typed modal/line selector, and removes wording that falsely implied an external customs/customer-notification API.
+
+
+### Foundation 6.2 — Declaration document set + explicit cross-document authority
+
+Declaration-level document roles can now be represented together and field conflicts are resolved only by consensus or an explicitly configured authority rule. Conflicting values without a rule, and conflicts inside the same authority tier, fail closed to review. No document type receives silent precedence.
+
+
+### Foundation 6.3 — Persisted declaration document set
+
+The declaration document set is now built from persisted `LogicalDocument` records under strict `companyId + declarationId` scope. Physical-file/page-range integrity is validated, source ProcessingRun provenance is retained, and overlapping logical-document ranges are rejected rather than silently accepted.
+
+
+### Foundation 6.4 — Declaration-wide field candidate projection
+
+Field candidates can now be projected from physical-file processing output onto the persisted logical-document boundary using their evidence page numbers. The declaration-wide candidate retains logical document id, physical UploadedFile id, semantic document type, source ProcessingRun id and original evidence.
+
+The projection fails closed when a source file is not part of the declaration or when a candidate's evidence crosses logical-document ranges. It never assigns a candidate to the first logical document merely because it belongs to the same physical file. This establishes the provenance-safe bridge required before persisted cross-document field resolution is wired into the production pipeline.
+
+
+### Foundation 6.5 — Provenance-safe declaration field resolution
+
+The declaration-wide candidate envelope from Foundation 6.4 now feeds the explicit cross-document resolver introduced in Foundation 6.2. Resolution is performed per field and returns the complete selected declaration candidate, not only its scalar value, so logical-document id, physical UploadedFile id, source ProcessingRun and evidence remain traceable after resolution.
+
+Consensus resolves equal values across documents. Conflicting values resolve only when an explicit field authority rule is supplied; otherwise the field is collected in `reviewRequiredFields`. A configured authority result still retains the conflicting candidates for audit/review context. Duplicate authority rules and duplicate candidate ids fail closed. No confidence score or document order creates implicit authority.
+
+
+### Foundation 6.6 — Persisted declaration field resolution audit boundary
+
+Declaration-wide resolution is now persistable instead of being an in-memory-only result. Each successful resolution creates an append-only `DeclarationFieldResolutionRun` containing the complete candidate/evidence envelope, the explicit authority rules used, the resulting per-field resolution and the contributing ProcessingRun ids. This preserves the explanation chain from a declaration value back to logical document, physical file, ProcessingRun and evidence.
+
+The declaration stores only the current resolution snapshot/pointer (`idpResolution`) for operational reads, while the resolution-run collection remains the audit source. `REVIEW_REQUIRED` fields are persisted explicitly and are not promoted into a silent winner. Writes are tenant/declaration scoped and candidate-envelope scope mismatches fail before an audit record is created.
+
+Foundation 6.6 acceptance includes the persisted-resolution verification plus backend and frontend TypeScript checks.
+
+
+### Foundation 6.7 — RESOLVED-only normalized declaration promotion
+
+The current persisted declaration-field resolution can now be promoted into `normalizedData` through an explicit field-to-target mapping. Promotion accepts only the declaration's current tenant-scoped `DeclarationFieldResolutionRun`; stale or foreign runs fail closed.
+
+Only fields with `status=RESOLVED` and an intact selected-candidate provenance chain may write a normalized declaration value. `REVIEW_REQUIRED` fields never receive an automatic winner and do not overwrite an existing normalized/manual value or its trace. Resolved fields without an explicit normalized target mapping are reported as unmapped rather than written to an invented location.
+
+Every promoted `sourceTrace` entry records the immutable resolution-run id, resolution method, selected candidate id, logical-document id, physical UploadedFile id, source ProcessingRun id and evidence. This makes the operational normalized value traceable back through the Foundation 6 audit chain without replacing the append-only resolution run as the audit source.
+
+Foundation 6.7 acceptance includes the resolved-only promotion verification plus backend and frontend TypeScript checks.
+
+### Foundation 6.8 — Production declaration-field orchestration boundary
+
+Foundation 6.8 composes the persisted logical-document set, integrity validation, declaration candidate projection, cross-document resolution audit persistence and RESOLVED-only promotion behind one production-facing orchestration service. Invalid document-set integrity stops the pipeline before an audit run or normalized write is created.
+
+Each orchestration input receives a deterministic SHA-256 key derived from declaration scope, persisted logical-document boundaries, source candidate envelopes and explicit authority rules. An exact retry reuses the current immutable resolution run instead of creating duplicate audit history. If newer input has already produced a newer current run, replaying an older orchestration is rejected rather than rolling the declaration back to stale values.
+
+Foundation 6.8 acceptance includes backend/frontend TypeScript checks and `verifyDeclarationFieldOrchestration.ts`. The verification proves exact-retry idempotency, changed-input new-run behavior, stale-replay rejection, invalid-document-set fail-closed behavior, REVIEW_REQUIRED non-promotion and preservation of the Foundation 6 provenance chain.
+
+### Foundation 6.9 — Processing lifecycle readiness bridge
+
+Foundation 6.9 connects the declaration-wide Foundation 6.8 orchestration boundary to the real IDP worker completion lifecycle. After a physical-file ProcessingRun is durably completed, the worker evaluates declaration readiness from persisted LogicalDocuments and their exact source ProcessingRuns rather than assuming that one completed upload means the declaration is ready.
+
+Declaration orchestration runs only when every persisted logical document has ProcessingRun provenance, every referenced run belongs to the same tenant/declaration, every referenced run is `COMPLETED`, and every run has a persisted field-candidate envelope. Incomplete declarations return `NOT_READY`; a failed contributing run returns `BLOCKED` and cannot produce a resolution audit run or normalized promotion. Exact duplicate completion remains safe through the Foundation 6.8 orchestration key/idempotency boundary.
+
+The lifecycle hook is intentionally isolated from the already-durable per-file completion: an orchestration exception is logged and fails closed at declaration level without rewriting a successfully completed extraction run to `FAILED`.
+
+Foundation 6.9 acceptance includes backend/frontend TypeScript checks and `verifyDeclarationFieldLifecycle.ts`, covering incomplete-run gating, failed-run blocking, successful all-runs-ready orchestration, duplicate-completion idempotency, REVIEW_REQUIRED non-promotion and provenance preservation.
+
+### Foundation 6.10 — ProcessingRun-owned declaration candidate snapshot
+
+Foundation 6.10 separates extractor audit output from the declaration-facing field-candidate contract. The worker keeps the segment-level `CandidateExtractionEnvelope` in `ProcessingRun.candidates`, while evidence-backed `fieldCandidates` are deterministically flattened into `ProcessingRun.declarationCandidates`. Declaration lifecycle orchestration consumes only this explicit snapshot boundary; it never interprets the extractor envelope as declaration candidates.
+
+The snapshot is owned by the exact ProcessingRun referenced by each persisted LogicalDocument. Reprocessing can therefore leave older ProcessingRuns and their candidate snapshots available for audit without allowing stale candidates to participate in a newer declaration resolution. If the active run has no valid declaration candidate snapshot, orchestration returns `CANDIDATES_NOT_READY` and creates no new resolution audit record.
+
+Foundation 6.10 acceptance includes backend/frontend TypeScript checks and `verifyProcessingRunCandidatePersistence.ts`, proving segment-candidate flattening, active-run authority, stale-run exclusion, raw-envelope non-consumption, missing-snapshot gating and ProcessingRun provenance preservation.

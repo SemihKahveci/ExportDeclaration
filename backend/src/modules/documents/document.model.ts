@@ -51,8 +51,9 @@ const DocumentSchema = new Schema(
 );
 
 // Collection name is intentionally preserved for a migration-free foundation refactor.
-export const UploadedFileModel =
-  mongoose.models.UploadedDocument ?? mongoose.model<DocumentDoc>("UploadedDocument", DocumentSchema);
+export const UploadedFileModel: mongoose.Model<DocumentDoc> =
+  (mongoose.models.UploadedDocument as mongoose.Model<DocumentDoc> | undefined) ??
+  mongoose.model<DocumentDoc>("UploadedDocument", DocumentSchema);
 
 /** @deprecated Use UploadedFileModel in new IDP code. Kept while declaration normalization is migrated. */
 export const UploadedDocumentModel = UploadedFileModel;

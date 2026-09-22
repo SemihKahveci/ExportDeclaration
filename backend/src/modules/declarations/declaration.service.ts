@@ -162,11 +162,9 @@ export async function patchDeclaration(
     existing.status = body.status;
   }
   if (body.operation !== undefined) {
-    const current = existing.operation
-      ? (typeof (existing.operation as { toObject?: () => OperationMetaDoc }).toObject === "function"
-          ? (existing.operation as { toObject: () => OperationMetaDoc }).toObject()
-          : { ...existing.operation })
-      : ({} as Partial<OperationMetaDoc>);
+    const current: Partial<OperationMetaDoc> = existing.operation
+      ? { ...existing.toObject().operation }
+      : {};
     existing.operation = { ...current, ...body.operation } as OperationMetaDoc;
     existing.markModified("operation");
   }

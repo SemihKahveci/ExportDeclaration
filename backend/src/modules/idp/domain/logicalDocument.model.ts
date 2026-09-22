@@ -31,5 +31,6 @@ const LogicalDocumentSchema = new Schema({
 
 LogicalDocumentSchema.index({ uploadedFileId: 1, pageStart: 1, pageEnd: 1 }, { unique: true });
 
-export const LogicalDocumentModel = mongoose.models.LogicalDocument ??
+export const LogicalDocumentModel: mongoose.Model<LogicalDocumentDoc> =
+  (mongoose.models.LogicalDocument as mongoose.Model<LogicalDocumentDoc> | undefined) ??
   mongoose.model<LogicalDocumentDoc>("LogicalDocument", LogicalDocumentSchema);

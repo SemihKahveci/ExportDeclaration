@@ -9,8 +9,6 @@ import Button from '../../components/ui/Button';
 import Timeline from '../../components/ui/Timeline';
 import LineCard from '../../components/ui/LineCard';
 import { useToast } from '../../components/ui/Toast';
-import Modal from '../../components/ui/Modal';
-import { Field, Input, Select } from '../../components/ui/Fields';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +42,7 @@ function buildTimeline(rec: TescilRecord) {
   return [
     {
       title: 'Beyanname tescil talebi oluşturuldu',
-      meta: 'Onaylanan beyanname tescil aşamasına alındı',
+      meta: 'Sistem API üzerinden tescil süreci başlatıldı',
       state: 'done' as const,
     },
     {
@@ -60,10 +58,10 @@ function buildTimeline(rec: TescilRecord) {
       state: rec.hasSecondNotif ? ('done' as const) : ('wait' as const),
     },
     {
-      title: rec.status === 'completed' ? 'Kapanış aşamasına aktarıldı' : 'Tamamlanma bekleniyor',
+      title: rec.status === 'completed' ? 'Müşteri bilgilendirildi' : 'Müşteri bekleme durumunda',
       meta: rec.status === 'completed'
-        ? 'Tescil tamamlandı ve dosya kapanış bekleyen durumuna geçti'
-        : 'Tamamlanma kaydı henüz girilmedi',
+        ? 'Tamamlandı bildirimi gönderildi'
+        : 'Tamamlandı bildirimi ikinci bildirimden sonra gönderilecek',
       state: rec.status === 'completed' ? ('done' as const) : ('wait' as const),
     },
   ];
@@ -137,10 +135,6 @@ export default function BeyannameTescilPage() {
   const [records,   setRecords]   = useState<TescilRecord[]>([]);
   const [stats,     setStats]     = useState<TescilPageStats | null>(null);
   const [selectedId, setSelectedId] = useState<string>('');
-  const [registrationOpen, setRegistrationOpen] = useState(false);
-  const [registrationNo, setRegistrationNo] = useState('');
-  const [registrationLine, setRegistrationLine] = useState<LineColor>('Yeşil');
-  const [registrationSaving, setRegistrationSaving] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -183,10 +177,17 @@ export default function BeyannameTescilPage() {
           {selected?.status === 'waiting' && <Button
             variant="primary"
             icon={Send}
-            onClick={() => {
-              setRegistrationNo('');
-              setRegistrationLine('Yeşil');
-              setRegistrationOpen(true);
+            onClick={async () => {
+              const tescilNo=window.prompt('Tescil numarası');
+              if(!tescilNo) return;
+              const line=window.prompt('Hat (Kırmızı / Sarı / Mavi / Yeşil)');
+              if(!line) return;
+              try {
+                await tescilService.transition(selected.id,{action:'RECORD_REGISTRATION_STARTED',tescilNo,line});
+                const [recs,nextStats]=await Promise.all([tescilService.getRecords(),tescilService.getStats()]);
+                setRecords(recs); setStats(nextStats);
+                toast('Tescil başlangıç bildirimi kaydedildi');
+              } catch(error){ console.error(error); toast('Tescil başlangıcı kaydedilemedi'); }
             }}
             writeCap="tescil.notify"
           >
@@ -384,37 +385,6 @@ export default function BeyannameTescilPage() {
           </Card>
         )}
       </div>
-
-      <Modal
-        open={registrationOpen}
-        onClose={() => !registrationSaving && setRegistrationOpen(false)}
-        title="Tescil Başlangıç Bildirimi"
-        footer={<>
-          <Button onClick={() => setRegistrationOpen(false)} disabled={registrationSaving}>Vazgeç</Button>
-          <Button variant="primary" disabled={registrationSaving || !registrationNo.trim()} onClick={async () => {
-            if (!selected || !registrationNo.trim()) return;
-            setRegistrationSaving(true);
-            try {
-              await tescilService.transition(selected.id,{action:'RECORD_REGISTRATION_STARTED',tescilNo:registrationNo.trim(),line:registrationLine});
-              const [recs,nextStats]=await Promise.all([tescilService.getRecords(),tescilService.getStats()]);
-              setRecords(recs); setStats(nextStats); setRegistrationOpen(false);
-              toast('Tescil başlangıç bildirimi kaydedildi');
-            } catch(error) { console.error(error); toast('Tescil başlangıcı kaydedilemedi'); }
-            finally { setRegistrationSaving(false); }
-          }}>Kaydet</Button>
-        </>}
-      >
-        <div className="space-y-4">
-          <Field label="Tescil Numarası" htmlFor="registration-no" required>
-            <Input id="registration-no" value={registrationNo} onChange={(e) => setRegistrationNo(e.target.value)} autoFocus />
-          </Field>
-          <Field label="Hat" htmlFor="registration-line" required>
-            <Select id="registration-line" value={registrationLine} onChange={(e) => setRegistrationLine(e.target.value as LineColor)}>
-              {ALL_LINES.map((line) => <option key={line} value={line}>{line}</option>)}
-            </Select>
-          </Field>
-        </div>
-      </Modal>
     </div>
   );
 }
