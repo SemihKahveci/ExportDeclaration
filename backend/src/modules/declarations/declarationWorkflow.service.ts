@@ -45,9 +45,20 @@ export async function transitionApprovalWorkflow(
   } else if(action==="APPROVE"){
     if(from==="APPROVED") throw new HttpError(409,"Beyanname zaten onaylandı.");
     if(from==="RETURNED") throw new HttpError(409,"MT kontrole geri gönderilen beyanname yeniden onaya sunulmadan onaylanamaz.");
-    if(from==="FIRST_PENDING" && wf.requiresSecondApproval) to="SECOND_PENDING";
-    else if(from==="FIRST_PENDING" || from==="SECOND_PENDING") to="APPROVED";
-    else throw new HttpError(409,"Bu aşamada onay verilemez.");
+    if(from==="FIRST_PENDING" && wf.requiresSecondApproval) {
+      to="SECOND_PENDING";
+    } else if(from==="SECOND_PENDING") {
+      const firstApproval=[...wf.history].reverse().find(
+        (entry)=>entry.action==="APPROVE" && entry.fromStatus==="FIRST_PENDING" && entry.toStatus==="SECOND_PENDING"
+      );
+      if(!firstApproval) throw new HttpError(409,"İlk onay kaydı bulunamadığı için ikinci onay verilemez.");
+      if(String(firstApproval.actorUserId)===String(actorUserId)) {
+        throw new HttpError(409,"İkinci onay ilk onayı veren kullanıcı tarafından verilemez.");
+      }
+      to="APPROVED";
+    } else if(from==="FIRST_PENDING") {
+      to="APPROVED";
+    } else throw new HttpError(409,"Bu aşamada onay verilemez.");
   } else if(action==="RETURN_TO_MT"){
     if(from!=="FIRST_PENDING" && from!=="SECOND_PENDING") throw new HttpError(409,"Yalnız onay bekleyen beyanname MT kontrole geri gönderilebilir.");
     to="RETURNED";

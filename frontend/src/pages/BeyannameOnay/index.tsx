@@ -86,25 +86,42 @@ export default function BeyannameOnayPage() {
 
   async function handleSendToSecondApproval() {
     if (!selectedId) return;
-    await beyannameService.transitionApproval(selectedId,{action:'APPROVE'});
-    await reloadApprovalData();
-    toast('Beyanname 2. onaya gönderildi');
+    try {
+      await beyannameService.transitionApproval(selectedId,{action:'APPROVE'});
+      await reloadApprovalData();
+      toast('Beyanname 2. onaya gönderildi');
+    } catch (error) {
+      console.error(error);
+      toast('1. onay tamamlanamadı');
+    }
   }
 
   async function handleApproveAndSendToTescil() {
     if (!selected) return;
-    await beyannameService.transitionApproval(selected.id,{action:'APPROVE'});
-    await reloadApprovalData();
-    toast('Beyanname onaylandı ve tescile gönderildi');
-    setViewMode('list');
+    try {
+      await beyannameService.transitionApproval(selected.id,{action:'APPROVE'});
+      await reloadApprovalData();
+      toast('Beyanname onaylandı ve tescile gönderildi');
+      setViewMode('list');
+    } catch (error) {
+      console.error(error);
+      toast(selected.approvalStatus==='SECOND_PENDING'
+        ? '2. onay farklı bir yetkili kullanıcı tarafından verilmelidir'
+        : 'Beyanname onaylanamadı');
+    }
   }
 
   async function handleGeriGonder() {
     if (!selected) return;
-    await beyannameService.transitionApproval(selected.id,{action:'RETURN_TO_MT'});
-    await reloadApprovalData();
-    toast('Beyanname MT kontrole geri gönderildi');
-    setViewMode('list');
+    try {
+      await beyannameService.transitionApproval(selected.id,{action:'RETURN_TO_MT'});
+      await reloadApprovalData();
+      toast('Beyanname MT kontrole geri gönderildi');
+      setViewMode('list');
+    } catch (error) {
+      console.error(error);
+      toast('Beyanname MT kontrole geri gönderilemedi');
+    }
   }
 
   async function handleNotEkle(note: string) {
@@ -351,6 +368,7 @@ export default function BeyannameOnayPage() {
               approvalNote={selected?.approvalNote ?? ''}
               requiresSecondApproval={requiresSecondApproval}
               approvalStep={approvalStep}
+              approvalHistory={selected?.approvalHistory ?? []}
               onSendToSecondApproval={handleSendToSecondApproval}
               onApproveAndSendToTescil={handleApproveAndSendToTescil}
               onGeriGonder={handleGeriGonder}

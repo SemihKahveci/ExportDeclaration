@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  RefreshCw, X, Download, Mail, FileText, CreditCard, Upload as UploadIcon,
+  X, Download, Mail, FileText, CreditCard, Upload as UploadIcon,
   Zap, Bell, CheckCircle, Eye, Send, Clock, CheckCheck, Loader2,
 } from 'lucide-react';
 import type {
@@ -229,18 +229,20 @@ export default function KapanisMutabakatPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="default" icon={RefreshCw}
-            onClick={() => toast('Kontroller yenilendi')}
-          >
-            Kontrolleri Yenile
-          </Button>
           {can('kapanis.close') && (
             <Button
               variant="primary"
               icon={CheckCheck}
-              disabled={!autoChecked}
-              onClick={() => toast('Dosya kapatıldı')}
+              disabled={!selected || selected.status === 'kapandi'}
+              onClick={async () => {
+                if(!selected) return;
+                try {
+                  await kapanisService.transition(selected.id,{action:'CLOSE_FILE'});
+                  const [nextFiles,nextStats]=await Promise.all([kapanisService.getFiles(),kapanisService.getStats()]);
+                  setFiles(nextFiles); setStats(nextStats);
+                  toast('Dosya kapatıldı');
+                } catch(error) { console.error(error); toast('Dosya kapatılamadı'); }
+              }}
             >
               Dosyayı Kapat
             </Button>

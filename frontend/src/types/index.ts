@@ -420,7 +420,7 @@ export interface EvraklarPageStats {
 
 // ─── Beyanname Tescil screen ──────────────────────────────────────────────────
 
-export type TescilStatus = 'started' | 'completed';
+export type TescilStatus = 'waiting' | 'started' | 'completed';
 
 export interface TescilRecord {
   id: string;
@@ -428,7 +428,7 @@ export interface TescilRecord {
   type: string;
   customer: string;
   tescilNo: string;
-  line: 'Kırmızı' | 'Sarı' | 'Mavi' | 'Yeşil';
+  line: 'Kırmızı' | 'Sarı' | 'Mavi' | 'Yeşil' | null;
   status: TescilStatus;
   hasSecondNotif: boolean;
   risk: string;
@@ -470,6 +470,7 @@ export interface BeyannameListeItem {
   approvalStatus: 'FIRST_PENDING'|'SECOND_PENDING'|'APPROVED'|'RETURNED';
   requiresSecondApproval: boolean;
   approvalNote: string;
+  approvalHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
 }
 
 export type BeyannameStatus = 'taslak' | 'kontrol' | 'tescilli' | 'bekliyor';
@@ -544,6 +545,8 @@ export interface BeyannameRecord {
   approvalStatus: 'FIRST_PENDING'|'SECOND_PENDING'|'APPROVED'|'RETURNED';
   requiresSecondApproval: boolean;
   approvalNote: string;
+  approvalHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
+  operationFileStatus: string;
 }
 
 export interface FieldBox {

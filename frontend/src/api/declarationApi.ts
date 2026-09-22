@@ -55,3 +55,21 @@ export async function transitionPreparationWorkflow(
 ):Promise<{declaration:Declaration;readiness:{ready:boolean;documentCount:number;blockingDocumentCount:number;blockingDocuments:Array<{id:string;fileName:string;status:string}>}}>{
  return apiPostJson(`/api/declarations/${encodeURIComponent(id)}/preparation-workflow/transition`,body);
 }
+
+export async function transitionWritingWorkflow(
+ id:string,body:{action:"SUBMIT_TO_MT"|"APPROVE_MT"}
+):Promise<Declaration>{
+ return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/writing-workflow/transition`,body);
+}
+
+export async function transitionRegistrationWorkflow(
+ id:string,body:{action:"RECORD_REGISTRATION_STARTED"|"COMPLETE_REGISTRATION";tescilNo?:string;line?:string}
+):Promise<Declaration>{
+ return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/registration-workflow/transition`,body);
+}
+
+export async function transitionClosureWorkflow(
+ id:string,body:{action:"CLOSE_FILE";note?:string}
+):Promise<Declaration>{
+ return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/closure-workflow/transition`,body);
+}

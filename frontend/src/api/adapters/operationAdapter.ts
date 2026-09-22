@@ -30,8 +30,8 @@ export function toTescilRecord(d: BackendDeclaration): TescilRecord {
     type: TYPE_LABELS[op.operationType] ?? op.operationType,
     customer: op.customerName,
     tescilNo: op.tescilNo ?? op.declarationNo ?? "—",
-    line: (op.line as TescilRecord["line"]) ?? "Mavi",
-    status: (op.tescilStatus as TescilRecord["status"]) ?? "started",
+    line: (op.line as TescilRecord["line"]) ?? null,
+    status: (op.tescilStatus as TescilRecord["status"]) ?? "waiting",
     hasSecondNotif: op.hasSecondNotif,
     risk: op.tescilRisk || "—",
     days: op.tescilDays,
@@ -57,9 +57,9 @@ export function toKapanicFile(d: BackendDeclaration): KapanicFile {
 
 export function computeTescilStats(records: TescilRecord[]): TescilPageStats {
   return {
-    waiting: records.filter((r) => r.status === "started").length,
+    waiting: records.filter((r) => r.status === "waiting").length,
     started: records.filter((r) => r.status === "started").length,
-    completed: 0,
+    completed: records.filter((r) => r.status === "completed").length,
     yellowRed: records.filter((r) => r.line === "Sarı" || r.line === "Kırmızı").length,
     blueGreenTracking: records.filter((r) => r.line === "Mavi" || r.line === "Yeşil").length,
   };

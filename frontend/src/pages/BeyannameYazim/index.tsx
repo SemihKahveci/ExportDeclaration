@@ -94,13 +94,35 @@ export default function BeyannameYazimPage() {
     setHasViewedPreview(true);
   }
 
-  function handleSendToControl() {
-    setActiveTab('kontrol');
-    toast('Beyanname kontrole gönderildi');
+  async function reloadDeclarationData() {
+    const [liste,recs]=await Promise.all([beyannameListeService.getItems(),beyannameService.getRecords()]);
+    setListeItems(liste); setRecords(recs);
   }
 
-  function handleSistemeGonder() {
-    toast('Beyanname sisteme gönderildi');
+  async function handleSendToControl() {
+    if (!selected) return;
+    try {
+      await beyannameService.transitionWriting(selected.id,{action:'SUBMIT_TO_MT'});
+      await reloadDeclarationData();
+      setActiveTab('kontrol');
+      toast('Beyanname MT kontrole gönderildi');
+    } catch (error) {
+      console.error(error);
+      toast('MT kontrole geçiş yapılamadı');
+    }
+  }
+
+  async function handleSistemeGonder() {
+    if (!selected) return;
+    try {
+      await beyannameService.transitionWriting(selected.id,{action:'APPROVE_MT'});
+      await reloadDeclarationData();
+      toast('MT kontrol tamamlandı; beyanname onaya gönderildi');
+      navigate(`/beyanname-onay?declarationId=${encodeURIComponent(selected.id)}&ref=${encodeURIComponent(selected.ref)}`);
+    } catch (error) {
+      console.error(error);
+      toast('Beyanname onaya gönderilemedi');
+    }
   }
 
   function handleTaslakKaydet() {
@@ -193,9 +215,11 @@ export default function BeyannameYazimPage() {
           <Button variant="default" icon={Save} onClick={handleTaslakKaydet} writeCap="beyanname.write">
             Taslak Kaydet
           </Button>
-          <Button variant="primary" icon={Send} onClick={handleSistemeGonder} writeCap="beyanname.send">
-            Sisteme Gönder
-          </Button>
+          {activeTab === 'kontrol' && (
+            <Button variant="primary" icon={Send} onClick={() => void handleSistemeGonder()} writeCap="beyanname.send">
+              Onaya Gönder
+            </Button>
+          )}
         </div>
       </div>
 
@@ -244,7 +268,14 @@ export default function BeyannameYazimPage() {
           <Tabs
             tabs={TAB_ITEMS}
             active={activeTab}
-            onChange={(k) => setActiveTab(k as 'yazim' | 'kontrol')}
+            onChange={(k) => {
+              const next=k as 'yazim'|'kontrol';
+              if(next==='kontrol' && selected.operationFileStatus!=='ic-kontrol'){
+                toast('Önce beyannameyi MT kontrole gönderin');
+                return;
+              }
+              setActiveTab(next);
+            }}
             className="px-5 shrink-0"
           />
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">

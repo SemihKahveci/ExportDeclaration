@@ -40,6 +40,7 @@ interface ApprovalTabProps {
   approvalNote: string;
   requiresSecondApproval: boolean;
   approvalStep: 'first' | 'second';
+  approvalHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
   onSendToSecondApproval: () => void;
   onApproveAndSendToTescil: () => void;
   onGeriGonder: () => void;
@@ -47,7 +48,7 @@ interface ApprovalTabProps {
 }
 
 export default function ApprovalTab({
-  declarationId, approvalNote, requiresSecondApproval, approvalStep,
+  declarationId, approvalNote, requiresSecondApproval, approvalStep, approvalHistory,
   onSendToSecondApproval, onApproveAndSendToTescil, onGeriGonder, onNotEkle,
 }: ApprovalTabProps) {
   const [entries,setEntries]=useState<ControlProvenanceEntry[]>([]);
@@ -120,6 +121,16 @@ export default function ApprovalTab({
 
         <Card className="shrink-0"><CardHead title="Onay Kararı"/><CardBody><div className="flex flex-col gap-3">
           <ApprovalStepBadge approvalStep={approvalStep} requiresSecondApproval={requiresSecondApproval}/>
+          {approvalHistory.length > 0 && <div className="border border-line rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-surface-2 text-[11px] font-bold text-text-strong">Onay Geçmişi</div>
+            <div className="max-h-32 overflow-auto divide-y divide-line">
+              {[...approvalHistory].reverse().map((h,i)=><div key={`${h.at}-${i}`} className="px-3 py-2 text-[10.5px]">
+                <div className="font-semibold">{h.fromStatus} → {h.toStatus}</div>
+                <div className="text-muted mt-0.5">{new Date(h.at).toLocaleString('tr-TR')} · kullanıcı {h.actorUserId.slice(-6)}</div>
+                {h.note&&<div className="text-muted mt-0.5">{h.note}</div>}
+              </div>)}
+            </div>
+          </div>}
           <div className="flex gap-2"><Button icon={RotateCcw} onClick={onGeriGonder}>MT Kontrole Geri Gönder</Button><Button icon={MessageSquare} onClick={()=>setNoteOpen(true)}>Not</Button></div>
           <Button variant="primary" icon={primaryIcon} onClick={primaryClick}>{primaryLabel}</Button>
         </div></CardBody></Card>

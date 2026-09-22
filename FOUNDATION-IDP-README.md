@@ -669,3 +669,62 @@ Production endpoint:
 `POST /api/declarations/:id/preparation-workflow/transition`
 
 The UI no longer treats navigation itself as a workflow transition. Override reason is collected in a modal and persisted before navigation.
+
+
+### Foundation 5.8C — Beyanname Yazım → MT Kontrol → Onay handoff
+
+The writing/control page no longer advances workflow with tab state or toast-only actions.
+
+Production endpoint:
+`POST /api/declarations/:id/writing-workflow/transition`
+
+Actions:
+- `SUBMIT_TO_MT`: requires `operation.fileStatus=beyanname-yazim`, persists `ic-kontrol`.
+- `APPROVE_MT`: requires `operation.fileStatus=ic-kontrol`, persists declaration `status=READY` and initializes/reopens approval at `FIRST_PENDING`.
+
+Invalid order and duplicate submissions fail closed with HTTP 409. A declaration returned from approval (`RETURNED`) may be resubmitted by MT; this appends `RESUBMIT_FROM_MT` to approval history instead of deleting prior approval history.
+
+The UI cannot enter the MT tab merely by changing React tab state before the backend stage reaches `ic-kontrol`. `Kontrolü Onayla` now persists the MT→approval handoff and navigates to Beyanname Onay only after backend success.
+
+
+### Foundation 5.8D — Approval separation, history and Tescil handoff
+
+Second approval now enforces four-eyes separation. When a declaration requires a second approval, the user who produced the `FIRST_PENDING → SECOND_PENDING` approval cannot also produce the `SECOND_PENDING → APPROVED` approval. The backend rejects same-actor second approval with HTTP 409.
+
+Final approval remains the only approval transition that persists `operation.fileStatus=tescil`. Return from either pending approval stage persists `approvalWorkflow.status=RETURNED` and `operation.fileStatus=ic-kontrol`; 5.8C then owns resubmission from MT without deleting prior approval history.
+
+Beyanname Onay now renders the persisted approval transition history instead of presenting approval as page-local state. Transition failures are handled in the UI, including a specific message for the distinct-second-approver rule.
+
+The system does not invent a business rule for when second approval is required. `requiresSecondApproval` remains an explicit persisted workflow setting until a real company approval policy/rule source is defined.
+
+
+### Foundation 5.8E — Persistent registration workflow
+
+Beyanname Tescil no longer invents a default Mavi line, a started registration state, a fake external-system refresh, or a fake customer-notification success.
+
+Production endpoint:
+`POST /api/declarations/:id/registration-workflow/transition`
+
+Actions:
+- `RECORD_REGISTRATION_STARTED`: only from `operation.fileStatus=tescil`; requires an explicit registration number and one of the supported customs line values. Persists `tescilStatus=started`.
+- `COMPLETE_REGISTRATION`: requires a persisted started registration; persists `tescilStatus=completed`, second-notification state, and hands the operation to `fileStatus=kapanis-bekleyen` / `kapanisStatus=kontrol-bekliyor`.
+
+Both transitions append to operation workflow history. Invalid order and duplicate start fail closed.
+
+Until the real Evrim/customs callback/import contract is available, the UI labels these actions as manual notification capture. It must not claim that a customs API call or customer notification occurred when no such integration exists.
+
+
+### Foundation 5.8F — Persistent closure + full declaration workflow E2E
+
+The terminal operation state `kapandi` is now a backend-supported file status. Closing is a persisted workflow transition, not a page-local toast:
+
+`POST /api/declarations/:id/closure-workflow/transition`
+with `CLOSE_FILE`.
+
+The backend only closes a tenant-scoped declaration that is in `kapanis-bekleyen` and has `tescilStatus=completed`. Closing persists `kapanisStatus=kapandi`, `fileStatus=kapandi`, archive state, close timestamp, last activity, and an append-only operation workflow entry. No document/cost readiness rule is invented while those company-specific sources are not yet implemented.
+
+The closing approval UI now invokes this production transition. Fake local close/return decisions were removed from the approval surface.
+
+The final Foundation 5.8 regression creates one temporary declaration with two distinct physical UploadedFiles (`INVOICE` and `PACKING_LIST`) and proves the complete persistent chain:
+`evrak-bekleniyor → beyanname-yazim → ic-kontrol → approval → tescil → kapanis-bekleyen → kapandi`.
+Both physical files remain independently associated with the same declaration throughout the test. Test records/files are deleted afterward.

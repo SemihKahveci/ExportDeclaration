@@ -5,7 +5,8 @@ export const FILE_STATUSES = [
   "beyanname-yazim",
   "ic-kontrol",
   "tescil",
-  "kapanis-bekleyen"
+  "kapanis-bekleyen",
+  "kapandi"
 ] as const;
 
 export const OPERATION_TYPES = ["ithalat", "ihracat", "transit", "antrepo"] as const;

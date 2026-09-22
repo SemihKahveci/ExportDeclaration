@@ -153,8 +153,7 @@ export async function fetchTescilRecords(): Promise<TescilRecord[] | null> {
   const rows = await fetchDeclarationsFromApi();
   if (rows === null) return null;
   return rows
-    .filter((r) => r.operation?.fileStatus === "tescil" || r.operation?.tescilStatus === "started")
-    .filter((r) => r.operation?.tescilStatus !== "completed")
+    .filter((r) => r.operation?.fileStatus === "tescil" || Boolean(r.operation?.tescilStatus))
     .map(toTescilRecord);
 }
 
@@ -165,7 +164,8 @@ export async function fetchKapanisFiles(): Promise<KapanicFile[] | null> {
     .filter(
       (r) =>
         r.operation?.fileStatus === "kapanis-bekleyen" ||
-        (r.operation?.kapanisStatus && r.operation.kapanisStatus !== "kapandi")
+        r.operation?.fileStatus === "kapandi" ||
+        Boolean(r.operation?.kapanisStatus)
     )
     .map(toKapanicFile);
 }

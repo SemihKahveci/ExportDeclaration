@@ -11,6 +11,18 @@ const router = Router();
 router.post("/", asyncHandler(ctrl.postDeclaration));
 router.get("/", asyncHandler(ctrl.getDeclarations));
 router.get("/:id/download-xml", asyncHandler(ctrl.getDownloadXml));
+router.post("/:id/closure-workflow/transition",
+  requireAnyCapability("kapanis.close", "beyanname.approve"),
+  asyncHandler(ctrl.postClosureWorkflowTransition)
+);
+router.post("/:id/registration-workflow/transition",
+  requireAnyCapability("tescil.write", "tescil.notify"),
+  asyncHandler(ctrl.postRegistrationWorkflowTransition)
+);
+router.post("/:id/writing-workflow/transition",
+  requireAnyCapability("beyanname.write", "beyanname.send"),
+  asyncHandler(ctrl.postWritingWorkflowTransition)
+);
 router.post("/:id/preparation-workflow/transition",
   requireAnyCapability("beyanname.write"),
   asyncHandler(ctrl.postPreparationWorkflowTransition)

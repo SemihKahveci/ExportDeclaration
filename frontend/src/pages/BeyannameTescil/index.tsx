@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, Send, CheckCircle2, Info, Loader2 } from 'lucide-react';
+import { Send, CheckCircle2, Info, Loader2 } from 'lucide-react';
 import type { TescilRecord, TescilPageStats } from '../../types';
 import { tescilService } from '../../services/declarations';
 import StatCard from '../../components/ui/StatCard';
@@ -46,9 +46,9 @@ function buildTimeline(rec: TescilRecord) {
       state: 'done' as const,
     },
     {
-      title: `İlk bildirim alındı · ${rec.line} Hat`,
-      meta: `${rec.type} için hat bilgisi Sistemden geldi`,
-      state: 'done' as const,
+      title: `İlk bildirim alındı · ${rec.line ? rec.line ? `${rec.line} Hat` : 'Bekleniyor' : 'Hat bekleniyor'}`,
+      meta: rec.status === 'waiting' ? 'Tescil numarası ve hat bilgisi henüz kaydedilmedi' : `${rec.type} için tescil başlangıç bilgisi kaydedildi`,
+      state: rec.status === 'waiting' ? ('wait' as const) : ('done' as const),
     },
     {
       title: rec.hasSecondNotif ? 'İkinci bildirim alındı' : 'İkinci bildirim bekleniyor',
@@ -174,21 +174,40 @@ export default function BeyannameTescilPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="default"
-            icon={RefreshCw}
-            onClick={() => toast('Sistem durumları yenilendi')}
-          >
-            Sistem Durumunu Yenile
-          </Button>
-          <Button
+          {selected?.status === 'waiting' && <Button
             variant="primary"
             icon={Send}
-            onClick={() => toast('Müşteri bildirimi gönderildi')}
+            onClick={async () => {
+              const tescilNo=window.prompt('Tescil numarası');
+              if(!tescilNo) return;
+              const line=window.prompt('Hat (Kırmızı / Sarı / Mavi / Yeşil)');
+              if(!line) return;
+              try {
+                await tescilService.transition(selected.id,{action:'RECORD_REGISTRATION_STARTED',tescilNo,line});
+                const [recs,nextStats]=await Promise.all([tescilService.getRecords(),tescilService.getStats()]);
+                setRecords(recs); setStats(nextStats);
+                toast('Tescil başlangıç bildirimi kaydedildi');
+              } catch(error){ console.error(error); toast('Tescil başlangıcı kaydedilemedi'); }
+            }}
             writeCap="tescil.notify"
           >
-            Müşteriye Bildir
-          </Button>
+            Başlangıç Bildirimi Kaydet
+          </Button>}
+          {selected?.status === 'started' && <Button
+            variant="primary"
+            icon={CheckCircle2}
+            onClick={async () => {
+              try {
+                await tescilService.transition(selected.id,{action:'COMPLETE_REGISTRATION'});
+                const [recs,nextStats]=await Promise.all([tescilService.getRecords(),tescilService.getStats()]);
+                setRecords(recs); setStats(nextStats);
+                toast('Tescil tamamlandı; dosya kapanış bekliyor');
+              } catch(error){ console.error(error); toast('Tescil tamamlanamadı'); }
+            }}
+            writeCap="tescil.notify"
+          >
+            Tamamlanma Bildirimi Kaydet
+          </Button>}
         </div>
       </div>
 
@@ -247,10 +266,10 @@ export default function BeyannameTescilPage() {
                     <div className="text-[12px] text-muted mt-0.5">{rec.customer}</div>
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       <Pill variant={rec.status === 'completed' ? 'ok' : 'warn'}>
-                        {rec.status === 'completed' ? 'Tamamlandı' : 'Süreç Başladı'}
+                        {rec.status === 'completed' ? 'Tamamlandı' : rec.status === 'started' ? 'Süreç Başladı' : 'Tescil Bekliyor'}
                       </Pill>
-                      <Pill variant={linePillVariant(rec.line)}>
-                        {rec.line} Hat
+                      <Pill variant={rec.line ? linePillVariant(rec.line) : undefined}>
+                        {rec.line ? rec.line ? `${rec.line} Hat` : 'Bekleniyor' : 'Hat bekleniyor'}
                       </Pill>
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -276,7 +295,7 @@ export default function BeyannameTescilPage() {
               sub={`${selected.tescilNo} · ${selected.customer}`}
               actions={
                 <Pill variant={selected.status === 'completed' ? 'ok' : 'warn'}>
-                  {selected.status === 'completed' ? 'Tamamlandı' : 'Süreç Başladı'}
+                  {selected.status === 'completed' ? 'Tamamlandı' : selected.status === 'started' ? 'Süreç Başladı' : 'Tescil Bekliyor'}
                 </Pill>
               }
             />

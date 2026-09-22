@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCheck, RotateCcw, Loader2, FileText, Banknote, AlertCircle } from 'lucide-react';
+import { CheckCheck, Loader2 } from 'lucide-react';
 import type { KapanicFile, KapanicPageStats } from '../../types';
 import { kapanisService } from '../../services/declarations';
 import StatCard from '../../components/ui/StatCard';
@@ -26,35 +26,6 @@ function statusLabel(status: KapanicFile['status']): string {
     case 'maliyet-bekliyor': return 'Maliyet Bekliyor';
     case 'kapandi':          return 'Kapandı';
   }
-}
-
-// ─── Status check row ─────────────────────────────────────────────────────────
-
-function StatusRow({ icon: Icon, label, status, detail }: {
-  icon: typeof FileText;
-  label: string;
-  status: 'ok' | 'warn' | 'pending';
-  detail: string;
-}) {
-  const dotColor = status === 'ok' ? 'bg-ok' : status === 'warn' ? 'bg-warn' : 'bg-muted-2';
-  const textColor = status === 'ok' ? 'text-ok' : status === 'warn' ? 'text-warn' : 'text-muted';
-  const statusText = status === 'ok' ? 'Hazır' : status === 'warn' ? 'Eksik' : 'Bekliyor';
-
-  return (
-    <div className="flex items-center gap-3 py-3 border-b border-line last:border-b-0">
-      <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${status === 'ok' ? 'bg-ok/10' : status === 'warn' ? 'bg-warn/10' : 'bg-surface-2'}`}>
-        <Icon size={13} className={textColor} strokeWidth={2} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold text-text-strong">{label}</div>
-        <div className="text-[11.5px] text-muted mt-0.5">{detail}</div>
-      </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <div className={`w-2 h-2 rounded-full ${dotColor}`} />
-        <span className={`text-[12px] font-semibold ${textColor}`}>{statusText}</span>
-      </div>
-    </div>
-  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -94,10 +65,7 @@ export default function KapanicOnayPage() {
     );
   }
 
-  // Mock approval state per selected file
-  const evrakDurumu   = selected?.status === 'mutabakat-hazir' ? 'ok' : selected?.status === 'kapandi' ? 'ok' : 'warn';
-  const maliyetDurumu = selected?.status === 'maliyet-bekliyor' ? 'warn' : selected?.status === 'kapandi' ? 'ok' : 'ok';
-  const canApprove    = evrakDurumu === 'ok' && maliyetDurumu === 'ok';
+  const canApprove = selected?.status !== 'kapandi';
 
   return (
     <div className="px-7 pt-6 pb-12 overflow-y-auto">
@@ -210,44 +178,29 @@ export default function KapanicOnayPage() {
             <Card>
               <CardHead title="Onay Öncesi Durum Kontrolü" sub="Onay verebilmek için tüm kontrollerin geçmesi gerekir" />
               <CardBody>
-                <div className="rounded-xl border border-line bg-surface">
-                  <StatusRow
-                    icon={FileText}
-                    label="Evrak Durumu"
-                    status={evrakDurumu as 'ok' | 'warn'}
-                    detail={evrakDurumu === 'ok' ? 'Tüm zorunlu evraklar mevcut' : 'Eksik veya bekleyen evrak var'}
-                  />
-                  <StatusRow
-                    icon={Banknote}
-                    label="Maliyet Durumu"
-                    status={maliyetDurumu as 'ok' | 'warn'}
-                    detail={maliyetDurumu === 'ok' ? 'Maliyet kalemleri onaylı' : 'Maliyet girişi bekleniyor'}
-                  />
+                <div className="rounded-xl border border-line bg-surface px-4 py-3 text-[12.5px] text-muted">
+                  Bu aşamada sistemin doğrulayabildiği kapanış ön koşulu tamamlanmış tescildir.
+                  Evrak/maliyet zorunlulukları için gerçek şirket kural kaynağı tanımlandığında backend readiness kontrolüne eklenecektir.
                 </div>
 
-                {!canApprove && (
-                  <div className="flex items-start gap-2.5 mt-4 p-3.5 rounded-xl bg-warn-tint border border-warn/30">
-                    <AlertCircle size={15} className="text-warn shrink-0 mt-0.5" strokeWidth={2} />
-                    <p className="text-[12.5px] text-warn leading-relaxed">
-                      Onay verebilmek için tüm kontrollerin yeşil olması gerekiyor. Eksiklikleri giderin.
-                    </p>
-                  </div>
-                )}
-
                 <div className="flex justify-end gap-2.5 mt-5 pt-4 border-t border-line">
-                  <Button
-                    icon={RotateCcw}
-                    onClick={() => toast(`${selected.ref} geri gönderildi`)}
-                  >
-                    Geri Gönder
-                  </Button>
                   <Button
                     variant="primary"
                     icon={CheckCheck}
                     disabled={!canApprove}
-                    onClick={() => toast(`${selected.ref} onaylandı ve kapatıldı`)}
+                    onClick={async () => {
+                      try {
+                        await kapanisService.transition(selected.id,{action:'CLOSE_FILE'});
+                        const [nextFiles,nextStats]=await Promise.all([kapanisService.getFiles(),kapanisService.getStats()]);
+                        setFiles(nextFiles); setStats(nextStats);
+                        toast(`${selected.ref} kapatıldı`);
+                      } catch(error) {
+                        console.error(error);
+                        toast('Dosya kapatılamadı');
+                      }
+                    }}
                   >
-                    Onayla
+                    Dosyayı Kapat
                   </Button>
                 </div>
               </CardBody>

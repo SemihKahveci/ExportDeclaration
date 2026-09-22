@@ -7,7 +7,7 @@ import {
 } from "../../common/enums/operationMeta.js";
 
 export interface OperationWorkflowHistoryEntry {
-  action: "START_WRITING" | "START_WRITING_WITH_MISSING_DOCUMENTS";
+  action: "START_WRITING" | "START_WRITING_WITH_MISSING_DOCUMENTS" | "SUBMIT_TO_MT" | "APPROVE_MT" | "RECORD_REGISTRATION_STARTED" | "COMPLETE_REGISTRATION" | "CLOSE_FILE";
   fromStatus: string;
   toStatus: string;
   actorUserId: mongoose.Types.ObjectId;
@@ -79,7 +79,7 @@ export interface DeclarationDoc extends mongoose.Document {
 
 const OperationWorkflowHistorySchema = new Schema(
   {
-    action: { type: String, enum: ["START_WRITING","START_WRITING_WITH_MISSING_DOCUMENTS"], required: true },
+    action: { type: String, enum: ["START_WRITING","START_WRITING_WITH_MISSING_DOCUMENTS","SUBMIT_TO_MT","APPROVE_MT","RECORD_REGISTRATION_STARTED","COMPLETE_REGISTRATION","CLOSE_FILE"], required: true },
     fromStatus: { type: String, required: true },
     toStatus: { type: String, required: true },
     actorUserId: { type: Schema.Types.ObjectId, required: true },

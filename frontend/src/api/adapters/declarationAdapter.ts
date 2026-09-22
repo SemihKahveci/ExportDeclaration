@@ -207,7 +207,8 @@ export function toBeyannameListeItem(d: BackendDeclaration, docCount = 0): Beyan
     updatedAt: formatRelative(d.updatedAt ?? d.createdAt),
     approvalStatus: d.approvalWorkflow?.status ?? "FIRST_PENDING",
     requiresSecondApproval: Boolean(d.approvalWorkflow?.requiresSecondApproval),
-    approvalNote: d.approvalWorkflow?.note ?? ""
+    approvalNote: d.approvalWorkflow?.note ?? "",
+    approvalHistory: d.approvalWorkflow?.history ?? []
   };
 }
 
@@ -242,10 +243,12 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     fieldMappings: [],
     fields,
     lineItems: toLineItems(norm),
+    operationFileStatus: d.operation?.fileStatus ?? "yeni-talep",
     docs: toDocCheckItems(docs),
     approvalStatus: d.approvalWorkflow?.status ?? "FIRST_PENDING",
     requiresSecondApproval: Boolean(d.approvalWorkflow?.requiresSecondApproval),
-    approvalNote: d.approvalWorkflow?.note ?? ""
+    approvalNote: d.approvalWorkflow?.note ?? "",
+    approvalHistory: d.approvalWorkflow?.history ?? []
   };
 }
 

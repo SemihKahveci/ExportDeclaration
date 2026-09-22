@@ -18,7 +18,7 @@ import {
   fetchTescilRecords,
 } from './liveApi';
 import { computeKapanisStats, computeTescilStats } from '../api/adapters/operationAdapter';
-import { transitionApprovalWorkflow } from '../api/declarationApi';
+import { transitionApprovalWorkflow, transitionWritingWorkflow, transitionRegistrationWorkflow, transitionClosureWorkflow } from '../api/declarationApi';
 
 export const declarationsService = {
   list: async (): Promise<Declaration[]> => {
@@ -75,6 +75,9 @@ export const beyannameService = {
   getFieldBoxes: async (): Promise<FieldBox[]> => {
     return [...BEYANNAME_FIELD_BOXES];
   },
+  transitionWriting: async (recordId: string, body: Parameters<typeof transitionWritingWorkflow>[1]) => {
+    return transitionWritingWorkflow(recordId, body);
+  },
   transitionApproval: async (recordId: string, body: Parameters<typeof transitionApprovalWorkflow>[1]) => {
     return transitionApprovalWorkflow(recordId, body);
   },
@@ -113,6 +116,9 @@ export const tescilService = {
     const records = await tescilService.getRecords();
     return computeTescilStats(records);
   },
+  transition: async (recordId:string, body:Parameters<typeof transitionRegistrationWorkflow>[1]) => {
+    return transitionRegistrationWorkflow(recordId,body);
+  },
 };
 
 export const kapanisService = {
@@ -132,5 +138,8 @@ export const kapanisService = {
   getStats: async (): Promise<KapanicPageStats> => {
     const files = await kapanisService.getFiles();
     return computeKapanisStats(files);
+  },
+  transition: async (recordId:string, body:Parameters<typeof transitionClosureWorkflow>[1]) => {
+    return transitionClosureWorkflow(recordId,body);
   },
 };
