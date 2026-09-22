@@ -36,6 +36,23 @@ export interface OperationMetaDoc {
   mailBody?: string;
 }
 
+export type ApprovalWorkflowStatus = "FIRST_PENDING" | "SECOND_PENDING" | "APPROVED" | "RETURNED";
+export interface ApprovalHistoryEntry {
+  action: string;
+  fromStatus: ApprovalWorkflowStatus;
+  toStatus: ApprovalWorkflowStatus;
+  actorUserId: mongoose.Types.ObjectId;
+  note?: string;
+  at: Date;
+}
+export interface ApprovalWorkflowDoc {
+  status: ApprovalWorkflowStatus;
+  requiresSecondApproval: boolean;
+  note: string;
+  history: ApprovalHistoryEntry[];
+  updatedAt: Date;
+}
+
 export interface DeclarationDoc extends mongoose.Document {
   companyId: mongoose.Types.ObjectId;
   status: string;
@@ -43,6 +60,7 @@ export interface DeclarationDoc extends mongoose.Document {
   normalizedData?: unknown;
   sourceTrace?: Record<string, { value: unknown; source: DocumentTypeValue | string | null }>;
   generatedXmlPath?: string;
+  approvalWorkflow?: ApprovalWorkflowDoc;
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -77,6 +95,30 @@ const OperationMetaSchema = new Schema(
     mailRecipient: { type: String, default: "", trim: true },
     mailSubject: { type: String, default: "", trim: true },
     mailBody: { type: String, default: "", trim: true }
+  },
+  { _id: false }
+);
+
+
+const ApprovalHistorySchema = new Schema(
+  {
+    action: { type: String, required: true },
+    fromStatus: { type: String, enum: ["FIRST_PENDING","SECOND_PENDING","APPROVED","RETURNED"], required: true },
+    toStatus: { type: String, enum: ["FIRST_PENDING","SECOND_PENDING","APPROVED","RETURNED"], required: true },
+    actorUserId: { type: Schema.Types.ObjectId, required: true },
+    note: { type: String, default: "" },
+    at: { type: Date, default: () => new Date() }
+  },
+  { _id: false }
+);
+
+const ApprovalWorkflowSchema = new Schema(
+  {
+    status: { type: String, enum: ["FIRST_PENDING","SECOND_PENDING","APPROVED","RETURNED"], default: "FIRST_PENDING" },
+    requiresSecondApproval: { type: Boolean, default: false },
+    note: { type: String, default: "" },
+    history: { type: [ApprovalHistorySchema], default: [] },
+    updatedAt: { type: Date, default: () => new Date() }
   },
   { _id: false }
 );
@@ -153,6 +195,8 @@ const DeclarationSchema = new Schema(
     sourceTrace: Schema.Types.Mixed,
 
     generatedXmlPath: String,
+
+    approvalWorkflow: { type: ApprovalWorkflowSchema, default: () => ({}) },
 
     createdBy: { type: Schema.Types.ObjectId }
   },

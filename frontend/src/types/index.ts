@@ -467,6 +467,9 @@ export interface BeyannameListeItem {
   gtipStatus: GtipSuitabilityStatus;
   assignee: string;
   updatedAt: string;
+  approvalStatus: 'FIRST_PENDING'|'SECOND_PENDING'|'APPROVED'|'RETURNED';
+  requiresSecondApproval: boolean;
+  approvalNote: string;
 }
 
 export type BeyannameStatus = 'taslak' | 'kontrol' | 'tescilli' | 'bekliyor';
@@ -538,6 +541,9 @@ export interface BeyannameRecord {
   fields: BeyannameWritingField[];
   lineItems: BeyannameLineItem[];
   docs: BeyannameDocCheckItem[];
+  approvalStatus: 'FIRST_PENDING'|'SECOND_PENDING'|'APPROVED'|'RETURNED';
+  requiresSecondApproval: boolean;
+  approvalNote: string;
 }
 
 export interface FieldBox {

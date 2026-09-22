@@ -41,3 +41,10 @@ export async function generateXml(id: string): Promise<{ path: string; declarati
 export async function downloadXmlBlob(id: string): Promise<Blob> {
   return apiGetBlob(`/api/declarations/${encodeURIComponent(id)}/download-xml`);
 }
+
+export async function transitionApprovalWorkflow(
+  id: string,
+  body: { action: "SET_SECOND_APPROVAL_REQUIRED"|"SAVE_NOTE"|"APPROVE"|"RETURN_TO_MT"; note?: string; requiresSecondApproval?: boolean }
+): Promise<Declaration> {
+  return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/approval-workflow/transition`, body);
+}

@@ -639,3 +639,21 @@ Final hardening:
 - `verifyFoundation57Closeout.ts` validates the real 0110 declaration, 336 effective fields, physical provenance for every normalized-authority field, exact uploaded-file access, cross-declaration rejection, Human Review access and supplement history access.
 
 Generated `frontend/dist` is not an application source of truth and is excluded from legacy-source checks. `PAGE_IMAGES` remains only for the separate declaration-form preview presentation; it is not used as MT/approval provenance.
+
+
+### Foundation 5.8A — Persistent approval workflow
+
+Beyanname Onay no longer stores approval outcome, approval step or approval note in React-local maps. Approval state is persisted on the declaration as `approvalWorkflow`, including status, second-approval requirement, note, append-only transition history, actor user id and timestamp.
+
+Production transition endpoint:
+`POST /api/declarations/:id/approval-workflow/transition`
+
+Supported actions:
+- `SET_SECOND_APPROVAL_REQUIRED`
+- `SAVE_NOTE`
+- `APPROVE`
+- `RETURN_TO_MT`
+
+The backend owns transition validity. First approval advances to `SECOND_PENDING` only when the persisted `requiresSecondApproval` flag is true; otherwise it reaches `APPROVED`. Final approval persists `operation.fileStatus=tescil`; return persists `operation.fileStatus=ic-kontrol`. Invalid transitions fail closed with HTTP 409.
+
+The old mock rule that alternated second-approval requirement by record index and the page-local `approvalOutcomes`, `approvalSteps`, `approvalNotes` maps were removed.

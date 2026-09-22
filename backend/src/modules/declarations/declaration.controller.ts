@@ -10,6 +10,7 @@ import {
   runNormalize,
   runValidate
 } from "./declaration.service.js";
+import { transitionApprovalWorkflow } from "./declarationWorkflow.service.js";
 import fs from "node:fs/promises";
 import {
   exportDeclarationAsEvrimExcel,
@@ -112,4 +113,14 @@ export async function postExportUblIhracat(req: Request, res: Response): Promise
   res.setHeader("X-UBL-Profile", result.profileId);
   res.setHeader("X-UBL-Signed", String(result.signed));
   res.send(result.buffer);
+}
+
+export async function postApprovalWorkflowTransition(req: Request, res: Response): Promise<void> {
+  const data=await transitionApprovalWorkflow(
+    req.auth!.operationalCompanyId,
+    req.params.id!,
+    req.auth!.userId,
+    req.body??{}
+  );
+  res.json({ok:true,data});
 }

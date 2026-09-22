@@ -204,7 +204,10 @@ export function toBeyannameListeItem(d: BackendDeclaration, docCount = 0): Beyan
     missingDocuments: op?.missingDocuments ?? [],
     gtipStatus: d.status === "ERROR" ? "uyumsuz" : "uygun",
     assignee: op?.assigneeName ?? "—",
-    updatedAt: formatRelative(d.updatedAt ?? d.createdAt)
+    updatedAt: formatRelative(d.updatedAt ?? d.createdAt),
+    approvalStatus: d.approvalWorkflow?.status ?? "FIRST_PENDING",
+    requiresSecondApproval: Boolean(d.approvalWorkflow?.requiresSecondApproval),
+    approvalNote: d.approvalWorkflow?.note ?? ""
   };
 }
 
@@ -239,7 +242,10 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     fieldMappings: [],
     fields,
     lineItems: toLineItems(norm),
-    docs: toDocCheckItems(docs)
+    docs: toDocCheckItems(docs),
+    approvalStatus: d.approvalWorkflow?.status ?? "FIRST_PENDING",
+    requiresSecondApproval: Boolean(d.approvalWorkflow?.requiresSecondApproval),
+    approvalNote: d.approvalWorkflow?.note ?? ""
   };
 }
 

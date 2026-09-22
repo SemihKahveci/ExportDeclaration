@@ -37,6 +37,14 @@ export interface SourceTraceEntry {
   source: string | null;
 }
 
+export interface ApprovalWorkflow {
+  status: "FIRST_PENDING" | "SECOND_PENDING" | "APPROVED" | "RETURNED";
+  requiresSecondApproval: boolean;
+  note: string;
+  history: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
+  updatedAt: string | null;
+}
+
 export interface Declaration {
   _id: string;
   companyId: string;
@@ -45,6 +53,7 @@ export interface Declaration {
   normalizedData?: NormalizedDeclaration;
   sourceTrace?: Record<string, SourceTraceEntry>;
   generatedXmlPath?: string;
+  approvalWorkflow?: ApprovalWorkflow;
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;

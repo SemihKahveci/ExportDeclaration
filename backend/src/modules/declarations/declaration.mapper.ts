@@ -38,6 +38,13 @@ export interface DeclarationDto {
   normalizedData?: unknown;
   sourceTrace?: DeclarationDoc["sourceTrace"];
   generatedXmlPath?: string;
+  approvalWorkflow?: {
+    status: "FIRST_PENDING" | "SECOND_PENDING" | "APPROVED" | "RETURNED";
+    requiresSecondApproval: boolean;
+    note: string;
+    history: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
+    updatedAt: string | null;
+  };
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -92,6 +99,20 @@ export function toDeclarationDto(doc: DeclarationDoc | Record<string, unknown>):
     normalizedData: d.normalizedData,
     sourceTrace: d.sourceTrace,
     generatedXmlPath: d.generatedXmlPath,
+    approvalWorkflow: d.approvalWorkflow ? {
+      status: d.approvalWorkflow.status ?? "FIRST_PENDING",
+      requiresSecondApproval: Boolean(d.approvalWorkflow.requiresSecondApproval),
+      note: d.approvalWorkflow.note ?? "",
+      history: (d.approvalWorkflow.history ?? []).map((h) => ({
+        action: h.action,
+        fromStatus: h.fromStatus,
+        toStatus: h.toStatus,
+        actorUserId: String(h.actorUserId),
+        note: h.note ?? "",
+        at: toIso(h.at) ?? new Date(0).toISOString()
+      })),
+      updatedAt: toIso(d.approvalWorkflow.updatedAt)
+    } : undefined,
     createdBy: d.createdBy ? String(d.createdBy) : undefined,
     createdAt: toIso(d.createdAt) ?? undefined,
     updatedAt: toIso(d.updatedAt) ?? undefined

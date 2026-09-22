@@ -25,9 +25,6 @@ function TransportIcon({ mode }: { mode: TransportMode | null }) {
   return null;
 }
 
-type ApprovalOutcome = 'onaylandi' | 'geri-gonderildi';
-type ApprovalStep    = 'first' | 'second';
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type ViewMode = 'list' | 'detail';
@@ -40,11 +37,6 @@ export default function BeyannameOnayPage() {
   const [records,    setRecords]    = useState<BeyannameRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
   const [viewMode,   setViewMode]   = useState<ViewMode>('list');
-
-  // Per-declaration approval outcome, step, and notes
-  const [approvalOutcomes, setApprovalOutcomes] = useState<Record<string, ApprovalOutcome>>({});
-  const [approvalSteps,    setApprovalSteps]    = useState<Record<string, ApprovalStep>>({});
-  const [approvalNotes,    setApprovalNotes]    = useState<Record<string, string>>({});
 
   // List filters
   const [search, setSearch] = useState('');
@@ -61,9 +53,8 @@ export default function BeyannameOnayPage() {
 
   // Only show items where MT Kontrol is completed (onaya-hazir) and not yet acted upon
   const pendingItems = listeItems.filter(
-    (item) =>
-      item.status === 'onaya-hazir' &&
-      approvalOutcomes[item.id] === undefined
+    (item) => item.status === 'onaya-hazir' &&
+      (item.approvalStatus === 'FIRST_PENDING' || item.approvalStatus === 'SECOND_PENDING')
   );
 
   const filtered = pendingItems.filter((item) => {
@@ -72,21 +63,15 @@ export default function BeyannameOnayPage() {
   });
 
   const selected     = records.find((r) => r.id === selectedId) ?? null;
-  const selectedItem = listeItems.find((i) => {
-    const rec = records.find((r) => r.id === selectedId);
-    return rec && i.ref === rec.ref;
-  }) ?? null;
 
-  // Mock: alternate requiresSecondApproval by record index
-  const selectedIndex          = records.findIndex((r) => r.id === selectedId);
-  const requiresSecondApproval = selectedIndex % 2 === 0;
-  const approvalStep           = selectedId ? (approvalSteps[selectedId] ?? 'first') : 'first';
+  const requiresSecondApproval = selected?.requiresSecondApproval ?? false;
+  const approvalStep = selected?.approvalStatus === 'SECOND_PENDING' ? 'second' : 'first';
 
-  // Stats
+  // Stats are now persisted workflow state, not page-local counters.
   const hazirCount     = pendingItems.length;
-  const onaylandiCount = Object.values(approvalOutcomes).filter((s) => s === 'onaylandi').length;
-  const geriCount      = Object.values(approvalOutcomes).filter((s) => s === 'geri-gonderildi').length;
-  const toplamCount    = listeItems.filter((i) => i.status === 'onaya-hazir').length;
+  const onaylandiCount = listeItems.filter((i) => i.approvalStatus === 'APPROVED').length;
+  const geriCount      = listeItems.filter((i) => i.approvalStatus === 'RETURNED').length;
+  const toplamCount    = listeItems.filter((i) => i.status === 'onaya-hazir' || i.approvalStatus === 'APPROVED' || i.approvalStatus === 'RETURNED').length;
 
   function openDetail(item: BeyannameListeItem) {
     const match = records.find((r) => r.ref === item.ref) ?? records[0];
@@ -94,29 +79,38 @@ export default function BeyannameOnayPage() {
     setViewMode('detail');
   }
 
-  function handleSendToSecondApproval() {
+  async function reloadApprovalData() {
+    const [liste,recs]=await Promise.all([beyannameListeService.getItems(),beyannameService.getRecords()]);
+    setListeItems(liste); setRecords(recs);
+  }
+
+  async function handleSendToSecondApproval() {
     if (!selectedId) return;
-    setApprovalSteps((prev) => ({ ...prev, [selectedId]: 'second' }));
+    await beyannameService.transitionApproval(selectedId,{action:'APPROVE'});
+    await reloadApprovalData();
     toast('Beyanname 2. onaya gönderildi');
   }
 
-  function handleApproveAndSendToTescil() {
-    if (!selectedItem) return;
-    setApprovalOutcomes((prev) => ({ ...prev, [selectedItem.id]: 'onaylandi' }));
+  async function handleApproveAndSendToTescil() {
+    if (!selected) return;
+    await beyannameService.transitionApproval(selected.id,{action:'APPROVE'});
+    await reloadApprovalData();
     toast('Beyanname onaylandı ve tescile gönderildi');
     setViewMode('list');
   }
 
-  function handleGeriGonder() {
-    if (!selectedItem) return;
-    setApprovalOutcomes((prev) => ({ ...prev, [selectedItem.id]: 'geri-gonderildi' }));
+  async function handleGeriGonder() {
+    if (!selected) return;
+    await beyannameService.transitionApproval(selected.id,{action:'RETURN_TO_MT'});
+    await reloadApprovalData();
     toast('Beyanname MT kontrole geri gönderildi');
     setViewMode('list');
   }
 
-  function handleNotEkle(note: string) {
-    if (!selectedItem) return;
-    setApprovalNotes((prev) => ({ ...prev, [selectedItem.id]: note }));
+  async function handleNotEkle(note: string) {
+    if (!selected) return;
+    await beyannameService.transitionApproval(selected.id,{action:'SAVE_NOTE',note});
+    await reloadApprovalData();
     toast('Not kaydedildi');
   }
 
@@ -354,7 +348,7 @@ export default function BeyannameOnayPage() {
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
             <ApprovalTab
               declarationId={selected.id}
-              approvalNote={selectedItem ? (approvalNotes[selectedItem.id] ?? '') : ''}
+              approvalNote={selected?.approvalNote ?? ''}
               requiresSecondApproval={requiresSecondApproval}
               approvalStep={approvalStep}
               onSendToSecondApproval={handleSendToSecondApproval}

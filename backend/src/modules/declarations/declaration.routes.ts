@@ -11,6 +11,10 @@ const router = Router();
 router.post("/", asyncHandler(ctrl.postDeclaration));
 router.get("/", asyncHandler(ctrl.getDeclarations));
 router.get("/:id/download-xml", asyncHandler(ctrl.getDownloadXml));
+router.post("/:id/approval-workflow/transition",
+  requireAnyCapability("beyanname.approve"),
+  asyncHandler(ctrl.postApprovalWorkflowTransition)
+);
 router.get("/:id/control-provenance",
   requireAnyCapability("beyanname.view", "beyanname.write", "beyanname.approve"),
   asyncHandler(getControlProjection)

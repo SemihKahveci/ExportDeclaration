@@ -18,6 +18,7 @@ import {
   fetchTescilRecords,
 } from './liveApi';
 import { computeKapanisStats, computeTescilStats } from '../api/adapters/operationAdapter';
+import { transitionApprovalWorkflow } from '../api/declarationApi';
 
 export const declarationsService = {
   list: async (): Promise<Declaration[]> => {
@@ -73,6 +74,9 @@ export const beyannameService = {
   },
   getFieldBoxes: async (): Promise<FieldBox[]> => {
     return [...BEYANNAME_FIELD_BOXES];
+  },
+  transitionApproval: async (recordId: string, body: Parameters<typeof transitionApprovalWorkflow>[1]) => {
+    return transitionApprovalWorkflow(recordId, body);
   },
   getSourceCards: async (recordId?: string): Promise<ParsedSourceCard[]> => {
     if (!recordId) return [];
