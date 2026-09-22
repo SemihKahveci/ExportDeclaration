@@ -657,3 +657,15 @@ Supported actions:
 The backend owns transition validity. First approval advances to `SECOND_PENDING` only when the persisted `requiresSecondApproval` flag is true; otherwise it reaches `APPROVED`. Final approval persists `operation.fileStatus=tescil`; return persists `operation.fileStatus=ic-kontrol`. Invalid transitions fail closed with HTTP 409.
 
 The old mock rule that alternated second-approval requirement by record index and the page-local `approvalOutcomes`, `approvalSteps`, `approvalNotes` maps were removed.
+
+
+### Foundation 5.8B — Evrak Hazırlık → Beyanname Yazım persistent transition
+
+`Beyanname Yazmaya Başla` now calls a backend-owned preparation workflow transition before navigation. The backend uses the same current live readiness boundary as Evrak Hazırlık: at least one uploaded file must exist and every uploaded file must have `extractionStatus=SUCCESS`.
+
+Normal start fails closed with HTTP 409 when readiness is false. `Eksik Evrakla Yaz` is an explicit override and requires a non-empty reason. Both paths persist `operation.fileStatus=beyanname-yazim` and append actor/time/from/to/action/override/reason to `operation.workflowHistory`.
+
+Production endpoint:
+`POST /api/declarations/:id/preparation-workflow/transition`
+
+The UI no longer treats navigation itself as a workflow transition. Override reason is collected in a modal and persisted before navigation.

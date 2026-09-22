@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, CheckSquare, Bell, Loader2, Info } from 'lucide-react';
 import type { EvrakFile, EvrakDocRow, EvrakConflictRow, DocPreviewData, EvrakPageStats } from '../../types';
 import { evrakService } from '../../services/documents';
+import { transitionPreparationWorkflow } from '../../api/declarationApi';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
@@ -12,6 +13,8 @@ import DocStatusTab from './DocStatusTab';
 import ConflictsTab from './ConflictsTab';
 import PreviewDrawer from './PreviewDrawer';
 import IdpReviewTab from './IdpReviewTab';
+import Modal from '../../components/ui/Modal';
+import { Field, Textarea } from '../../components/ui/Fields';
 
 // ─── Tab bar with tooltip ─────────────────────────────────────────────────────
 
@@ -136,6 +139,9 @@ export default function EvrakHazirlikPage() {
 
   const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState('docs');
+  const [overrideOpen,setOverrideOpen]=useState(false);
+  const [overrideReason,setOverrideReason]=useState('');
+  const [transitioning,setTransitioning]=useState(false);
 
   const [files, setFiles]       = useState<EvrakFile[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -193,9 +199,21 @@ export default function EvrakHazirlikPage() {
     toast(ref + ' seçildi');
   }
 
-  function startDeclaration(tab: 'yazim' | 'kontrol' = 'yazim') {
+  async function startDeclaration(tab: 'yazim' | 'kontrol' = 'yazim', override=false) {
     if (!selectedFile) return;
-    navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=${tab}`);
+    setTransitioning(true);
+    try {
+      await transitionPreparationWorkflow(selectedFile.id,{
+        action: override ? 'START_WRITING_WITH_MISSING_DOCUMENTS' : 'START_WRITING',
+        reason: override ? overrideReason.trim() : undefined,
+      });
+      setOverrideOpen(false); setOverrideReason('');
+      toast(override ? 'Eksik evrak gerekçesi kaydedildi; beyanname yazımı başlatıldı' : 'Beyanname yazımı başlatıldı');
+      navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=${tab}`);
+    } catch (error) {
+      console.error(error);
+      toast('Beyanname yazımı başlatılamadı. Evrak durumunu ve yetkinizi kontrol edin.');
+    } finally { setTransitioning(false); }
   }
 
   return (
@@ -212,7 +230,7 @@ export default function EvrakHazirlikPage() {
           <Button
             icon={AlertTriangle}
             disabled={selectedFile?.allReady ?? false}
-            onClick={() => startDeclaration('yazim')}
+            onClick={() => setOverrideOpen(true)}
             writeCap="beyanname.write"
             style={
               !(selectedFile?.allReady ?? false)
@@ -226,7 +244,7 @@ export default function EvrakHazirlikPage() {
             variant="primary"
             icon={CheckSquare}
             disabled={!(selectedFile?.allReady ?? false)}
-            onClick={() => startDeclaration('yazim')}
+            onClick={() => void startDeclaration('yazim')}
             writeCap="beyanname.write"
           >
             Beyanname Yazmaya Başla
@@ -344,6 +362,13 @@ export default function EvrakHazirlikPage() {
         data={previewData}
         onClose={() => setPreviewOpen(false)}
       />
+      <Modal open={overrideOpen} title="Eksik Evrakla Beyanname Yaz" onClose={()=>!transitioning&&setOverrideOpen(false)}
+        footer={<><Button onClick={()=>setOverrideOpen(false)} disabled={transitioning}>Vazgeç</Button><Button variant="primary" disabled={transitioning||!overrideReason.trim()} onClick={()=>void startDeclaration('yazim',true)}>{transitioning?'Başlatılıyor…':'Gerekçeyle Devam Et'}</Button></>}>
+        <div className="flex flex-col gap-3">
+          <p className="text-[12.5px] text-muted leading-relaxed">Bu işlem normal evrak readiness kontrolünü bilinçli olarak override eder. Kullanıcı, gerekçe ve zaman bilgisi workflow geçmişine kalıcı olarak kaydedilir.</p>
+          <Field label="Gerekçe"><Textarea rows={4} value={overrideReason} onChange={e=>setOverrideReason(e.target.value)} placeholder="Eksik evrakla neden devam edildiğini yazın…"/></Field>
+        </div>
+      </Modal>
     </div>
   );
 }

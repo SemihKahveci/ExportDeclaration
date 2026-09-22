@@ -6,6 +6,15 @@ import {
   OPERATION_TYPES
 } from "../../common/enums/operationMeta.js";
 
+export interface OperationWorkflowHistoryEntry {
+  action: "START_WRITING" | "START_WRITING_WITH_MISSING_DOCUMENTS";
+  fromStatus: string;
+  toStatus: string;
+  actorUserId: mongoose.Types.ObjectId;
+  override: boolean;
+  reason?: string;
+  at: Date;
+}
 export interface OperationMetaDoc {
   ref: string;
   customerId?: string;
@@ -34,6 +43,7 @@ export interface OperationMetaDoc {
   mailRecipient?: string;
   mailSubject?: string;
   mailBody?: string;
+  workflowHistory: OperationWorkflowHistoryEntry[];
 }
 
 export type ApprovalWorkflowStatus = "FIRST_PENDING" | "SECOND_PENDING" | "APPROVED" | "RETURNED";
@@ -66,6 +76,20 @@ export interface DeclarationDoc extends mongoose.Document {
   updatedAt: Date;
 }
 
+
+const OperationWorkflowHistorySchema = new Schema(
+  {
+    action: { type: String, enum: ["START_WRITING","START_WRITING_WITH_MISSING_DOCUMENTS"], required: true },
+    fromStatus: { type: String, required: true },
+    toStatus: { type: String, required: true },
+    actorUserId: { type: Schema.Types.ObjectId, required: true },
+    override: { type: Boolean, default: false },
+    reason: { type: String, default: "" },
+    at: { type: Date, default: () => new Date() }
+  },
+  { _id: false }
+);
+
 const OperationMetaSchema = new Schema(
   {
     ref: { type: String, required: true, trim: true },
@@ -94,7 +118,8 @@ const OperationMetaSchema = new Schema(
     kapanicDurumu: { type: String, default: "", trim: true },
     mailRecipient: { type: String, default: "", trim: true },
     mailSubject: { type: String, default: "", trim: true },
-    mailBody: { type: String, default: "", trim: true }
+    mailBody: { type: String, default: "", trim: true },
+    workflowHistory: { type: [OperationWorkflowHistorySchema], default: [] }
   },
   { _id: false }
 );

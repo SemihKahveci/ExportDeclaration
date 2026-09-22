@@ -48,3 +48,10 @@ export async function transitionApprovalWorkflow(
 ): Promise<Declaration> {
   return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/approval-workflow/transition`, body);
 }
+
+export async function transitionPreparationWorkflow(
+ id:string,
+ body:{action:"START_WRITING"|"START_WRITING_WITH_MISSING_DOCUMENTS";reason?:string}
+):Promise<{declaration:Declaration;readiness:{ready:boolean;documentCount:number;blockingDocumentCount:number;blockingDocuments:Array<{id:string;fileName:string;status:string}>}}>{
+ return apiPostJson(`/api/declarations/${encodeURIComponent(id)}/preparation-workflow/transition`,body);
+}

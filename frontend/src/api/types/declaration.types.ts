@@ -30,6 +30,7 @@ export interface OperationMeta {
   mailRecipient: string;
   mailSubject: string;
   mailBody: string;
+  workflowHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; override:boolean; reason?:string; at:string }>;
 }
 
 export interface SourceTraceEntry {

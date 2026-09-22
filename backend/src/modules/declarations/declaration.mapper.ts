@@ -28,6 +28,7 @@ export interface OperationMetaDto {
   mailRecipient: string;
   mailSubject: string;
   mailBody: string;
+  workflowHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; override:boolean; reason?:string; at:string }>;
 }
 
 export interface DeclarationDto {
@@ -85,7 +86,16 @@ function toOperationDto(op?: OperationMetaDoc): OperationMetaDto | undefined {
     kapanicDurumu: op.kapanicDurumu ?? "",
     mailRecipient: op.mailRecipient ?? "",
     mailSubject: op.mailSubject ?? "",
-    mailBody: op.mailBody ?? ""
+    mailBody: op.mailBody ?? "",
+    workflowHistory: (op.workflowHistory ?? []).map((h) => ({
+      action: h.action,
+      fromStatus: h.fromStatus,
+      toStatus: h.toStatus,
+      actorUserId: String(h.actorUserId),
+      override: Boolean(h.override),
+      reason: h.reason ?? "",
+      at: toIso(h.at) ?? new Date(0).toISOString()
+    }))
   };
 }
 

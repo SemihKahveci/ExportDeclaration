@@ -117,7 +117,8 @@ export async function createDeclaration(
     kapanicDurumu: "",
     mailRecipient: "",
     mailSubject: "",
-    mailBody: ""
+    mailBody: "",
+    workflowHistory: []
   };
 
   const created = await DeclarationModel.create({
