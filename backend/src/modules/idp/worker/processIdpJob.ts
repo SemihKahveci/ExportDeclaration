@@ -15,6 +15,7 @@ import { resolveCandidatesWithLlm } from "../llm/resolveCandidatesWithLlm.js";
 import { CandidateResolutionStatus } from "../domain/candidateResolution.types.js";
 import { validateResolvedCandidate } from "../validator/documentValidatorRegistry.js";
 import { ValidationStatus } from "../domain/validation.types.js";
+import { materializeLogicalDocuments } from "../domain/logicalDocumentMaterializer.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -152,6 +153,16 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       run.classifications = classifications;
       run.markModified("classifications");
       await run.save();
+
+      const logicalDocuments = await materializeLogicalDocuments({
+        companyId: run.companyId,
+        declarationId: run.declarationId,
+        uploadedFileId: run.uploadedFileId,
+        processingRunId: run._id,
+        segments,
+        classifications
+      });
+      log("idp.logical_documents.materialized", { jobId: processingRunId, logicalDocumentCount: logicalDocuments.length });
 
       log("idp.classification.completed", {
         jobId: processingRunId,

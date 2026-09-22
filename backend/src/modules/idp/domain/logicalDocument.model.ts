@@ -9,6 +9,9 @@ export interface LogicalDocumentDoc extends mongoose.Document {
   pageStart: number;
   pageEnd?: number;
   classificationConfidence?: number;
+  classificationMethod?: "UPLOAD_DECLARED" | "DETERMINISTIC";
+  classificationEvidence?: string[];
+  sourceProcessingRunId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,10 +23,13 @@ const LogicalDocumentSchema = new Schema({
   type: { type: String, enum: Object.values(DocumentType), required: true },
   pageStart: { type: Number, min: 1, default: 1 },
   pageEnd: { type: Number, min: 1 },
-  classificationConfidence: { type: Number, min: 0, max: 1 }
+  classificationConfidence: { type: Number, min: 0, max: 1 },
+  classificationMethod: { type: String, enum: ["UPLOAD_DECLARED", "DETERMINISTIC"], default: "UPLOAD_DECLARED" },
+  classificationEvidence: { type: [String], default: [] },
+  sourceProcessingRunId: { type: Schema.Types.ObjectId, index: true }
 }, { timestamps: true });
 
-LogicalDocumentSchema.index({ uploadedFileId: 1, pageStart: 1, pageEnd: 1 });
+LogicalDocumentSchema.index({ uploadedFileId: 1, pageStart: 1, pageEnd: 1 }, { unique: true });
 
 export const LogicalDocumentModel = mongoose.models.LogicalDocument ??
   mongoose.model<LogicalDocumentDoc>("LogicalDocument", LogicalDocumentSchema);

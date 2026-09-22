@@ -44,7 +44,9 @@ export async function saveUploadedDocument(params: {
       declarationId: dec._id,
       uploadedFileId: doc._id,
       type,
-      pageStart: 1
+      pageStart: 1,
+      classificationMethod: "UPLOAD_DECLARED",
+      classificationEvidence: ["upload-declared-type"]
     });
   } catch (error) {
     await storage.delete(stored.key);

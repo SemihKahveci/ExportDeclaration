@@ -208,7 +208,6 @@ export function toBeyannameListeItem(d: BackendDeclaration, docCount = 0): Beyan
     approvalStatus: d.approvalWorkflow?.status ?? "FIRST_PENDING",
     requiresSecondApproval: Boolean(d.approvalWorkflow?.requiresSecondApproval),
     approvalNote: d.approvalWorkflow?.note ?? "",
-    approvalHistory: d.approvalWorkflow?.history ?? []
   };
 }
 

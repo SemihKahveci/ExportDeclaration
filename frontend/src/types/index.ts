@@ -470,7 +470,6 @@ export interface BeyannameListeItem {
   approvalStatus: 'FIRST_PENDING'|'SECOND_PENDING'|'APPROVED'|'RETURNED';
   requiresSecondApproval: boolean;
   approvalNote: string;
-  approvalHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
 }
 
 export type BeyannameStatus = 'taslak' | 'kontrol' | 'tescilli' | 'bekliyor';

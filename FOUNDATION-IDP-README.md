@@ -728,3 +728,12 @@ The closing approval UI now invokes this production transition. Fake local close
 The final Foundation 5.8 regression creates one temporary declaration with two distinct physical UploadedFiles (`INVOICE` and `PACKING_LIST`) and proves the complete persistent chain:
 `evrak-bekleniyor → beyanname-yazim → ic-kontrol → approval → tescil → kapanis-bekleyen → kapandi`.
 Both physical files remain independently associated with the same declaration throughout the test. Test records/files are deleted afterward.
+
+
+### Foundation 6.1 — Logical-document materialization
+
+A physical `UploadedFile` is no longer permanently treated as one semantic document. After deterministic segmentation and classification, the worker materializes one `LogicalDocument` per classified page range. Supported semantic types now include Invoice, Packing List, ATR, EUR.1, Certificate of Origin, Bill of Lading and CMR; unclassified ranges persist as `OTHER` rather than being guessed.
+
+Each logical document persists exact physical-file identity, page range, deterministic confidence/evidence and the source ProcessingRun. The upload-time logical record remains only a provisional `UPLOAD_DECLARED` placeholder and is replaced by materialized ranges after classification. This establishes the multi-document boundary without yet inventing field-authority rules for customs documents; those belong to subsequent Foundation 6 steps.
+
+Foundation 5.8 cleanup in the same patch removes the accidental list-item approval-history field, replaces browser prompts on registration with a typed modal/line selector, and removes wording that falsely implied an external customs/customer-notification API.
