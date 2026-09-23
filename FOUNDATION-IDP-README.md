@@ -938,3 +938,21 @@ The caller still owns both policy inputs: the document-coverage profile and cros
 This boundary deliberately remains separate from Foundation 6 field authority/resolution and promotion. `READY` means the configured Foundation 7 intelligence checks are satisfied; it does not select a winning document, bypass Foundation 6 resolution, or mutate `normalizedData`. Incomplete/failed processing, missing candidate snapshots, provenance/physical-file mismatches, and invalid logical-document sets fail closed before assessment persistence.
 
 Acceptance is backend/frontend TypeScript checks plus `verifyDeclarationIntelligenceOrchestration.ts`, proving persisted document/run/candidate loading, projection, coverage + consistency evaluation, immutable assessment persistence, exact replay reuse, changed-input review behavior, and normalized-data/authority separation.
+
+### Foundation 7.6 — Worker/lifecycle intelligence integration
+
+Foundation 7.6 connects the persisted declaration-intelligence orchestration from Foundation 7.5 to the production worker completion lifecycle without introducing implicit customs policy. The declaration may carry an explicit `idpIntelligencePolicy` containing the caller-owned coverage and cross-document consistency profiles. After a ProcessingRun is durably `COMPLETED`, the worker continues to run the independent Foundation 6 declaration-field lifecycle and then attempts Foundation 7 intelligence orchestration from that persisted policy.
+
+If no intelligence policy is configured, the new lifecycle bridge returns `NOT_CONFIGURED` and creates no assessment. This is an intentional fail-closed boundary: the worker never invents required document roles or cross-document field rules. When policy is configured, the bridge derives a deterministic assessment key from the persisted policy plus the active ProcessingRun candidate snapshots, so an exact lifecycle replay reuses the same immutable assessment while changed persisted inputs produce a different key.
+
+The worker treats declaration intelligence as an independent post-completion concern. An intelligence error cannot rewrite an already completed file ProcessingRun as failed, cannot bypass Foundation 6 authority/resolution behavior, and does not own normalized-data promotion.
+
+Acceptance is verified by `backend/scripts/idp/verifyWorkerIntelligenceLifecycleIntegration.ts`, which runs the real production worker function against the real DIGITAL invoice fixture, proves Foundation 6 resolution remains active, proves the configured Foundation 7 assessment is persisted automatically, proves exact lifecycle replay is idempotent, and proves an unconfigured declaration is skipped without creating an assessment.
+
+### Foundation 7.7 — Real multi-document declaration E2E
+
+Foundation 7.7 proves the Foundation 7 intelligence path with two real physical DIGITAL PDFs processed by the production worker function: one `INVOICE` and one `PACKING_LIST`. It adds the first deliberately narrow PACKING_LIST segment extractor, `packing-list-canonical-v1`, which emits only evidence-backed quantity when an explicit `QTY`/`QUANTITY` label is present. It does not infer missing values or customs semantics.
+
+The worker now persists segment candidate snapshots for non-INVOICE classified documents as well. Invoice resolution/validation remains invoice-owned; a PACKING_LIST is not routed through the invoice resolver or validator. This lets declaration intelligence consume persisted evidence from multiple document roles while preserving the existing Foundation 6 invoice pipeline.
+
+Acceptance is `backend/scripts/idp/verifyRealMultiDocumentDeclarationE2E.ts`. The verifier creates real Invoice and Packing List PDFs, processes both through `processIdpJob()`, and proves the declaration transitions from `REVIEW_REQUIRED` while the required Packing List is missing to `READY` once both real documents are complete and their configured quantity observations agree. No synthetic candidate injection is used, both physical/logical document identities are preserved, and the two intelligence assessments remain append-only history.

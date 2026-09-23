@@ -71,6 +71,11 @@ export interface DeclarationDoc extends mongoose.Document {
   sourceTrace?: Record<string, { value: unknown; source: DocumentTypeValue | string | null }>;
   generatedXmlPath?: string;
   approvalWorkflow?: ApprovalWorkflowDoc;
+  idpIntelligencePolicy?: {
+    version: "1";
+    coverageProfile: unknown;
+    consistencyProfile: unknown;
+  };
   idpIntelligence?: {
     version: "1";
     assessmentRunId: mongoose.Types.ObjectId;
@@ -236,6 +241,12 @@ const DeclarationSchema = new Schema(
     generatedXmlPath: String,
 
     approvalWorkflow: { type: ApprovalWorkflowSchema, default: () => ({}) },
+
+    idpIntelligencePolicy: {
+      version: { type: String, enum: ["1"] },
+      coverageProfile: Schema.Types.Mixed,
+      consistencyProfile: Schema.Types.Mixed
+    },
 
     idpIntelligence: {
       version: { type: String, enum: ["1"] },

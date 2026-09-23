@@ -18,6 +18,7 @@ import { ValidationStatus } from "../domain/validation.types.js";
 import { materializeLogicalDocuments } from "../domain/logicalDocumentMaterializer.js";
 import { tryOrchestrateDeclarationAfterProcessing } from "../domain/declarationFieldLifecycle.service.js";
 import { persistWorkerCandidateExtraction } from "../domain/workerCandidatePersistence.js";
+import { tryOrchestrateDeclarationIntelligenceAfterProcessing } from "../domain/declarationIntelligenceLifecycle.service.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -287,9 +288,30 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       }
 
       extractedData = resolution.data;
+    } else if (canonicalDocument && segments?.length && classifications?.length) {
+      // Foundation 7.7 allows non-INVOICE document roles with registered segment
+      // extractors to contribute declaration-facing evidence without pretending
+      // they have an invoice resolver/validator. Unsupported roles persist an
+      // empty declaration snapshot and remain available for coverage assessment.
+      const candidateEnvelope = await stage(
+        "CANDIDATE_EXTRACT",
+        ProcessingStage.EXTRACT_CANDIDATES,
+        () => extractCandidatesBySegment(file, canonicalDocument!, segments!, classifications!)
+      );
+      await persistWorkerCandidateExtraction(run, candidateEnvelope);
+      log("idp.candidate_extract.completed", {
+        jobId: processingRunId,
+        results: candidateEnvelope.segments.map((result) => ({
+          segmentId: result.segmentId,
+          documentType: result.documentType,
+          status: result.status,
+          extractor: result.extractor,
+          pageNumbers: result.pageNumbers,
+          reason: result.reason
+        }))
+      });
+      extractedData = { candidateExtraction: candidateEnvelope };
     } else {
-      // Non-INVOICE upload types keep their existing dedicated extraction path until
-      // their classified segment extractors are registered in this registry.
       const extracted = await stage(
         "CANDIDATE_EXTRACT",
         ProcessingStage.EXTRACT_CANDIDATES,
@@ -330,6 +352,23 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       log("idp.declaration.lifecycle.failed", {
         jobId: processingRunId,
         error: lifecycleError instanceof Error ? lifecycleError.message : String(lifecycleError)
+      });
+    }
+
+    // Foundation 7 intelligence is independently gated by an explicit policy
+    // persisted on the declaration. Absence of policy is an intentional skip.
+    try {
+      const intelligence = await tryOrchestrateDeclarationIntelligenceAfterProcessing({
+        companyId: run.companyId,
+        declarationId: run.declarationId
+      });
+      log("idp.declaration.intelligence", { jobId: processingRunId, ...intelligence });
+    } catch (intelligenceError) {
+      // The file is already COMPLETED and Foundation 6 resolution is independent.
+      // Intelligence failures therefore fail closed without rewriting file state.
+      log("idp.declaration.intelligence.failed", {
+        jobId: processingRunId,
+        error: intelligenceError instanceof Error ? intelligenceError.message : String(intelligenceError)
       });
     }
   } catch (error) {

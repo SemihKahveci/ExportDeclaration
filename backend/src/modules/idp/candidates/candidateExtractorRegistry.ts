@@ -12,6 +12,7 @@ import {
 import { projectCanonicalDocumentToSegments } from "../projector/canonicalSegmentProjector.js";
 import { buildInvoiceFieldCandidates } from "./invoiceFieldCandidateEnricher.js";
 import { buildGenericInvoiceCandidateAudit } from "./genericInvoiceCandidateIntegration.js";
+import { buildPackingListFieldCandidates } from "./packingListFieldCandidateEnricher.js";
 
 type ExtractorContext = {
   file: DocumentDoc;
@@ -55,6 +56,26 @@ const registry = new Map<string, RegisteredExtractor>([
           ...extracted.data,
           fieldCandidates,
           genericCandidateAudit
+        };
+      }
+    }
+  ],
+  [
+    ClassifiedDocumentType.PACKING_LIST,
+    {
+      name: "packing-list-canonical-v1",
+      async extract({ canonicalDocument, segment, classification }) {
+        const projected = projectCanonicalDocumentToSegments(
+          canonicalDocument,
+          [segment],
+          [classification],
+          ClassifiedDocumentType.PACKING_LIST
+        );
+        if (!projected) {
+          throw new Error(`PACKING_LIST segment projection failed: ${segment.segmentId}`);
+        }
+        return {
+          fieldCandidates: buildPackingListFieldCandidates(projected, segment.segmentId)
         };
       }
     }
