@@ -83,6 +83,11 @@ export interface DeclarationDoc extends mongoose.Document {
     issues: unknown[];
     assessedAt: Date;
   };
+  idpLlmAssistPolicy?: {
+    version: "1";
+    enabled: boolean;
+    autoApplyResolvedAuthority: boolean;
+  };
   idpLlmAssist?: {
     version: "1";
     assistRunId: mongoose.Types.ObjectId;
@@ -265,6 +270,12 @@ const DeclarationSchema = new Schema(
       status: { type: String, enum: ["READY", "REVIEW_REQUIRED", "INVALID_CONFIGURATION"] },
       issues: { type: [Schema.Types.Mixed], default: [] },
       assessedAt: Date
+    },
+
+    idpLlmAssistPolicy: {
+      version: { type: String, enum: ["1"] },
+      enabled: { type: Boolean, default: false },
+      autoApplyResolvedAuthority: { type: Boolean, default: false }
     },
 
     idpLlmAssist: {

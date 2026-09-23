@@ -19,6 +19,7 @@ import { materializeLogicalDocuments } from "../domain/logicalDocumentMaterializ
 import { tryOrchestrateDeclarationAfterProcessing } from "../domain/declarationFieldLifecycle.service.js";
 import { persistWorkerCandidateExtraction } from "../domain/workerCandidatePersistence.js";
 import { tryOrchestrateDeclarationIntelligenceAfterProcessing } from "../domain/declarationIntelligenceLifecycle.service.js";
+import { tryOrchestrateDeclarationLlmAssistAfterProcessing } from "../llm/declarationLlmAssistLifecycle.service.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -369,6 +370,21 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       log("idp.declaration.intelligence.failed", {
         jobId: processingRunId,
         error: intelligenceError instanceof Error ? intelligenceError.message : String(intelligenceError)
+      });
+    }
+
+    // Foundation 8 LLM assistance is a separate, explicit opt-in lifecycle.
+    // Provider or authority failures never rewrite an already completed file run.
+    try {
+      const llmAssist = await tryOrchestrateDeclarationLlmAssistAfterProcessing({
+        companyId: run.companyId,
+        declarationId: run.declarationId
+      });
+      log("idp.declaration.llm_assist", { jobId: processingRunId, ...llmAssist });
+    } catch (llmAssistError) {
+      log("idp.declaration.llm_assist.failed", {
+        jobId: processingRunId,
+        error: llmAssistError instanceof Error ? llmAssistError.message : String(llmAssistError)
       });
     }
   } catch (error) {

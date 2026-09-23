@@ -1030,3 +1030,11 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected event: `foundation-8.4.llm-candidate-authority-bridge.passed`.
+
+### Foundation 8.5 — Worker LLM-assist lifecycle integration
+
+Foundation 8.5 connects the persisted Foundation 8.1–8.4 boundaries to the production worker completion lifecycle without making LLM use implicit. A declaration must explicitly persist `idpLlmAssistPolicy.version=1` with `enabled=true`. `autoApplyResolvedAuthority` is a second, independent opt-in: when false, validated Qwen output remains append-only advice only; when true, a `RESOLVED` selection is converted to candidate authority exclusively through the Foundation 6 resolver/promotion boundary.
+
+Lifecycle order after a completed file is therefore: Foundation 6 declaration resolution → Foundation 7 intelligence assessment → optional Foundation 8 LLM assistance → optional Foundation 6 candidate-authority re-resolution/promotion. Missing policy, READY assessments, invalid configuration, and insufficient evidence do not call the provider. LLM/provider/authority failures are isolated from the already completed per-file ProcessingRun.
+
+Verification: `backend/scripts/idp/verifyWorkerLlmAssistLifecycleIntegration.ts` uses two real DIGITAL PDFs with conflicting quantity evidence, the production `processIdpJob()` function, and a local OpenAI-compatible mock endpoint. It proves the first incomplete document set does not call Qwen, the grounded conflict calls it once, the selected existing Packing List candidate is promoted only by Foundation 6, and exact replay reuses both immutable assist and authority resolution runs without another network call.
