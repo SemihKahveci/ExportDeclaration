@@ -982,3 +982,37 @@ Rules:
 Regression utility: `backend/scripts/idp/verifyDeclarationLlmAssistContract.ts`.
 
 Next: Foundation 8.2 will connect this declaration-level contract to the existing local Qwen/OpenAI-compatible provider boundary with strict structured-response parsing and provider failure handling, while keeping production orchestration opt-in and fail-closed.
+
+### Foundation 8.2 — Declaration Qwen provider integration
+
+Foundation 8.2 connects the evidence-constrained declaration conflict contract from 8.1 to the existing OpenAI-compatible Qwen provider without changing declaration authority or normalized-data ownership.
+
+- Declaration assistance uses the existing `QwenOpenAiProvider` transport and `/v1/chat/completions` boundary.
+- Requests are deterministic (`temperature: 0`) and require JSON-object responses.
+- The model may select only candidate IDs already present in the 8.1 request, or return `REVIEW_REQUIRED` with zero selections.
+- Provider/network, malformed JSON, timeout, hallucinated candidate, unrequested field, and partial-resolution failures all fail closed.
+- This step does not persist an LLM decision, mutate `normalizedData`, or bypass the Foundation 6 authority resolver. Production orchestration is intentionally deferred to the next Foundation 8 step.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationQwenProviderIntegration.ts
+```
+
+Expected event: `foundation-8.2.declaration-qwen-provider-integration.passed`.
+
+### Foundation 8.3 — Persisted declaration LLM-assistance orchestration
+
+Foundation 8.3 moves the evidence-constrained declaration conflict assistant behind a production persistence boundary. The orchestrator loads only the declaration's current persisted intelligence assessment, skips READY / invalid / insufficient-evidence cases before any provider call, builds the Foundation 8.1 candidate-id-only request for grounded conflicts, validates the provider response, and persists an append-only `DeclarationLlmAssistRun` plus a declaration current snapshot.
+
+Guardrails remain fail-closed: the assistance run is scoped by company + declaration + current assessment, exact replay reuses the immutable run without another provider call, a changed current assessment creates a new run, stale replay cannot replace the current pointer, and LLM advice does not mutate `normalizedData` or bypass Foundation 6 authority/promotion. A `RESOLVED` LLM decision is therefore audited advice over existing candidate IDs, not automatic normalized-data promotion.
+
+Verification:
+
+```bash
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationLlmAssistOrchestration.ts
+```
+
+Expected event: `foundation-8.3.declaration-llm-assist-orchestration.passed`.

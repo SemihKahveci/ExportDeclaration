@@ -1,6 +1,7 @@
 import { env } from "../../../config/env.js";
 import { FieldLlmResolveDecision, type FieldLlmProvider, type FieldLlmResolveRequest, type FieldLlmResolveResponse } from "../domain/fieldLlmResolve.types.js";
 import { LlmResolveDecision, type LlmProvider, type LlmResolveRequest, type LlmResolveResponse } from "../domain/llmResolve.types.js";
+import { DeclarationLlmAssistDecision, type DeclarationLlmAssistRequest, type DeclarationLlmAssistResponse } from "../domain/declarationLlmAssist.types.js";
 
 function stripFence(value: string): string {
   return value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -22,6 +23,17 @@ function parseFieldResponse(content: string): Omit<FieldLlmResolveResponse, "mod
   if (!Array.isArray(parsed.selections) || !Array.isArray(parsed.issues)) throw new Error("Field LLM response contract eksik.");
   for (const selection of parsed.selections) {
     if (!selection || typeof selection.field !== "string" || typeof selection.candidateId !== "string") throw new Error("Field LLM selection contract geçersiz.");
+  }
+  return { version: "1", decision: parsed.decision, selections: parsed.selections, issues: parsed.issues as Array<{ code: string; message: string }> };
+}
+
+function parseDeclarationAssistResponse(content: string): Omit<DeclarationLlmAssistResponse, "model" | "provider"> {
+  const parsed = JSON.parse(stripFence(content)) as Partial<DeclarationLlmAssistResponse>;
+  if (parsed.version !== "1") throw new Error("Declaration LLM response version geçersiz.");
+  if (parsed.decision !== DeclarationLlmAssistDecision.RESOLVED && parsed.decision !== DeclarationLlmAssistDecision.REVIEW_REQUIRED) throw new Error("Declaration LLM response decision geçersiz.");
+  if (!Array.isArray(parsed.selections) || !Array.isArray(parsed.issues)) throw new Error("Declaration LLM response contract eksik.");
+  for (const selection of parsed.selections) {
+    if (!selection || typeof selection.field !== "string" || typeof selection.candidateId !== "string") throw new Error("Declaration LLM selection contract geçersiz.");
   }
   return { version: "1", decision: parsed.decision, selections: parsed.selections, issues: parsed.issues as Array<{ code: string; message: string }> };
 }
@@ -62,5 +74,10 @@ export class QwenOpenAiProvider implements LlmProvider, FieldLlmProvider {
   async resolveFieldCandidates(request: FieldLlmResolveRequest): Promise<FieldLlmResolveResponse> {
     const content = await this.complete(request, "You are an evidence-constrained IDP field resolver. Return JSON only. For each ambiguous field, select only an existing candidateId supplied for that exact field. Never output or invent a replacement field value. If evidence is insufficient, return REVIEW_REQUIRED.");
     return { ...parseFieldResponse(content), model: env.llmModel, provider: this.name };
+  }
+
+  async resolveDeclarationConflicts(request: DeclarationLlmAssistRequest): Promise<DeclarationLlmAssistResponse> {
+    const content = await this.complete(request, "You are an evidence-constrained declaration conflict resolver. Return JSON only. For every requested conflict field, select only an existing candidateId supplied for that exact field. Never invent a replacement value, field, candidate, or document evidence. If every field cannot be resolved from supplied evidence, return REVIEW_REQUIRED with zero selections.");
+    return { ...parseDeclarationAssistResponse(content), model: env.llmModel, provider: this.name };
   }
 }

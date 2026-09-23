@@ -83,6 +83,17 @@ export interface DeclarationDoc extends mongoose.Document {
     issues: unknown[];
     assessedAt: Date;
   };
+  idpLlmAssist?: {
+    version: "1";
+    assistRunId: mongoose.Types.ObjectId;
+    assessmentRunId: mongoose.Types.ObjectId;
+    decision: "RESOLVED" | "REVIEW_REQUIRED";
+    selections: Array<{ field: string; candidateId: string }>;
+    issues: Array<{ code: string; message: string }>;
+    model: string;
+    provider: string;
+    assistedAt: Date;
+  };
   idpResolution?: {
     version: "1";
     resolutionRunId: mongoose.Types.ObjectId;
@@ -254,6 +265,18 @@ const DeclarationSchema = new Schema(
       status: { type: String, enum: ["READY", "REVIEW_REQUIRED", "INVALID_CONFIGURATION"] },
       issues: { type: [Schema.Types.Mixed], default: [] },
       assessedAt: Date
+    },
+
+    idpLlmAssist: {
+      version: { type: String, enum: ["1"] },
+      assistRunId: { type: Schema.Types.ObjectId, ref: "DeclarationLlmAssistRun" },
+      assessmentRunId: { type: Schema.Types.ObjectId, ref: "DeclarationIntelligenceAssessmentRun" },
+      decision: { type: String, enum: ["RESOLVED", "REVIEW_REQUIRED"] },
+      selections: { type: [Schema.Types.Mixed], default: [] },
+      issues: { type: [Schema.Types.Mixed], default: [] },
+      model: String,
+      provider: String,
+      assistedAt: Date
     },
 
     idpResolution: {
