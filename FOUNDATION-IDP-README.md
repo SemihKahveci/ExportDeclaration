@@ -1038,3 +1038,19 @@ Foundation 8.5 connects the persisted Foundation 8.1–8.4 boundaries to the pro
 Lifecycle order after a completed file is therefore: Foundation 6 declaration resolution → Foundation 7 intelligence assessment → optional Foundation 8 LLM assistance → optional Foundation 6 candidate-authority re-resolution/promotion. Missing policy, READY assessments, invalid configuration, and insufficient evidence do not call the provider. LLM/provider/authority failures are isolated from the already completed per-file ProcessingRun.
 
 Verification: `backend/scripts/idp/verifyWorkerLlmAssistLifecycleIntegration.ts` uses two real DIGITAL PDFs with conflicting quantity evidence, the production `processIdpJob()` function, and a local OpenAI-compatible mock endpoint. It proves the first incomplete document set does not call Qwen, the grounded conflict calls it once, the selected existing Packing List candidate is promoted only by Foundation 6, and exact replay reuses both immutable assist and authority resolution runs without another network call.
+
+### Foundation 8.6 — Qwen runtime readiness and Docker configuration
+
+Foundation 8.6 prepares the application for a real local/DGX Qwen runtime without requiring a model to be installed yet. Both the backend and the BullMQ IDP worker now receive the same explicit `LLM_*` environment contract from `compose.dev.yaml`; the default remains `LLM_ENABLED=false`.
+
+A read-only runtime probe validates the configured HTTP(S) base URL and timeout, calls only the OpenAI-compatible `GET /v1/models` discovery endpoint, and requires `LLM_MODEL` to be advertised by that runtime. The probe never calls chat completions and never sends declaration evidence. Disabled or invalid configuration performs no network call; HTTP errors, timeouts, and model mismatches return `NOT_READY` fail-closed.
+
+For Docker Desktop with a model server running on the Windows host, `LLM_BASE_URL` may use `http://host.docker.internal:<port>`. For DGX Spark or another machine on the company LAN, use that host's reachable LAN address. The base URL must not include `/v1`, because the provider owns the OpenAI-compatible route suffixes.
+
+Verification:
+
+```bash
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyQwenRuntimeReadiness.ts
+```
+
+Expected event: `foundation-8.6.qwen-runtime-readiness.passed`. This verifier uses a local mock model-discovery endpoint; installing or downloading Qwen is intentionally deferred until the runtime boundary itself is proven.

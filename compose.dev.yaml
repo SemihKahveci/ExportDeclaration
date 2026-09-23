@@ -85,6 +85,13 @@ services:
       INSTALLATION_COMPANY_ID: ${INSTALLATION_COMPANY_ID:-}
       SUPERADMIN_RESET_PASSWORD: ${SUPERADMIN_RESET_PASSWORD:-false}
 
+      # Foundation 8 local/OpenAI-compatible Qwen runtime (explicit opt-in).
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-Qwen3}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-120000}
+
     ports:
       - "3000:3000"
 
@@ -125,6 +132,12 @@ services:
       INVOICE_PARSER_PYTHON: /opt/venv/bin/python
       INVOICE_PARSER_DIR: /app/backend/scripts/invoice_parser
       INVOICE_PARSER_TIMEOUT_MS: 600000
+      # Worker must receive the same Qwen runtime configuration as backend.
+      LLM_ENABLED: ${LLM_ENABLED:-false}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-Qwen3}
+      LLM_TIMEOUT_MS: ${LLM_TIMEOUT_MS:-120000}
     volumes:
       - ./backend:/app/backend
       - ./tsconfig.json:/app/tsconfig.json
