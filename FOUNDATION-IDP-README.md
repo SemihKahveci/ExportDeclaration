@@ -956,3 +956,11 @@ Foundation 7.7 proves the Foundation 7 intelligence path with two real physical 
 The worker now persists segment candidate snapshots for non-INVOICE classified documents as well. Invoice resolution/validation remains invoice-owned; a PACKING_LIST is not routed through the invoice resolver or validator. This lets declaration intelligence consume persisted evidence from multiple document roles while preserving the existing Foundation 6 invoice pipeline.
 
 Acceptance is `backend/scripts/idp/verifyRealMultiDocumentDeclarationE2E.ts`. The verifier creates real Invoice and Packing List PDFs, processes both through `processIdpJob()`, and proves the declaration transitions from `REVIEW_REQUIRED` while the required Packing List is missing to `READY` once both real documents are complete and their configured quantity observations agree. No synthetic candidate injection is used, both physical/logical document identities are preserved, and the two intelligence assessments remain append-only history.
+
+### Foundation 7.8 — Foundation 7 closeout regression
+
+Foundation 7.8 closes the multi-document declaration-intelligence foundation with one regression runner over Foundations 7.1 through 7.7. The closeout replays explicit document coverage, explicit cross-document consistency, readiness composition, append-only assessment persistence, persisted production orchestration, worker lifecycle integration, and the real two-physical-document Invoice + Packing List E2E.
+
+The closeout does not introduce new customs policy, authority selection, or normalized-data promotion behavior. Foundation 6 remains the owner of field resolution and promotion; Foundation 7 remains an evidence-backed assessment layer driven only by caller-owned policy. Historical verification scripts are retained as executable regression evidence.
+
+Acceptance is backend/frontend TypeScript checks plus `backend/scripts/idp/verifyFoundation7Closeout.ts`. A successful run emits `foundation-7.8.closeout-regression.passed` with seven passed checks and the preserved Foundation 6 authority/normalized-data boundaries. After this checkpoint, Foundation 8 may add controlled local-LLM/Qwen assistance behind these deterministic boundaries rather than replacing them.
