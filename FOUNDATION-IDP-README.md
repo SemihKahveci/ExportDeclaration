@@ -912,3 +912,19 @@ Foundation 7.2 adds a read-only declaration-level consistency assessment over pe
 The first comparator contract supports exact values, case-insensitive text, and numeric absolute tolerance. A configured mismatch is reported as `CONFLICT`; missing configured evidence or fewer than two participating document roles is `INSUFFICIENT_EVIDENCE`; neither case silently selects a winner. Candidate/logical-document/upload references are preserved in the observations so later review and policy layers can explain exactly which documents disagreed.
 
 This assessment is intentionally separate from the Foundation 6 authority resolver. Foundation 7.2 detects and explains configured cross-document consistency conditions but does not mutate normalized declaration data, create a new authority rule, or choose an authoritative document. Acceptance is backend/frontend TypeScript checks plus `verifyDeclarationCrossDocumentConsistency.ts`, proving case-insensitive agreement, numeric-tolerance agreement, explicit conflict detection, missing-role review, provenance references and invalid-profile fail-closed behavior.
+
+### Foundation 7.3 — Declaration intelligence readiness composition
+
+Foundation 7.3 composes the explicit document-coverage result from 7.1 and the explicit cross-document consistency result from 7.2 into one read-only declaration-intelligence readiness decision. `READY` is returned only when configured document coverage is complete and configured consistency checks are satisfied. Missing required documents, configured cardinality excesses, cross-document conflicts, and insufficient configured evidence are preserved as explicit reasons under `REVIEW_REQUIRED` rather than being collapsed into a silent boolean.
+
+Malformed coverage or consistency profiles fail closed as `INVALID_CONFIGURATION`. Informational document roles that were never configured remain informational and do not become invented blockers. This layer does not choose an authoritative document, mutate normalized declaration data, or add customs/company requirements; it only composes the results of caller-owned policies evaluated by 7.1 and 7.2.
+
+Acceptance is backend/frontend TypeScript checks plus `verifyDeclarationIntelligenceReadiness.ts`, proving ready, combined-review, invalid-configuration and unconfigured-role behavior while preserving the separation between consistency detection and Foundation 6 authority resolution.
+
+### Foundation 7.4 — Persisted declaration intelligence assessment audit
+
+Foundation 7.4 gives the 7.1–7.3 intelligence decision an append-only persistence boundary. An already evaluated coverage + consistency pair is composed into readiness, persisted as a `DeclarationIntelligenceAssessmentRun`, and the declaration receives a compact `idpIntelligence` pointer to the current assessment run, status, issues and assessment time. The audit run retains the complete coverage and consistency inputs so a later review can explain why the declaration was READY, REVIEW_REQUIRED or INVALID_CONFIGURATION.
+
+Optional caller-owned `assessmentKey` provides idempotent replay. Reusing the current key returns the existing immutable run; once a newer assessment becomes current, replaying an older key is rejected so stale intelligence cannot replace the declaration snapshot. Company scope is fail-closed and failed scoped writes create no audit record.
+
+This step still does not invent customs requirements, select document authority, or mutate normalized declaration data. It persists the decision boundary only; wiring coverage/consistency evaluation from persisted declaration inputs into one production orchestration path remains a later Foundation 7 step. Acceptance is backend/frontend TypeScript checks plus `verifyPersistedDeclarationIntelligenceAssessment.ts`.
