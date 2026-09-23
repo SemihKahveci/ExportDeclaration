@@ -87,7 +87,8 @@ export function projectDeclarationFieldCandidates(params: {
           uploadedFileId: document.uploadedFileId,
           documentType: document.type,
           sourceProcessingRunId: document.sourceProcessingRunId,
-          evidence: candidate.evidence
+          evidence: candidate.evidence,
+          ...(candidate.derived ? { derived: true } : {})
         };
         (fields[field] ??= []).push(projected);
       }

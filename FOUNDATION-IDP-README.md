@@ -807,3 +807,92 @@ Foundation 6.10 separates extractor audit output from the declaration-facing fie
 The snapshot is owned by the exact ProcessingRun referenced by each persisted LogicalDocument. Reprocessing can therefore leave older ProcessingRuns and their candidate snapshots available for audit without allowing stale candidates to participate in a newer declaration resolution. If the active run has no valid declaration candidate snapshot, orchestration returns `CANDIDATES_NOT_READY` and creates no new resolution audit record.
 
 Foundation 6.10 acceptance includes backend/frontend TypeScript checks and `verifyProcessingRunCandidatePersistence.ts`, proving segment-candidate flattening, active-run authority, stale-run exclusion, raw-envelope non-consumption, missing-snapshot gating and ProcessingRun provenance preservation.
+
+### Foundation 6.11 — Worker candidate persistence → lifecycle integration
+
+The production worker and the integration verification now share `persistWorkerCandidateExtraction`, the same write boundary for the segment-level extractor audit envelope and the flattened declaration-facing candidate snapshot. Snapshot validation/flattening runs before either Mixed field is modified. The integration verification persists both through this exact boundary, gates orchestration while the active run is PROCESSING, completes it, verifies declaration promotion and full source trace, excludes a stale run, and checks duplicate completion/audit idempotency. Malformed duplicate candidate IDs fail before the persisted snapshot is overwritten.
+
+Acceptance: backend and frontend typecheck plus `verifyWorkerCandidateLifecycleIntegration.ts`. This is a persisted worker-contract integration test, not a full PDF/OCR end-to-end test; real OCR fixtures and queue-level retry/concurrency tests remain separate.
+
+### Foundation 6.12 — ProcessingRun / physical-document ownership guard
+
+Declaration readiness now verifies that each LogicalDocument's `uploadedFileId` matches the physical file owned by its exact `sourceProcessingRunId`. A ProcessingRun can legitimately contribute multiple logical segments of the same PDF, but cannot be borrowed by a different UploadedFile, even inside the same tenant/declaration. Mismatches return `NOT_READY / RUN_DOCUMENT_OWNERSHIP_MISMATCH` before orchestration, audit creation, or promotion.
+
+Acceptance: backend/frontend typecheck and `verifyProcessingRunDocumentOwnership.ts`. This is a persisted provenance-hardening test extending 6.11; a real PDF/OCR/queue end-to-end run is still outstanding.
+
+### Foundation 6.13 — Real DIGITAL PDF → production worker E2E
+
+Foundation 6.13 replaces hand-built candidate fixtures with a generated real digital PDF and invokes the production `processIdpJob` worker boundary. The verification exercises the real PyMuPDF analyzer, OCR skip decision for a DIGITAL page, segmentation, deterministic INVOICE classification, Python invoice parser consuming `CanonicalDocument`, worker candidate persistence, LogicalDocument materialization, lifecycle readiness, declaration-wide resolution and immutable resolution audit persistence.
+
+The fixture contains one deterministic invoice row and is generated at test runtime, so no customer invoice is committed to the repository. The test proves the resolved GTIP/quantity/amount candidate provenance points back to the exact ProcessingRun, physical UploadedFile, LogicalDocument and native-text evidence. No synthetic `FieldCandidateEnvelope` is injected by the verification.
+
+This E2E also records the remaining boundary honestly: Foundation 6.7 has explicit scalar declaration targets but no dynamic `goodsLines.N.*` promotion target yet. Real goods-line fields therefore reach the persisted resolution audit but are deliberately not written to an invented normalized path. `silentUnmappedPromotion=false` is an acceptance condition; dynamic goods-line promotion is the next explicit integration step rather than a hidden shortcut.
+
+Acceptance: backend/frontend typecheck plus `verifyRealDigitalWorkerE2E.ts`. The run must report `contentKind=DIGITAL`, zero OCR use, one materialized INVOICE LogicalDocument, `CANONICAL_DOCUMENT` Python extraction, persisted declaration candidates/resolution audit, preserved provenance, and the explicit outstanding goods-line promotion boundary.
+
+### Foundation 6.14 — Dynamic goods-line promotion
+
+Foundation 6.14 closes the explicit boundary recorded by Foundation 6.13. Persisted `RESOLVED` declaration fields matching the allow-listed `goodsLines.N.<field>` contract can now be promoted into the corresponding `normalizedData.goodsLines[N]` entry. The dynamic mapping is deliberately constrained to the normalized goods-line schema (`hsCode`, `productCode`, `description`, `quantity`, `unit`, `unitPrice`, `lineTotal`, `origin`, `grossKg`, `netKg`); arbitrary candidate field names cannot create invented normalized paths.
+
+Promotion still uses the current tenant-scoped immutable `DeclarationFieldResolutionRun`, so `REVIEW_REQUIRED` fields remain non-promotable and stale runs remain rejected. Every promoted goods-line value receives its own `sourceTrace` entry keyed by the exact dynamic field path and preserves resolution-run, selected-candidate, LogicalDocument, physical UploadedFile, ProcessingRun and evidence provenance.
+
+Acceptance uses `verifyRealDigitalGoodsLinePromotion.ts`, which generates a real DIGITAL invoice PDF and runs the production worker boundary end to end. The verification requires the canonical Python parser's seven goods-line candidates to reach `normalizedData.goodsLines[0]` with their expected values and one-to-one provenance traces; no synthetic declaration candidate envelope is injected. Evidence semantics are asserted field-by-field: directly observed DIGITAL fields remain `NATIVE_TEXT`, while `unit` remains explicitly `DERIVED` because the current Python extractor infers it together with quantity and does not yet expose a dedicated unit bbox.
+
+
+#### Foundation 6.14 provenance preservation note
+`FieldCandidate.derived` is preserved when candidates are projected into declaration-wide candidates. Evidence source and derivation metadata are separate provenance dimensions: for example, invoice `unit` currently carries `contentSource=DERIVED` and `derived=true`. Projection must not silently discard the derivation flag. The real DIGITAL PDF verification asserts both dimensions survive extraction, projection, resolution and promotion.
+
+### Foundation 6.15 — BullMQ queue → external worker E2E
+
+Foundation 6.15 moves the real DIGITAL invoice verification across the actual asynchronous transport boundary. The verification creates a real PDF inside the shared upload volume, calls the production `enqueueDocumentProcessing` service, verifies that BullMQ persisted the `process-document` job in Redis with the ProcessingRun id as its job id, and waits for the separately running `idp-worker` service to consume and complete it. The test does not call `processIdpJob` directly.
+
+After queue consumption, the same persisted outputs are checked: COMPLETED ProcessingRun with a real worker attempt, DIGITAL canonical analysis, `CANONICAL_DOCUMENT` Python extraction, LogicalDocument provenance, immutable declaration-resolution audit, and promoted goods-line values. The verification also checks the BullMQ job reaches the `completed` state before cleanup.
+
+This step intentionally proves transport/consumer integration only. Retry failure injection and multi-job concurrency are reported as not covered rather than being implied by a single successful job; those resilience behaviors remain separate acceptance work.
+
+Acceptance: backend/frontend typecheck, a running `redis` + `idp-worker` from `compose.dev.yaml`, and `verifyBullMqWorkerE2E.ts`. The success event is `foundation-6.15.bullmq-worker-e2e.passed` with `directProcessIdpJobInvocation=false` and `redisBullMqTransportExercised=true`.
+
+### Foundation 6.16 — BullMQ retry/failure recovery E2E
+Foundation 6.16 verifies the real BullMQ retry path without adding a production-only failure injection hook. The verification enqueues an INVOICE whose configured file path intentionally does not exist, waits for the external `idp-worker` to persist attempt 1 as `FAILED`, then creates the real DIGITAL PDF during BullMQ backoff. BullMQ must retry the same job id and the same `ProcessingRun`; attempt 2 must clear the previous error, complete the canonical pipeline, materialize exactly one LogicalDocument, persist exactly one declaration resolution audit and promote the expected goods line.
+
+The acceptance test therefore proves that queue retry configuration is not merely present in `defaultJobOptions`: a real worker failure is persisted, BullMQ retries after backoff, checkpoint state is reusable, the successful retry recovers the same run, and declaration orchestration remains idempotent. No alternate ProcessingRun is created to simulate recovery and no test-only failure branch is added to production worker code.
+
+Acceptance: backend/frontend typecheck plus `verifyBullMqRetryRecoveryE2E.ts` with `IDP_JOB_ATTEMPTS >= 2` and a non-trivial retry backoff. The final event is `foundation-6.16.bullmq-retry-recovery.passed`. Concurrency remains deliberately outside this boundary and is the next queue-level verification step.
+
+
+#### Foundation 6.16 verification note — Mongo/BullMQ terminal-state ordering
+The retry E2E treats ProcessingRun completion and BullMQ completion as two separately persisted observations. `processIdpJob` can persist `ProcessingRun=COMPLETED` immediately before the worker callback returns, while BullMQ still reports the Redis job as `active` for a brief window. The verifier therefore waits for BullMQ to publish its own terminal `completed` state after observing the recovered ProcessingRun. This is an observation-order guard only; it does not relax the requirement that the same job finishes `completed` with exactly two attempts.
+
+### Foundation 6.17 — BullMQ concurrency + tenant/declaration isolation E2E
+Foundation 6.17 verifies that the configured external BullMQ worker concurrency is exercised by two real DIGITAL invoice jobs without weakening tenant or declaration isolation. The verification creates two independent company/declaration/upload scopes, enqueues both through the production queue service, requires both ProcessingRuns to overlap in `PROCESSING`, and then requires both BullMQ jobs to reach `completed` on their first attempt.
+
+Each scope must independently materialize exactly one LogicalDocument owned by its own UploadedFile/ProcessingRun, persist exactly one declaration-resolution audit, and promote the expected goods line. Cross-company queries against the other declaration must return no logical documents or resolution audits. The test calls no worker function directly and requires `IDP_WORKER_CONCURRENCY >= 2`.
+
+Acceptance: backend/frontend typecheck plus `verifyBullMqConcurrencyIsolationE2E.ts`. Success is `foundation-6.17.bullmq-concurrency-isolation.passed` with `simultaneousProcessingObserved=true`, `concurrencyCovered=true`, and `crossTenantLeakageObserved=false`.
+
+### Repository cleanup checkpoint
+The Foundation 6 queue checkpoint also removes obsolete historical documentation (`README.txt`, `PROJE-YAPISI.md`, `CUSTOMS-PANEL-MIGRATION.md`) so `FOUNDATION-IDP-README.md` remains the single maintained IDP progress/design document. Python `__pycache__` and generated frontend `dist` output are local build artifacts already covered by `.gitignore`; they should not be committed. Historical Foundation verification scripts are retained because they remain executable regression evidence rather than dead runtime code.
+
+### Foundation 6.18 — Real SCANNED PDF → PaddleOCR → production worker E2E
+Foundation 6.18 moves the same deterministic invoice contract onto a genuinely image-only PDF. The fixture is authored as text only in memory, rasterized, and saved with only the raster image embedded; the persisted PDF therefore has no native text layer for the analyzer to recover. The production worker must classify it as `SCANNED`, invoke the real PaddleOCR subprocess, merge OCR words into `CanonicalDocument`, and continue through segmentation, classification, canonical Python extraction, declaration-candidate persistence, immutable resolution audit and normalized goods-line promotion.
+
+The acceptance verifier does not inject OCR words or declaration candidates. Directly observed goods-line fields must carry `OCR` evidence through candidate projection and `sourceTrace`; `unit` remains explicitly `DERIVED` until the extractor exposes a dedicated unit bbox. The deterministic expected row remains `AG.TEST.1001 / TEST CIRCUIT BREAKER / 2 PCS / 10 EUR / 20 EUR / 853620100011` so DIGITAL and SCANNED paths can be compared against the same semantic result.
+
+Acceptance: backend/frontend typecheck plus `verifyRealScannedWorkerE2E.ts`. Success is `foundation-6.18.real-scanned-worker-e2e.passed` with `contentKind=SCANNED`, real OCR use, one materialized INVOICE LogicalDocument, `CANONICAL_DOCUMENT` extraction, one resolution audit, promoted goods-line values and preserved OCR/DERIVED provenance. Queue transport is intentionally not re-proved in this step; Foundation 6.15–6.17 already cover the BullMQ boundary, retry and concurrency independently.
+
+### Foundation 6.19 — MIXED multi-page OCR checkpoint/replay idempotency
+Foundation 6.19 verifies selective OCR and persisted checkpoint replay on a real two-page MIXED PDF. Page 1 is a native-text DIGITAL invoice carrying the deterministic goods row; page 2 is image-only invoice continuation content. Production analysis must classify the document as `MIXED`, leave page 1 native, OCR only page 2 with PaddleOCR, persist that OCR state in the ProcessingRun canonical document, and complete the normal declaration pipeline.
+
+The same ProcessingRun is then invoked again as a checkpoint replay. The worker must resume from the persisted canonical document rather than re-analyzing from scratch; `enrichCanonicalDocumentWithOcr` must find no unfinished OCR target pages, so persisted OCR page/word totals and the page-2 OCR word set remain unchanged. Re-running downstream segmentation/materialization/resolution must not duplicate LogicalDocuments or immutable declaration-resolution audits, and promoted declaration values/sourceTrace must remain stable.
+
+Acceptance: backend/frontend typecheck plus `verifyMixedCheckpointReplayE2E.ts`. Success is `foundation-6.19.mixed-checkpoint-replay.passed` with `contentKind=MIXED`, exactly one OCR-applied page, the DIGITAL page retaining native evidence, `checkpointReplayAttempt=2`, unchanged OCR word count/fingerprint, one LogicalDocument, one resolution audit, and unchanged normalized goods-line promotion. This verifies successful persisted checkpoint replay/idempotency; crash-at-an-arbitrary-inference-instruction is not simulated with a production failure hook.
+
+
+### Foundation 6.19 replay BSON/ObjectId correction
+
+The first 6.19 verification exposed a real replay defect even though the outer verification reached its final event: the second declaration lifecycle logged `idp.declaration.lifecycle.failed` because `structuredClone()` converted the Mongoose-generated `normalizedData.goodsLines[*]._id` ObjectId into a plain `{ buffer: Uint8Array(...) }` object. The promotion clone is now BSON-safe and explicitly preserves ObjectId and Date values. The 6.19 verification also asserts that the persisted goods-line `_id` remains a real `mongoose.Types.ObjectId` after replay. A 6.19 run is accepted only when there is no declaration-lifecycle failure in the log and the final verification event passes.
+
+
+### Foundation 6.20 closeout compatibility note
+
+The historical Foundation 6.9 lifecycle verification fixture now persists its declaration-facing candidate snapshot in `ProcessingRun.declarationCandidates`. Foundation 6.10 deliberately separated raw/segment extraction audit data (`candidates`) from the only candidate boundary consumed by declaration lifecycle (`declarationCandidates`). The 6.20 full regression exposed that the older 6.9 fixture still populated only the pre-6.10 field. Production lifecycle behavior is unchanged; the regression fixture is aligned with the later fail-closed invariant instead of weakening `CANDIDATES_NOT_READY`.

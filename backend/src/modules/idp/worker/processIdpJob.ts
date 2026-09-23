@@ -17,7 +17,7 @@ import { validateResolvedCandidate } from "../validator/documentValidatorRegistr
 import { ValidationStatus } from "../domain/validation.types.js";
 import { materializeLogicalDocuments } from "../domain/logicalDocumentMaterializer.js";
 import { tryOrchestrateDeclarationAfterProcessing } from "../domain/declarationFieldLifecycle.service.js";
-import { buildProcessingRunCandidateSnapshot } from "../domain/processingRunCandidateSnapshot.js";
+import { persistWorkerCandidateExtraction } from "../domain/workerCandidatePersistence.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -190,11 +190,7 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
         () => extractCandidatesBySegment(file, canonicalDocument!, segments!, classifications!)
       );
 
-      run.candidates = candidateEnvelope;
-      run.declarationCandidates = buildProcessingRunCandidateSnapshot(candidateEnvelope);
-      run.markModified("candidates");
-      run.markModified("declarationCandidates");
-      await run.save();
+      await persistWorkerCandidateExtraction(run, candidateEnvelope);
 
       log("idp.candidate_extract.completed", {
         jobId: processingRunId,

@@ -12,6 +12,7 @@ export interface DeclarationFieldCandidate {
   documentType: DocumentTypeValue;
   sourceProcessingRunId?: string;
   evidence: FieldCandidateEvidence[];
+  derived?: boolean;
 }
 
 export interface DeclarationFieldCandidateEnvelope {

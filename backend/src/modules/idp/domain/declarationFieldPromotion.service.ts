@@ -20,6 +20,14 @@ export const DEFAULT_DECLARATION_FIELD_TARGETS: Readonly<Record<string, string>>
 
 type MutableObject = Record<string, unknown>;
 
+const GOODS_LINE_FIELD_RE = /^goodsLines\.(\d+)\.(hsCode|productCode|description|quantity|unit|unitPrice|lineTotal|origin|grossKg|netKg)$/;
+
+function dynamicGoodsLineTarget(fieldName: string): string | undefined {
+  const match = GOODS_LINE_FIELD_RE.exec(fieldName);
+  if (!match) return undefined;
+  return `goodsLines.${Number(match[1])}.${match[2]}`;
+}
+
 function setByPath(target: MutableObject, path: string, value: unknown): void {
   const parts = path.split(".").filter(Boolean);
   if (parts.length === 0) throw new Error("Promotion target path is empty.");
@@ -34,9 +42,50 @@ function setByPath(target: MutableObject, path: string, value: unknown): void {
   cursor[parts[parts.length - 1]!] = value;
 }
 
+function setGoodsLineByPath(target: MutableObject, path: string, value: unknown): void {
+  const match = GOODS_LINE_FIELD_RE.exec(path);
+  if (!match) throw new Error(`Invalid goods-line promotion target: ${path}.`);
+  const index = Number(match[1]);
+  const field = match[2]!;
+  const existing = target.goodsLines;
+  if (existing !== undefined && !Array.isArray(existing)) throw new Error("Promotion target path collides at goodsLines.");
+  const goodsLines = (existing ?? []) as unknown[];
+  target.goodsLines = goodsLines;
+  const current = goodsLines[index];
+  if (current === undefined || current === null) goodsLines[index] = {};
+  else if (typeof current !== "object" || Array.isArray(current)) throw new Error(`Promotion target path collides at goodsLines.${index}.`);
+  (goodsLines[index] as MutableObject)[field] = value;
+}
+
+function setPromotionValue(target: MutableObject, path: string, value: unknown): void {
+  if (GOODS_LINE_FIELD_RE.test(path)) {
+    setGoodsLineByPath(target, path, value);
+    return;
+  }
+  setByPath(target, path, value);
+}
+
+function clonePromotionValue(value: unknown): unknown {
+  // structuredClone() does not preserve BSON ObjectId instances. In particular,
+  // Mongoose adds _id to normalizedData.goodsLines subdocuments after the first
+  // promotion; structuredClone turns those ObjectIds into plain { buffer }
+  // objects and a replay then fails Mongoose casting on save. Preserve BSON and
+  // Date values explicitly while still detaching the mutable promotion snapshot.
+  if (value instanceof mongoose.Types.ObjectId) return new mongoose.Types.ObjectId(value.toHexString());
+  if (value instanceof Date) return new Date(value.getTime());
+  if (Array.isArray(value)) return value.map((entry) => clonePromotionValue(entry));
+  if (value && typeof value === "object") {
+    const clone: MutableObject = {};
+    for (const [key, entry] of Object.entries(value as MutableObject)) clone[key] = clonePromotionValue(entry);
+    return clone;
+  }
+  return value;
+}
+
 function cloneObject(value: unknown): MutableObject {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return structuredClone(value as MutableObject);
+  const clone = clonePromotionValue(value);
+  if (!clone || typeof clone !== "object" || Array.isArray(clone)) return {};
+  return clone as MutableObject;
 }
 
 function assertPromotable(field: ResolvedDeclarationField): asserts field is ResolvedDeclarationField & {
@@ -88,7 +137,7 @@ export async function promotePersistedDeclarationFieldResolution(params: {
       continue;
     }
 
-    const targetPath = targets[fieldName];
+    const targetPath = targets[fieldName] ?? dynamicGoodsLineTarget(fieldName);
     if (!targetPath) {
       unmappedResolvedFields.push(fieldName);
       continue;
@@ -96,7 +145,7 @@ export async function promotePersistedDeclarationFieldResolution(params: {
 
     assertPromotable(fieldResolution);
     const selected = fieldResolution.selectedCandidate;
-    setByPath(normalizedData, targetPath, fieldResolution.value);
+    setPromotionValue(normalizedData, targetPath, fieldResolution.value);
     sourceTrace[targetPath] = {
       value: fieldResolution.value,
       source: selected.documentType,

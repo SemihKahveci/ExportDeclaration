@@ -10,6 +10,7 @@ import { ProcessingStage, ProcessingStatus } from "../../src/modules/idp/domain/
 import { tryOrchestrateDeclarationAfterProcessing } from "../../src/modules/idp/domain/declarationFieldLifecycle.service.js";
 
 const evidence = (segmentId:string,pageNumber:number) => [{segmentId,pageNumber,contentSource:"NATIVE_TEXT" as const}];
+const snapshot = (fields: Record<string, any[]>) => ({ version: "1" as const, fields });
 
 async function main() {
   await mongoose.connect(env.mongoUri);
@@ -27,14 +28,14 @@ async function main() {
       {companyId,declarationId,uploadedFileId:packingFileId,type:DocumentType.PACKING_LIST,pageStart:1,pageEnd:1,classificationMethod:"DETERMINISTIC",sourceProcessingRunId:packingRunId}
     ]);
     await ProcessingRunModel.insertMany([
-      {_id:invoiceRunId,companyId,declarationId,uploadedFileId:invoiceFileId,status:ProcessingStatus.COMPLETED,currentStage:ProcessingStage.FINALIZE,attempt:1,processorVersion:"verify-6.9",candidates:{version:"1",fields:{
+      {_id:invoiceRunId,companyId,declarationId,uploadedFileId:invoiceFileId,status:ProcessingStatus.COMPLETED,currentStage:ProcessingStage.FINALIZE,attempt:1,processorVersion:"verify-6.9",declarationCandidates:snapshot({
         invoiceNo:[{candidateId:"invoice-no",field:"invoiceNo",value:"EXP-69",confidence:.98,extractor:"invoice",evidence:evidence("seg-i",1)}],
         originCountry:[{candidateId:"invoice-origin",field:"originCountry",value:"TR",confidence:.95,extractor:"invoice",evidence:evidence("seg-i",1)}]
-      }}},
-      {_id:packingRunId,companyId,declarationId,uploadedFileId:packingFileId,status:ProcessingStatus.PROCESSING,currentStage:ProcessingStage.EXTRACT_CANDIDATES,attempt:1,processorVersion:"verify-6.9",candidates:{version:"1",fields:{
+      })},
+      {_id:packingRunId,companyId,declarationId,uploadedFileId:packingFileId,status:ProcessingStatus.PROCESSING,currentStage:ProcessingStage.EXTRACT_CANDIDATES,attempt:1,processorVersion:"verify-6.9",declarationCandidates:snapshot({
         invoiceNo:[{candidateId:"packing-no",field:"invoiceNo",value:"EXP-69",confidence:.92,extractor:"packing",evidence:evidence("seg-p",1)}],
         originCountry:[{candidateId:"packing-origin",field:"originCountry",value:"DE",confidence:.90,extractor:"packing",evidence:evidence("seg-p",1)}]
-      }}}
+      })}
     ]);
 
     const incomplete = await tryOrchestrateDeclarationAfterProcessing({companyId,declarationId});

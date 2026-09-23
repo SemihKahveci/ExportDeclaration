@@ -9,7 +9,7 @@ import type { SourceFieldCandidates } from "./declarationFieldCandidateProjector
 import { orchestrateDeclarationFieldResolution } from "./declarationFieldOrchestration.service.js";
 
 export type DeclarationFieldLifecycleResult =
-  | { status: "NOT_READY"; reason: "NO_LOGICAL_DOCUMENTS" | "MISSING_PROCESSING_RUN_PROVENANCE" | "PROCESSING_INCOMPLETE" | "CANDIDATES_NOT_READY" }
+  | { status: "NOT_READY"; reason: "NO_LOGICAL_DOCUMENTS" | "MISSING_PROCESSING_RUN_PROVENANCE" | "PROCESSING_INCOMPLETE" | "CANDIDATES_NOT_READY" | "RUN_DOCUMENT_OWNERSHIP_MISMATCH" }
   | { status: "BLOCKED"; reason: "PROCESSING_FAILED"; failedProcessingRunIds: string[] }
   | { status: "ORCHESTRATED"; resolutionRunId: string; reusedResolutionRun: boolean; promotedFields: string[]; skippedReviewFields: string[] };
 
@@ -39,6 +39,15 @@ export async function tryOrchestrateDeclarationAfterProcessing(params: {
     declarationId: params.declarationId
   }).lean();
   if (runs.length !== runIds.length) return { status: "NOT_READY", reason: "PROCESSING_INCOMPLETE" };
+  // A ProcessingRun may serve multiple logical segments of the SAME physical file,
+  // but it must never be reused as provenance for a different UploadedFile.
+  const runById = new Map(runs.map((run) => [String(run._id), run]));
+  if (documents.some((doc) => {
+    const run = runById.get(String(doc.sourceProcessingRunId));
+    return run && String(run.uploadedFileId) !== String(doc.uploadedFileId);
+  })) {
+    return { status: "NOT_READY", reason: "RUN_DOCUMENT_OWNERSHIP_MISMATCH" };
+  }
 
   const failed = runs.filter((run) => run.status === ProcessingStatus.FAILED).map((run) => String(run._id)).sort();
   if (failed.length > 0) return { status: "BLOCKED", reason: "PROCESSING_FAILED", failedProcessingRunIds: failed };

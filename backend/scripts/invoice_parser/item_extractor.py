@@ -95,8 +95,11 @@ def build_description_column(columns):
         "xMax": 430,
     }
 
-def extract_description_from_words(words, product_code):
+def extract_description_from_words(words, product_code, description_col=None):
     desc_words = []
+
+    x_min = description_col["xMin"] if description_col else 90
+    x_max = description_col["xMax"] if description_col else 430
 
     for w in sorted(words, key=lambda x: (x["y0"], x["x0"])):
         text = w["text"].strip()
@@ -106,8 +109,9 @@ def extract_description_from_words(words, product_code):
         if not text:
             continue
 
-        # Malzeme/Hizmet kolon aralığı
-        if not (90 <= x <= 430):
+        # Prefer the detected PRODUCT→QTY gap for the description column.
+        # Fall back to the legacy bounds when column detection is unavailable.
+        if not (x_min <= x <= x_max):
             continue
 
         # Headerları alma
@@ -557,7 +561,11 @@ def extract_items(paddle_all, gtip_result):
 
         same_line = sorted(find_nearby_words(words, y, 55), key=lambda w: w["x0"])
         product_code_full, product_code_short = extract_product_codes(same_line)
-        product_code = product_code_short
+        # Preserve the exact product/article code observed on the invoice as the
+        # canonical productCode.  The shortened suffix remains available only as
+        # compatibility metadata; silently dropping supplier/ERP namespaces here
+        # would lose source information before candidate resolution.
+        product_code = product_code_full
         currency = find_currency(same_line)
         delivery_term = find_delivery_term(same_line)
         transport_mode = find_transport_mode(same_line)
@@ -606,12 +614,13 @@ def extract_items(paddle_all, gtip_result):
 
         math_review = math_review and qty_repaired_ok
 
-        # Description columundaki kutular y ekseninde tasabilir
-        row_words = get_description_row_words(words, product_code, y)
-
-        description = extract_description_from_words(row_words, product_code)
-
+        # Description columundaki kutular y ekseninde tasabilir. Detect the
+        # page columns first so DIGITAL canonical coordinates are not forced
+        # through the old fixed x=90..430 description window.
         columns = detect_columns(words)
+        description_col = build_description_column(columns)
+        row_words = get_description_row_words(words, product_code, y)
+        description = extract_description_from_words(row_words, product_code, description_col)
 
         boxes = {
             "gtip": [g["x0"], g["y0"], g["x1"], g["y1"]] if g.get("x1") else None,
@@ -623,7 +632,7 @@ def extract_items(paddle_all, gtip_result):
 
         item = {
             "lineNo": idx,
-            "productCode": product_code_short,
+            "productCode": product_code_full,
             "productCodeFull": product_code_full,
             "productCodeShort": product_code_short,
             "currency": currency,
