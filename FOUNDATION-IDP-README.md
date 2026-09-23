@@ -964,3 +964,21 @@ Foundation 7.8 closes the multi-document declaration-intelligence foundation wit
 The closeout does not introduce new customs policy, authority selection, or normalized-data promotion behavior. Foundation 6 remains the owner of field resolution and promotion; Foundation 7 remains an evidence-backed assessment layer driven only by caller-owned policy. Historical verification scripts are retained as executable regression evidence.
 
 Acceptance is backend/frontend TypeScript checks plus `backend/scripts/idp/verifyFoundation7Closeout.ts`. A successful run emits `foundation-7.8.closeout-regression.passed` with seven passed checks and the preserved Foundation 6 authority/normalized-data boundaries. After this checkpoint, Foundation 8 may add controlled local-LLM/Qwen assistance behind these deterministic boundaries rather than replacing them.
+
+## Foundation 8.1 — Evidence-Constrained Declaration LLM Assistance Contract (COMPLETED)
+
+Foundation 8 starts by extending the existing Qwen/OpenAI-compatible infrastructure from document/field ambiguity to declaration-level cross-document conflicts. This stage is contract/policy only; it deliberately performs no network call and does not yet wire Qwen into the Foundation 7 production orchestration.
+
+Rules:
+- `READY` / consistent declarations never call the LLM.
+- Missing-document / insufficient-evidence cases without a grounded cross-document conflict are not sent to Qwen; an LLM cannot manufacture absent evidence.
+- Only explicit `CONFLICT` fields with persisted observations may be escalated.
+- The request contains the existing candidate IDs and their persisted document provenance.
+- The model may select only an existing candidate ID for the exact requested field. It cannot return a replacement field value.
+- Hallucinated candidate IDs, unrequested fields, duplicate selections, and partial `RESOLVED` responses are rejected fail-closed.
+- The model may return `REVIEW_REQUIRED` with no selections when evidence remains ambiguous.
+- Foundation 8.1 does not mutate `normalizedData`, does not choose Foundation 6 authority, and does not call a provider/network endpoint.
+
+Regression utility: `backend/scripts/idp/verifyDeclarationLlmAssistContract.ts`.
+
+Next: Foundation 8.2 will connect this declaration-level contract to the existing local Qwen/OpenAI-compatible provider boundary with strict structured-response parsing and provider failure handling, while keeping production orchestration opt-in and fail-closed.
