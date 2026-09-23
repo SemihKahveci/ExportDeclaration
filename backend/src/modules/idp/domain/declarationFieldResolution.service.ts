@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { DeclarationModel } from "../../declarations/declaration.model.js";
 import type { CrossDocumentFieldRule } from "./crossDocumentFieldResolution.types.js";
 import type { DeclarationFieldCandidateEnvelope } from "./declarationFieldCandidate.types.js";
+import type { DeclarationCandidateAuthoritySelection } from "./declarationFieldResolution.types.js";
 import { resolveDeclarationFields } from "./declarationFieldResolver.js";
 import { DeclarationFieldResolutionRunModel } from "./declarationFieldResolution.model.js";
 
@@ -35,6 +36,7 @@ export async function resolveAndPersistDeclarationFields(params: {
   declarationId: mongoose.Types.ObjectId;
   candidates: DeclarationFieldCandidateEnvelope;
   rules?: CrossDocumentFieldRule[];
+  candidateSelections?: DeclarationCandidateAuthoritySelection[];
   orchestrationKey?: string;
 }) {
   assertEnvelopeScope(params);
@@ -56,7 +58,7 @@ export async function resolveAndPersistDeclarationFields(params: {
     }
   }
 
-  const resolution = resolveDeclarationFields({ candidates: params.candidates, rules: params.rules });
+  const resolution = resolveDeclarationFields({ candidates: params.candidates, rules: params.rules, candidateSelections: params.candidateSelections });
   const sourceProcessingRunIds = collectSourceProcessingRunIds(params.candidates);
 
   const run = await DeclarationFieldResolutionRunModel.create({

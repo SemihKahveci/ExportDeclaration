@@ -4,7 +4,8 @@ import type { DeclarationFieldCandidate } from "./declarationFieldCandidate.type
 import type {
   DeclarationFieldResolutionEnvelope,
   ResolveDeclarationFieldsParams,
-  ResolvedDeclarationField
+  ResolvedDeclarationField,
+  DeclarationCandidateAuthoritySelection
 } from "./declarationFieldResolution.types.js";
 
 function assertUniqueCandidateIds(candidates: DeclarationFieldCandidate[]): void {
@@ -31,6 +32,12 @@ export function resolveDeclarationFields(
     ruleByField.set(rule.field, rule);
   }
 
+  const selectionByField = new Map<string, DeclarationCandidateAuthoritySelection>();
+  for (const selection of params.candidateSelections ?? []) {
+    if (selectionByField.has(selection.field)) throw new Error(`Duplicate candidate authority selection for field: ${selection.field}`);
+    selectionByField.set(selection.field, selection);
+  }
+
   const fields: Record<string, ResolvedDeclarationField> = {};
   const reviewRequiredFields: string[] = [];
 
@@ -38,7 +45,26 @@ export function resolveDeclarationFields(
     const candidates = params.candidates.fields[field] ?? [];
     assertUniqueCandidateIds(candidates);
 
-    const resolution = resolveCrossDocumentField(field, candidates, ruleByField.get(field));
+    const explicitSelection = selectionByField.get(field);
+    const explicitlySelectedCandidate = explicitSelection
+      ? candidates.find((candidate) => candidate.candidateId === explicitSelection.candidateId)
+      : undefined;
+    if (explicitSelection && !explicitlySelectedCandidate) {
+      throw new Error(`Candidate authority selection ${explicitSelection.candidateId} is missing from field ${field}.`);
+    }
+
+    const resolution = explicitlySelectedCandidate
+      ? {
+          field,
+          status: "RESOLVED" as const,
+          method: "EXPLICIT_CANDIDATE_AUTHORITY" as const,
+          value: explicitlySelectedCandidate.value,
+          selectedCandidateId: explicitlySelectedCandidate.candidateId,
+          candidateIds: candidates.map((candidate) => candidate.candidateId),
+          conflict: new Set(candidates.map((candidate) => JSON.stringify(candidate.value))).size > 1,
+          conflictCandidateIds: candidates.filter((candidate) => candidate.candidateId !== explicitlySelectedCandidate.candidateId).map((candidate) => candidate.candidateId)
+        }
+      : resolveCrossDocumentField(field, candidates, ruleByField.get(field));
     const selectedCandidate = resolution.selectedCandidateId
       ? candidates.find((candidate) => candidate.candidateId === resolution.selectedCandidateId)
       : undefined;
@@ -53,6 +79,12 @@ export function resolveDeclarationFields(
       candidates: candidates.slice()
     };
     if (resolution.status === "REVIEW_REQUIRED") reviewRequiredFields.push(field);
+  }
+
+  for (const selection of params.candidateSelections ?? []) {
+    if (!Object.prototype.hasOwnProperty.call(params.candidates.fields, selection.field)) {
+      throw new Error(`Candidate authority selection references unknown field: ${selection.field}.`);
+    }
   }
 
   return {

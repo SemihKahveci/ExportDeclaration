@@ -1016,3 +1016,17 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected event: `foundation-8.3.declaration-llm-assist-orchestration.passed`.
+
+### Foundation 8.4 — LLM candidate-authority bridge
+
+Foundation 8.4 allows a validated `RESOLVED` declaration LLM-assistance run to influence declaration values only by re-entering the Foundation 6 resolution boundary. The bridge locates the immutable Foundation 6 `REVIEW_REQUIRED` resolution whose persisted candidates match the current LLM selections, converts those selections into explicit candidate-level authority input, creates/reuses a new append-only `DeclarationFieldResolutionRun`, and then invokes the existing Foundation 6 promotion service.
+
+The model still cannot supply replacement values: every selection must name an existing candidate from the persisted Foundation 6 candidate envelope. `REVIEW_REQUIRED` LLM advice is rejected, company/declaration/current-assessment scope is fail-closed, the original resolution run remains immutable, exact replay reuses the derived resolution run, and `normalizedData` is written only by `promotePersistedDeclarationFieldResolution` with normal sourceTrace provenance.
+
+Verification:
+
+```bash
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationLlmAuthorityBridge.ts
+```
+
+Expected event: `foundation-8.4.llm-candidate-authority-bridge.passed`.
