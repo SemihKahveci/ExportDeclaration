@@ -896,3 +896,19 @@ The first 6.19 verification exposed a real replay defect even though the outer v
 ### Foundation 6.20 closeout compatibility note
 
 The historical Foundation 6.9 lifecycle verification fixture now persists its declaration-facing candidate snapshot in `ProcessingRun.declarationCandidates`. Foundation 6.10 deliberately separated raw/segment extraction audit data (`candidates`) from the only candidate boundary consumed by declaration lifecycle (`declarationCandidates`). The 6.20 full regression exposed that the older 6.9 fixture still populated only the pre-6.10 field. Production lifecycle behavior is unchanged; the regression fixture is aligned with the later fail-closed invariant instead of weakening `CANDIDATES_NOT_READY`.
+
+### Foundation 7.1 — Explicit declaration document coverage profile
+
+Foundation 7 starts the multi-document declaration-intelligence layer without hard-coding customs or company-specific document requirements. A declaration document set can now be assessed against an explicit caller-owned coverage profile containing required/optional semantic document roles and cardinality bounds.
+
+Coverage is computed from persisted logical-document roles while preserving the distinction between physical UploadedFiles and semantic LogicalDocuments. Missing required roles and configured cardinality excesses make the assessment `INCOMPLETE`; malformed or duplicate profile rules fail closed as `INVALID_PROFILE`. A present document type that is not mentioned by the profile is reported as informational `unconfiguredPresentTypes` and is not silently rejected or treated as required.
+
+This step deliberately does not decide that ATR, Packing List, Certificate of Origin, transport documents, or any other role is universally mandatory. Those requirements must come from an explicit company/declaration policy source in later Foundation 7 integration. Acceptance is backend/frontend TypeScript checks plus `verifyDeclarationDocumentCoverage.ts`, proving complete, missing, excess, invalid-profile, unconfigured-role and physical-vs-logical document-count behavior.
+
+### Foundation 7.2 — Explicit cross-document consistency assessment
+
+Foundation 7.2 adds a read-only declaration-level consistency assessment over persisted declaration candidate snapshots. Like 7.1, the rules are caller-owned: the IDP core does not invent that a particular field must appear in, or agree across, Invoice, Packing List, ATR, CMR, or another document role. Each configured rule names the field, participating document types, comparator, and whether every configured role must be present.
+
+The first comparator contract supports exact values, case-insensitive text, and numeric absolute tolerance. A configured mismatch is reported as `CONFLICT`; missing configured evidence or fewer than two participating document roles is `INSUFFICIENT_EVIDENCE`; neither case silently selects a winner. Candidate/logical-document/upload references are preserved in the observations so later review and policy layers can explain exactly which documents disagreed.
+
+This assessment is intentionally separate from the Foundation 6 authority resolver. Foundation 7.2 detects and explains configured cross-document consistency conditions but does not mutate normalized declaration data, create a new authority rule, or choose an authoritative document. Acceptance is backend/frontend TypeScript checks plus `verifyDeclarationCrossDocumentConsistency.ts`, proving case-insensitive agreement, numeric-tolerance agreement, explicit conflict detection, missing-role review, provenance references and invalid-profile fail-closed behavior.
