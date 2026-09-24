@@ -1096,3 +1096,57 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected event: `foundation-8.8.closeout-regression.passed` with seven passed checks and Foundation 8 status `COMPLETED`. After this checkpoint, Foundation 9 can build the human-review/confidence/exception workflow on the persisted deterministic + LLM audit boundaries instead of changing their ownership semantics.
+
+## Foundation 9.1 — Human Review Domain Contract
+
+Foundation 9 begins at the fail-closed boundary proven by Foundation 8: a declaration may remain `REVIEW_REQUIRED` after deterministic resolution, cross-document intelligence, and optional Qwen assistance. 9.1 defines the human-review contract without adding persistence, API, UI, or a direct normalized-data write path.
+
+- A review request is built only from fields that are `REVIEW_REQUIRED` in an existing Foundation 6 resolution run.
+- The request exposes the already-grounded candidate IDs and their provenance/evidence; it does not manufacture replacement values.
+- A reviewer must explicitly decide every requested field: select one existing candidate, or keep that field `REVIEW_REQUIRED`.
+- Every submission is bound to company, declaration, source resolution run, and actor identity. A stale source-resolution reference is rejected at the contract boundary.
+- Selecting a candidate in this contract is not authority application. 9.1 performs no persistence and never writes `normalizedData`; a later Foundation 9 bridge must route an accepted human selection back through the Foundation 6 resolution/promotion boundary.
+
+Verification:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationHumanReviewContract.ts
+```
+
+Expected terminal event: `foundation-9.1.human-review-domain-contract.passed`.
+
+### Foundation 9.2 — Persisted Human Review Audit
+
+Human-review submissions are persisted as append-only `DeclarationHumanReviewRun` records. The persistence boundary is source-resolution-bound and fail-closed: a request whose source resolution is no longer current is rejected before persistence. Exact replay is idempotent through a deterministic review key, while a materially changed human decision creates a new immutable audit run. Company/declaration scope is part of both lookup and uniqueness. This foundation still does not mutate `normalizedData` and does not bypass Foundation 6 authority; applying a selected candidate is owned by Foundation 9.3.
+
+### Foundation 9.3 — Human Candidate-Authority Bridge
+
+Foundation 9.3 converts an immutable, persisted `DECIDED` human-review run into explicit candidate-level authority without creating a second normalized-data write path. The bridge loads the exact review run in company/declaration scope, reloads its exact source Foundation 6 resolution run, verifies every selected candidate still belongs to the reviewed `REVIEW_REQUIRED` field, and then re-enters `resolveAndPersistDeclarationFields` plus `promotePersistedDeclarationFieldResolution`.
+
+`KEEP_REVIEW_REQUIRED` remains fail-closed and cannot cross the authority bridge. Human review cannot provide a replacement scalar: only an existing candidate ID from the immutable source resolution may be selected. The original Foundation 6 resolution remains immutable, the derived authority resolution is append-only and idempotent, company scope is enforced, and `normalizedData`/`sourceTrace` remain owned by the Foundation 6 promotion boundary.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationHumanReviewAuthorityBridge.ts
+```
+
+Expected terminal event: `foundation-9.3.human-review-authority-bridge.passed`.
+
+
+## Foundation 9.4 — Human Review API
+
+Foundation 9.4 exposes the Foundation 9.1–9.3 declaration-level human-review boundary to the frontend without allowing the client to manufacture authority.
+
+Endpoints:
+
+- `GET /api/declarations/:id/idp-human-review/current`
+- `GET /api/declarations/:id/idp-human-review/audit`
+- `POST /api/declarations/:id/idp-human-review/current`
+
+The API derives `companyId` and `actorUserId` from the authenticated request context. Client-supplied scope/actor values are ignored. The POST endpoint is bound to the current Foundation 6 resolution run, accepts only the explicit Foundation 9.1 decisions, persists the Foundation 9.2 append-only audit, and only applies authority through the Foundation 9.3 → Foundation 6 bridge. `KEEP_REVIEW_REQUIRED` never promotes a value.
+
+The older processing-run `/idp-reviews` API remains separate for compatibility; Foundation 9 frontend work must use `/idp-human-review` for declaration-level cross-document conflict review.

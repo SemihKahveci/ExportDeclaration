@@ -4,7 +4,7 @@ import type { DeclarationFieldCandidate, DeclarationFieldCandidateEnvelope } fro
 export interface DeclarationCandidateAuthoritySelection {
   field: string;
   candidateId: string;
-  source: "LLM_ASSIST";
+  source: "LLM_ASSIST" | "HUMAN_REVIEW";
 }
 
 export interface ResolvedDeclarationField extends CrossDocumentResolution {

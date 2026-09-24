@@ -3,6 +3,7 @@ import { asyncHandler } from "../../common/utils/asyncHandler.js";
 import * as ctrl from "./declaration.controller.js";
 import { documentSubRouter } from "../documents/document.routes.js";
 import { humanReviewRouter } from "../idp/review/humanReview.routes.js";
+import { declarationHumanReviewApiRouter } from "../idp/review/declarationHumanReviewApi.routes.js";
 import { getControlProjection } from "../declaration-control/declarationControl.controller.js";
 import { requireAnyCapability } from "../../common/middlewares/authorization.js";
 
@@ -47,5 +48,6 @@ router.post("/:id/exports/ubl-ihracat", asyncHandler(ctrl.postExportUblIhracat))
 
 router.use("/:id/documents", documentSubRouter);
 router.use("/:id/idp-reviews", humanReviewRouter);
+router.use("/:id/idp-human-review", declarationHumanReviewApiRouter);
 
 export const declarationRouter = router;
