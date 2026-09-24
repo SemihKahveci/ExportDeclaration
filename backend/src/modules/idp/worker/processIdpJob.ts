@@ -20,6 +20,7 @@ import { tryOrchestrateDeclarationAfterProcessing } from "../domain/declarationF
 import { persistWorkerCandidateExtraction } from "../domain/workerCandidatePersistence.js";
 import { tryOrchestrateDeclarationIntelligenceAfterProcessing } from "../domain/declarationIntelligenceLifecycle.service.js";
 import { tryOrchestrateDeclarationLlmAssistAfterProcessing } from "../llm/declarationLlmAssistLifecycle.service.js";
+import { tryAssessDeclarationExceptionsAfterProcessing } from "../domain/declarationExceptionLifecycle.service.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -385,6 +386,23 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
       log("idp.declaration.llm_assist.failed", {
         jobId: processingRunId,
         error: llmAssistError instanceof Error ? llmAssistError.message : String(llmAssistError)
+      });
+    }
+
+    // Foundation 9 exception state runs last because Foundation 8 LLM assistance
+    // may legitimately create a newer Foundation 6 authority resolution. This
+    // bridge therefore assesses only the final current resolution/intelligence
+    // snapshots and never rewrites an already completed file run.
+    try {
+      const exceptions = await tryAssessDeclarationExceptionsAfterProcessing({
+        companyId: run.companyId,
+        declarationId: run.declarationId
+      });
+      log("idp.declaration.exceptions", { jobId: processingRunId, ...exceptions });
+    } catch (exceptionError) {
+      log("idp.declaration.exceptions.failed", {
+        jobId: processingRunId,
+        error: exceptionError instanceof Error ? exceptionError.message : String(exceptionError)
       });
     }
   } catch (error) {

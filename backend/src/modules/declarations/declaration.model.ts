@@ -106,6 +106,19 @@ export interface DeclarationDoc extends mongoose.Document {
     fields: Record<string, unknown>;
     resolvedAt: Date;
   };
+  idpExceptionPolicy?: {
+    version: "1";
+    minimumSelectedCandidateConfidence?: number;
+  };
+  idpExceptions?: {
+    version: "1";
+    assessmentRunId: mongoose.Types.ObjectId;
+    sourceResolutionRunId: mongoose.Types.ObjectId;
+    sourceIntelligenceAssessmentRunId?: mongoose.Types.ObjectId;
+    status: "CLEAR" | "REVIEW_REQUIRED" | "BLOCKED";
+    exceptions: unknown[];
+    assessedAt: Date;
+  };
   createdBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -296,6 +309,21 @@ const DeclarationSchema = new Schema(
       reviewRequiredFields: { type: [String], default: [] },
       fields: Schema.Types.Mixed,
       resolvedAt: Date
+    },
+
+    idpExceptionPolicy: {
+      version: { type: String, enum: ["1"] },
+      minimumSelectedCandidateConfidence: { type: Number, min: 0, max: 1 }
+    },
+
+    idpExceptions: {
+      version: { type: String, enum: ["1"] },
+      assessmentRunId: { type: Schema.Types.ObjectId, ref: "DeclarationExceptionAssessmentRun" },
+      sourceResolutionRunId: { type: Schema.Types.ObjectId, ref: "DeclarationFieldResolutionRun" },
+      sourceIntelligenceAssessmentRunId: { type: Schema.Types.ObjectId, ref: "DeclarationIntelligenceAssessmentRun" },
+      status: { type: String, enum: ["CLEAR", "REVIEW_REQUIRED", "BLOCKED"] },
+      exceptions: { type: [Schema.Types.Mixed], default: [] },
+      assessedAt: Date
     },
 
     createdBy: { type: Schema.Types.ObjectId }

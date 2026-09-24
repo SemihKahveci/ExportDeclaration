@@ -1150,3 +1150,155 @@ Endpoints:
 The API derives `companyId` and `actorUserId` from the authenticated request context. Client-supplied scope/actor values are ignored. The POST endpoint is bound to the current Foundation 6 resolution run, accepts only the explicit Foundation 9.1 decisions, persists the Foundation 9.2 append-only audit, and only applies authority through the Foundation 9.3 → Foundation 6 bridge. `KEEP_REVIEW_REQUIRED` never promotes a value.
 
 The older processing-run `/idp-reviews` API remains separate for compatibility; Foundation 9 frontend work must use `/idp-human-review` for declaration-level cross-document conflict review.
+
+
+## Foundation 9.5 — Declaration Human Review UI
+
+The Evrak Hazırlık `Belge İncelemesi` tab now consumes the declaration-level `/idp-human-review` API introduced in Foundation 9.4 rather than treating processing-run review decisions as declaration authority.
+
+The UI:
+- prominently marks current cross-document conflicts as `REVIEW REQUIRED`;
+- never presents a previously promoted `normalizedData` value as final while the current resolution requires review;
+- shows only grounded candidates supplied by the Foundation 9.1 contract, including document type, value, confidence, extractor, and persisted evidence;
+- can open candidate evidence against the correct physical `uploadedFileId`;
+- allows only candidate selection or explicit `KEEP_REVIEW_REQUIRED`; there is no arbitrary replacement-value input;
+- submits all reviewed fields explicitly and lets Foundation 9.3/Foundation 6 own authority and promotion;
+- shows recent append-only human-review audit runs.
+
+The older processing-run `/idp-reviews` backend remains available for compatibility, but this declaration-level cross-document review UI does not use it.
+
+
+## Foundation 9.6 — Confidence / Exception Domain Contract
+
+Foundation 9.6 introduces an assessment-only operational exception layer over the current Foundation 6 resolution and Foundation 7 intelligence state. It does not create a second resolver or authority path.
+
+Confidence handling is policy-driven only. A low-confidence exception is emitted only when an explicit `minimumSelectedCandidateConfidence` is configured; no hidden/default confidence threshold is invented. Existing `REVIEW_REQUIRED` fields remain review exceptions regardless of confidence. Foundation 7 `REVIEW_REQUIRED` intelligence also remains review-visible, while `INVALID_CONFIGURATION` is represented as a blocking exception.
+
+The assessment returns `CLEAR`, `REVIEW_REQUIRED`, or `BLOCKED` plus deterministic exception records. It never selects candidates, persists human decisions, mutates `normalizedData`/`sourceTrace`, or bypasses Foundation 6.
+
+Verification:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationExceptionAssessment.ts
+```
+
+Expected event: `foundation-9.6.confidence-exception-contract.passed`.
+
+## Foundation 9.7 — Persisted Exception Assessment + Current Snapshot
+
+Foundation 9.7 persists the deterministic Foundation 9.6 result as an append-only `DeclarationExceptionAssessmentRun` and advances a declaration-level `idpExceptions` current snapshot. Every run is bound to the exact current Foundation 6 resolution and, when present, the exact current Foundation 7 intelligence assessment.
+
+The assessment key is deterministic across source state, explicit exception policy, and assessment output. Exact replay reuses the immutable run only while that run is still the declaration's current exception snapshot. A changed explicit policy/result creates a new append-only run; replay of an older result is rejected instead of rolling the current snapshot backward. Company, resolution, and intelligence scope are fail-closed.
+
+This layer remains operational state only: it does not select candidate authority and does not mutate `normalizedData` or `sourceTrace`.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationExceptionPersistence.ts
+```
+
+Expected event: `foundation-9.7.exception-persistence.passed`.
+
+
+## Foundation 9.8 — Production Worker Exception Lifecycle
+
+Foundation 9.8 wires the Foundation 9.6/9.7 exception workflow into the production worker lifecycle. The exception bridge loads the exact current Foundation 6 resolution and current Foundation 7 intelligence assessment, computes operational exceptions, and persists the append-only/current Foundation 9.7 state.
+
+The bridge intentionally runs after Foundation 8 LLM assistance because validated LLM authority may create a newer Foundation 6 resolution. Exception state therefore describes the final current declaration state rather than a superseded pre-assist resolution.
+
+An explicit persisted `idpExceptionPolicy.minimumSelectedCandidateConfidence` enables low-confidence exceptions. If that policy is absent, no confidence threshold is invented; deterministic unresolved-resolution and intelligence exceptions can still be surfaced. Exception lifecycle failure is isolated from an already completed file ProcessingRun.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyWorkerExceptionLifecycleIntegration.ts
+```
+
+Expected event: `foundation-9.8.worker-exception-lifecycle.passed`.
+
+## Roadmap — Foundation 9 → Foundation 10 → DGX Spark
+
+### Foundation 9 — Human Review, Confidence, and Exception Workflow
+
+- **9.1 — Human Review Domain Contract — COMPLETED**
+  Grounded Foundation 6 review fields/candidates only; no arbitrary replacement values.
+- **9.2 — Persisted Review Queue / Append-Only Audit — COMPLETED**
+  Immutable human decisions, actor/source binding, replay and tenant isolation.
+- **9.3 — Human Authority Bridge — COMPLETED**
+  Human candidate selection enters authority only through a new Foundation 6 resolution/promotion.
+- **9.4 — Human Review API — COMPLETED**
+  Auth-owned actor/company scope, current review projection, append-only audit endpoints.
+- **9.5 — Human Review UI — COMPLETED**
+  Cross-document conflicts and provenance exposed; no free-text replacement authority.
+- **9.6 — Confidence / Exception Domain Contract — COMPLETED**
+  Explicit confidence policy plus deterministic REVIEW_REQUIRED/BLOCKED exception composition.
+- **9.7 — Persisted Exception Assessment — COMPLETED**
+  Append-only exception audit and declaration current exception snapshot.
+- **9.8 — Production Worker Exception Lifecycle — COMPLETED**
+  Final current resolution/intelligence → exception assessment/persistence after worker + LLM authority lifecycle.
+- **9.9 — Exception API/UI + Operational Review UX — COMPLETED**
+  Surface current exception state and actionable reason/provenance in the application without creating a second authority path.
+- **9.10 — Real Review/Exception E2E + Foundation 9 Closeout — ACTIVE**
+  Real multi-document conflict → review → human authority → updated resolution → exception state, followed by full Foundation 9 regression.
+
+### Foundation 10 — Production Hardening / Performance / Release
+
+Planned scope after Foundation 9 closes:
+- production configuration validation and fail-closed startup/readiness;
+- queue/retry/idempotency hardening under realistic load;
+- OCR/IDP/LLM performance and resource controls for the expected invoice workload;
+- observability, structured operational diagnostics, and recovery paths;
+- security/tenant-boundary regression and release hygiene;
+- full Foundation 6–10 regression and production release checklist.
+
+### DGX Spark Migration — AFTER Foundation 10
+
+All Foundation 9 and Foundation 10 development/testing remains on the current Windows local environment. DGX Spark is not a development dependency for these foundations. After Foundation 10 is complete, the validated Qwen runtime can be migrated to DGX Spark and benchmarked/integrated as the offline inference host without changing the IDP authority architecture.
+
+
+## Foundation 9.9 — Exception API/UI + Operational Review UX
+
+Foundation 9.9 exposes the current persisted Foundation 9.7 exception snapshot through a read-only declaration API and surfaces that operational state inside the declaration-level review UI.
+
+Endpoints:
+- `GET /api/declarations/:id/idp-exceptions/current`
+- `GET /api/declarations/:id/idp-exceptions/audit`
+
+The API is company-scoped from authenticated operational context and never accepts authority decisions. The UI displays `REVIEW_REQUIRED`/`BLOCKED`, deterministic exception reasons, and explicit confidence/threshold context where applicable. Human candidate selection remains exclusively on the Foundation 9.1–9.4 human-review path; exception state does not become a second authority mechanism.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyDeclarationExceptionApi.ts
+```
+
+Expected event: `foundation-9.9.exception-api-ui-boundary.passed`.
+
+
+## Foundation 9.10 — Foundation 9 Closeout Regression
+
+Foundation 9.10 is the closeout gate for the human-review/confidence/exception foundation. It deliberately re-runs every executable Foundation 9 backend contract/integration boundary plus the real Foundation 7.7 multi-document declaration E2E that supplies the downstream review topology.
+
+The closeout is intentionally a regression gate rather than a new authority mechanism. Foundation 6 remains the only candidate-resolution/promotion authority. Foundation 9 adds auditable human selection and operational exception state around that boundary.
+
+Foundation 9.5 UI behavior is protected by frontend typecheck and the 9.9 API/UI boundary verifier; the closeout runner does not claim browser automation. A final browser smoke check remains appropriate before production release and is tracked under Foundation 10 release hardening.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation9Closeout.ts
+```
+
+Expected final event: `foundation-9.10.closeout.passed`.
+
+When this gate passes, mark 9.10 and Foundation 9 `COMPLETED`, create a clean git checkpoint, and begin Foundation 10 production hardening. DGX Spark migration remains after Foundation 10.
