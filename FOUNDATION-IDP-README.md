@@ -1054,3 +1054,21 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected event: `foundation-8.6.qwen-runtime-readiness.passed`. This verifier uses a local mock model-discovery endpoint; installing or downloading Qwen is intentionally deferred until the runtime boundary itself is proven.
+
+### Foundation 8.7 — Real local Qwen end-to-end
+
+Foundation 8.7 replaces the mock declaration-conflict provider used by earlier verification with the real local OpenAI-compatible Qwen runtime. Development remains on the Windows workstation; Docker Desktop reaches the host runtime through `host.docker.internal`. DGX Spark deployment is intentionally deferred until after Foundation 10.
+
+The verifier defaults to `http://host.docker.internal:11434` and `qwen3:8b`, matching the Windows Ollama development runtime. It first performs the Foundation 8.6 read-only `/v1/models` readiness probe, then sends real declaration-conflict evidence through the production worker and `QwenOpenAiProvider` `/v1/chat/completions` path.
+
+The real model is allowed to return either a contract-valid `RESOLVED` decision or a fail-closed `REVIEW_REQUIRED` decision. A `RESOLVED` response is accepted only when it selects an existing candidate ID from the exact requested field and is applied exclusively through the Foundation 6 authority/promotion boundary. A `REVIEW_REQUIRED` response must contain zero selections and must not silently promote the conflicting field. This avoids turning model nondeterminism into a false test failure or, worse, an implicit authority rule.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyRealLocalQwenE2E.ts
+```
+
+Expected event: `foundation-8.7.real-local-qwen-e2e.passed` with `realRuntimeUsed=true` and `mockServerUsed=false`. The output records the actual Qwen decision so the development evidence remains explicit.

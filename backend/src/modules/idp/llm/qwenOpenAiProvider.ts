@@ -29,7 +29,13 @@ function parseFieldResponse(content: string): Omit<FieldLlmResolveResponse, "mod
 
 function parseDeclarationAssistResponse(content: string): Omit<DeclarationLlmAssistResponse, "model" | "provider"> {
   const parsed = JSON.parse(stripFence(content)) as Partial<DeclarationLlmAssistResponse>;
-  if (parsed.version !== "1") throw new Error("Declaration LLM response version geçersiz.");
+  // Some OpenAI-compatible local runtimes/models serialize the protocol marker as
+  // JSON number 1 even when prompted with the string "1". Canonicalize only that
+  // transport-equivalent representation; missing/other versions still fail closed.
+  const rawVersion = (parsed as { version?: unknown }).version;
+  if (rawVersion !== "1" && rawVersion !== 1) {
+    throw new Error(`Declaration LLM response version geçersiz (received=${JSON.stringify(rawVersion)}).`);
+  }
   if (parsed.decision !== DeclarationLlmAssistDecision.RESOLVED && parsed.decision !== DeclarationLlmAssistDecision.REVIEW_REQUIRED) throw new Error("Declaration LLM response decision geçersiz.");
   if (!Array.isArray(parsed.selections) || !Array.isArray(parsed.issues)) throw new Error("Declaration LLM response contract eksik.");
   for (const selection of parsed.selections) {
@@ -77,7 +83,7 @@ export class QwenOpenAiProvider implements LlmProvider, FieldLlmProvider {
   }
 
   async resolveDeclarationConflicts(request: DeclarationLlmAssistRequest): Promise<DeclarationLlmAssistResponse> {
-    const content = await this.complete(request, "You are an evidence-constrained declaration conflict resolver. Return JSON only. For every requested conflict field, select only an existing candidateId supplied for that exact field. Never invent a replacement value, field, candidate, or document evidence. If every field cannot be resolved from supplied evidence, return REVIEW_REQUIRED with zero selections.");
+    const content = await this.complete(request, 'You are an evidence-constrained declaration conflict resolver. Return one JSON object only, with exactly this contract: {"version":"1","decision":"RESOLVED|REVIEW_REQUIRED","selections":[{"field":"<requested field>","candidateId":"<existing candidateId>"}],"issues":[]}. The version value MUST be the JSON string "1", never the number 1. For every requested conflict field, select only an existing candidateId supplied for that exact field. Never invent a replacement value, field, candidate, or document evidence. If every field cannot be resolved from supplied evidence, return REVIEW_REQUIRED with zero selections.');
     return { ...parseDeclarationAssistResponse(content), model: env.llmModel, provider: this.name };
   }
 }
