@@ -40,7 +40,7 @@ async function persistCanonicalDocument(
   await run.save();
 }
 
-export async function processIdpJob(processingRunId: string): Promise<void> {
+export async function processIdpJob(processingRunId: string, options: { allowCompletedReplay?: boolean } = {}): Promise<void> {
   const jobStartedAt = Date.now();
   const run = await ProcessingRunModel.findById(processingRunId);
   if (!run) throw new Error(`ProcessingRun bulunamadı: ${processingRunId}`);
@@ -48,7 +48,10 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
   // At-least-once delivery may replay a terminal BullMQ job. A completed or
   // cancelled ProcessingRun is immutable from the worker perspective: do not
   // increment attempts, re-extract, or re-run declaration authority lifecycles.
-  if (run.status === ProcessingStatus.COMPLETED || run.status === ProcessingStatus.CANCELLED) {
+  if (
+    run.status === ProcessingStatus.CANCELLED ||
+    (run.status === ProcessingStatus.COMPLETED && !options.allowCompletedReplay)
+  ) {
     log("idp.job.terminal_replay_skipped", {
       jobId: processingRunId,
       status: run.status,

@@ -104,7 +104,7 @@ async function main() {
     // Replay the exact persisted ProcessingRun. This exercises the production
     // checkpoint-resume branch: canonicalDocument already exists and the only
     // OCR target page is already marked ocrApplied=true.
-    await processIdpJob(String(run._id));
+    await processIdpJob(String(run._id), { allowCompletedReplay: true });
 
     const second = await ProcessingRunModel.findById(run._id).lean();
     assert(second);

@@ -1325,8 +1325,8 @@ Foundation 10 roadmap:
 - **10.2 — Queue / Retry / Idempotency Hardening — COMPLETED**
 - **10.3 — OCR / IDP / LLM Performance & Resource Controls — COMPLETED**
 - **10.4 — Observability / Diagnostics / Recovery — COMPLETED**
-- **10.5 — Security / Tenant / Failure Regression — ACTIVE**
-- **10.6 — Production Release Checklist + Foundation 6–10 Full Regression — PLANNED**
+- **10.5 — Security / Tenant / Failure Regression — COMPLETED**
+- **10.6 — Production Release Checklist + Foundation 6–10 Full Regression — ACTIVE**
 - **DGX Spark migration / benchmark — AFTER Foundation 10**
 
 
@@ -1435,3 +1435,41 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected final event: `foundation-10.5.security-tenant-failure-regression.passed`.
+
+
+## Foundation 10.6 — Production Release Checklist + Foundation 6–10 Full Regression
+
+10.6 is the final Windows-local production release gate before DGX Spark migration/benchmark work.
+
+Release checklist:
+- backend and frontend TypeScript compile cleanly;
+- Docker API, Redis, Mongo and external IDP worker are available for the real queue/OCR regressions;
+- local Ollama/Qwen runtime is available for the Foundation 8 real-Qwen regression;
+- production configuration remains fail-closed and development defaults are not treated as production-ready;
+- Foundations 6, 7, 8 and 9 closeout suites all pass from the current tree;
+- Foundation 10.1–10.5 readiness, idempotency, resource, diagnostics and security gates all pass;
+- no new normalized-data authority exists outside the Foundation 6 resolution/promotion boundary.
+
+Final commands:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml ps
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation10ReleaseCloseout.ts
+```
+
+The full regression is intentionally long: it includes real BullMQ transport, DIGITAL/SCANNED/MIXED processing and the real local Qwen E2E inherited from the earlier closeout suites.
+
+Expected final event:
+`foundation-10.6.production-release-full-regression.passed`
+
+Only after that event should Foundation 10 be marked CLOSED and the DGX Spark migration/benchmark phase begin.
+
+
+### Foundation 10.6 compatibility note — explicit checkpoint replay
+
+Foundation 10.2 production duplicate-delivery protection skips a normal COMPLETED ProcessingRun before attempt mutation.
+Foundation 6.19, however, intentionally re-enters the same completed run to verify persisted MIXED OCR checkpoint replay.
+That regression now opts in explicitly with `allowCompletedReplay: true`; the BullMQ production worker does not set this option.
+This preserves both guarantees: production terminal duplicate delivery is skipped, while the historical checkpoint/replay contract remains testable.
