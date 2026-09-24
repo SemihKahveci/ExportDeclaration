@@ -1072,3 +1072,27 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected event: `foundation-8.7.real-local-qwen-e2e.passed` with `realRuntimeUsed=true` and `mockServerUsed=false`. The output records the actual Qwen decision so the development evidence remains explicit.
+
+### Foundation 8.7 — Real local Qwen E2E
+
+Foundation 8.7 proves the declaration-assistance path against a real local Qwen runtime instead of a mock server. The Windows development host runs Ollama with `qwen3:8b`; Docker reaches its OpenAI-compatible API through `http://host.docker.internal:11434`. The verifier processes real Invoice and Packing List PDFs through the production `processIdpJob()` function until a grounded quantity conflict reaches the real model.
+
+The model remains evidence-constrained. A real `REVIEW_REQUIRED` decision is valid and fail-closed: no candidate authority is invented, the already-promoted pre-conflict Foundation 6 value/provenance is not silently rewritten or deleted, and no direct LLM normalized-data write occurs. If the model returns `RESOLVED`, only an existing candidate ID can cross the Foundation 8.4 bridge and Foundation 6 remains the promotion owner. The OpenAI transport canonicalizes only the equivalent JSON representation `version: 1` to contract version `"1"`; missing or unsupported versions remain rejected.
+
+Verification: `backend/scripts/idp/verifyRealLocalQwenE2E.ts`. Expected event: `foundation-8.7.real-local-qwen-e2e.passed` with `realRuntimeUsed=true`, `mockServerUsed=false`, and persisted real-Qwen assistance.
+
+### Foundation 8.8 — Foundation 8 closeout regression
+
+Foundation 8.8 closes the controlled local-LLM/Qwen foundation with one regression runner over Foundations 8.1 through 8.7. It replays the evidence-constrained contract, Qwen provider transport, append-only assistance orchestration, Foundation 6 candidate-authority bridge, production worker lifecycle integration, runtime readiness guardrails, and the real Windows/Ollama `qwen3:8b` E2E.
+
+The closeout deliberately requires the real local Qwen runtime used by 8.7 to remain reachable; it does not replace the final E2E with a mock. Foundation 6 remains the only normalized-data promotion boundary, arbitrary model replacement values remain prohibited, and `REVIEW_REQUIRED` remains fail-closed.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8Closeout.ts
+```
+
+Expected event: `foundation-8.8.closeout-regression.passed` with seven passed checks and Foundation 8 status `COMPLETED`. After this checkpoint, Foundation 9 can build the human-review/confidence/exception workflow on the persisted deterministic + LLM audit boundaries instead of changing their ownership semantics.
