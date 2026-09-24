@@ -1244,7 +1244,7 @@ Expected event: `foundation-9.8.worker-exception-lifecycle.passed`.
   Final current resolution/intelligence → exception assessment/persistence after worker + LLM authority lifecycle.
 - **9.9 — Exception API/UI + Operational Review UX — COMPLETED**
   Surface current exception state and actionable reason/provenance in the application without creating a second authority path.
-- **9.10 — Real Review/Exception E2E + Foundation 9 Closeout — ACTIVE**
+- **9.10 — Real Review/Exception E2E + Foundation 9 Closeout — COMPLETED**
   Real multi-document conflict → review → human authority → updated resolution → exception state, followed by full Foundation 9 regression.
 
 ### Foundation 10 — Production Hardening / Performance / Release
@@ -1302,3 +1302,46 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 Expected final event: `foundation-9.10.closeout.passed`.
 
 When this gate passes, mark 9.10 and Foundation 9 `COMPLETED`, create a clean git checkpoint, and begin Foundation 10 production hardening. DGX Spark migration remains after Foundation 10.
+
+
+## Foundation 9 — CLOSED
+
+Foundation 9 closeout passed all 9 executable regression gates, including the real multi-document declaration E2E. Human review remains grounded in existing candidates, human authority continues through Foundation 6, exception state remains non-authoritative, confidence thresholds remain explicit-only, and review/exception audit history remains append-only.
+
+## Foundation 10.1 — Production Configuration / Readiness Contract
+
+Foundation 10 begins with a fail-closed production-readiness contract rather than changing extraction or authority behavior.
+
+Planned 10.1 checks:
+- validate required production configuration before accepting IDP workload;
+- distinguish required core dependencies from optional LLM assistance;
+- verify MongoDB, Redis/queue, OCR runtime, upload/storage paths, and configured LLM endpoint/model readiness;
+- never silently enable LLM or invent confidence policy;
+- expose a deterministic readiness result suitable for startup/health diagnostics;
+- avoid mutating declarations, candidates, normalized data, or authority state.
+
+Foundation 10 roadmap:
+- **10.1 — Production Configuration / Readiness — ACTIVE**
+- **10.2 — Queue / Retry / Idempotency Hardening — PLANNED**
+- **10.3 — OCR / IDP / LLM Performance & Resource Controls — PLANNED**
+- **10.4 — Observability / Diagnostics / Recovery — PLANNED**
+- **10.5 — Security / Tenant / Failure Regression — PLANNED**
+- **10.6 — Production Release Checklist + Foundation 6–10 Full Regression — PLANNED**
+- **DGX Spark migration / benchmark — AFTER Foundation 10**
+
+
+### Foundation 10.1 implementation — configuration gate
+
+The API and IDP worker now execute the same deterministic readiness configuration gate before startup. Production rejects the known development JWT secret and malformed/missing core Mongo/Redis/upload configuration. OCR/parser and LLM are explicit feature gates: when disabled they are represented as `DISABLED`; when enabled their required configuration becomes fail-closed. LLM remains optional and is never silently enabled.
+
+10.1 is deliberately split from later live dependency/performance hardening: this gate validates startup configuration without mutating declarations or introducing a second authority path. Live queue/retry/runtime stress and recovery remain Foundation 10.2+.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductionReadinessContract.ts
+```
+
+Expected event: `foundation-10.1.production-readiness-contract.passed`.

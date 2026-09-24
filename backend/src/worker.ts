@@ -3,8 +3,12 @@ import { connectDb } from "./config/db.js";
 import { env } from "./config/env.js";
 import { IDP_QUEUE_NAME, type IdpJobData } from "./modules/idp/queue/idpQueue.js";
 import { processIdpJob } from "./modules/idp/worker/processIdpJob.js";
+import { assertProductionReadinessConfiguration } from "./modules/idp/readiness/productionReadiness.service.js";
+import { productionReadinessConfigFromEnv } from "./modules/idp/readiness/productionReadiness.env.js";
 
 async function main(): Promise<void> {
+  const readiness = assertProductionReadinessConfiguration(productionReadinessConfigFromEnv());
+  console.log(JSON.stringify({ event: "production.readiness.configuration", component: "idp-worker", status: readiness.status, productionMode: readiness.productionMode }));
   await connectDb();
   const worker = new Worker<IdpJobData>(IDP_QUEUE_NAME, async (job) => {
     await processIdpJob(job.data.processingRunId);

@@ -3,8 +3,13 @@ import fs from "node:fs/promises";
 import app from "./app.js";
 import { connectDb } from "./config/db.js";
 import { env } from "./config/env.js";
+import { assertProductionReadinessConfiguration } from "./modules/idp/readiness/productionReadiness.service.js";
+import { productionReadinessConfigFromEnv } from "./modules/idp/readiness/productionReadiness.env.js";
 
 async function main(): Promise<void> {
+  const readiness = assertProductionReadinessConfiguration(productionReadinessConfigFromEnv());
+  console.log(JSON.stringify({ event: "production.readiness.configuration", status: readiness.status, productionMode: readiness.productionMode }));
+
   if (env.authJwtSecret.trim().length < 32) {
     throw new Error("AUTH_JWT_SECRET en az 32 karakter olmalıdır.");
   }
