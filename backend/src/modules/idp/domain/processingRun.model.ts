@@ -10,6 +10,7 @@ export interface ProcessingRunDoc extends mongoose.Document {
   currentStage: string;
   attempt: number;
   processorVersion: string;
+  enqueueKey?: string;
   modelVersion?: string;
   canonicalDocument?: unknown;
   segments?: unknown;
@@ -36,6 +37,7 @@ const ProcessingRunSchema = new Schema({
   currentStage: { type: String, enum: Object.values(ProcessingStage), required: true, default: ProcessingStage.INGEST },
   attempt: { type: Number, default: 0 },
   processorVersion: { type: String, required: true },
+  enqueueKey: { type: String },
   modelVersion: String,
   canonicalDocument: Schema.Types.Mixed,
   segments: Schema.Types.Mixed,
@@ -52,6 +54,7 @@ const ProcessingRunSchema = new Schema({
 }, { timestamps: true });
 
 ProcessingRunSchema.index({ uploadedFileId: 1, createdAt: -1 });
+ProcessingRunSchema.index({ enqueueKey: 1 }, { unique: true, sparse: true });
 
 export const ProcessingRunModel: mongoose.Model<ProcessingRunDoc> =
   (mongoose.models.ProcessingRun as mongoose.Model<ProcessingRunDoc> | undefined) ??

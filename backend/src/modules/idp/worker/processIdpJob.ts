@@ -45,6 +45,18 @@ export async function processIdpJob(processingRunId: string): Promise<void> {
   const run = await ProcessingRunModel.findById(processingRunId);
   if (!run) throw new Error(`ProcessingRun bulunamadı: ${processingRunId}`);
 
+  // At-least-once delivery may replay a terminal BullMQ job. A completed or
+  // cancelled ProcessingRun is immutable from the worker perspective: do not
+  // increment attempts, re-extract, or re-run declaration authority lifecycles.
+  if (run.status === ProcessingStatus.COMPLETED || run.status === ProcessingStatus.CANCELLED) {
+    log("idp.job.terminal_replay_skipped", {
+      jobId: processingRunId,
+      status: run.status,
+      attempt: run.attempt
+    });
+    return;
+  }
+
   run.status = ProcessingStatus.PROCESSING;
   run.currentStage = ProcessingStage.INGEST;
   run.attempt += 1;

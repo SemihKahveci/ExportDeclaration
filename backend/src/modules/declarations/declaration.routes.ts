@@ -5,6 +5,7 @@ import { documentSubRouter } from "../documents/document.routes.js";
 import { humanReviewRouter } from "../idp/review/humanReview.routes.js";
 import { declarationHumanReviewApiRouter } from "../idp/review/declarationHumanReviewApi.routes.js";
 import { declarationExceptionApiRouter } from "../idp/domain/declarationExceptionApi.routes.js";
+import { idpDiagnosticsRouter } from "../idp/diagnostics/idpDiagnostics.routes.js";
 import { getControlProjection } from "../declaration-control/declarationControl.controller.js";
 import { requireAnyCapability } from "../../common/middlewares/authorization.js";
 
@@ -51,5 +52,6 @@ router.use("/:id/documents", documentSubRouter);
 router.use("/:id/idp-reviews", humanReviewRouter);
 router.use("/:id/idp-human-review", declarationHumanReviewApiRouter);
 router.use("/:id/idp-exceptions", declarationExceptionApiRouter);
+router.use("/:id/idp-diagnostics", idpDiagnosticsRouter);
 
 export const declarationRouter = router;

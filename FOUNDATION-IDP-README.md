@@ -1321,11 +1321,11 @@ Planned 10.1 checks:
 - avoid mutating declarations, candidates, normalized data, or authority state.
 
 Foundation 10 roadmap:
-- **10.1 — Production Configuration / Readiness — ACTIVE**
-- **10.2 — Queue / Retry / Idempotency Hardening — PLANNED**
-- **10.3 — OCR / IDP / LLM Performance & Resource Controls — PLANNED**
-- **10.4 — Observability / Diagnostics / Recovery — PLANNED**
-- **10.5 — Security / Tenant / Failure Regression — PLANNED**
+- **10.1 — Production Configuration / Readiness — COMPLETED**
+- **10.2 — Queue / Retry / Idempotency Hardening — COMPLETED**
+- **10.3 — OCR / IDP / LLM Performance & Resource Controls — COMPLETED**
+- **10.4 — Observability / Diagnostics / Recovery — COMPLETED**
+- **10.5 — Security / Tenant / Failure Regression — ACTIVE**
 - **10.6 — Production Release Checklist + Foundation 6–10 Full Regression — PLANNED**
 - **DGX Spark migration / benchmark — AFTER Foundation 10**
 
@@ -1345,3 +1345,93 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected event: `foundation-10.1.production-readiness-contract.passed`.
+
+
+## Foundation 10.2 — Queue / Retry / Idempotency Hardening
+
+10.2 adds a durable enqueue idempotency boundary without replacing the already-verified BullMQ retry behavior from Foundation 6.15–6.17.
+
+- `ProcessingRun.enqueueKey` is a deterministic SHA-256 key over company, declaration, physical upload, and processor version.
+- A unique sparse Mongo index makes concurrent duplicate API enqueue requests converge on one ProcessingRun even across multiple API processes.
+- BullMQ continues to use the ProcessingRun id as `jobId`, so exact enqueue replay cannot create a second queue identity.
+- Completed/cancelled worker replay exits before attempt mutation, extraction, or downstream declaration lifecycles.
+- A processor-version change creates a new idempotency boundary, preserving intentional reprocessing after a deployed processor change.
+- Existing BullMQ attempts/backoff and Foundation 6.16 same-run FAILED -> retry recovery semantics are preserved.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyQueueRetryIdempotencyHardening.ts
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyBullMqRetryRecoveryE2E.ts
+```
+
+Expected events:
+- `foundation-10.2.queue-retry-idempotency-hardening.passed`
+- `foundation-6.16.bullmq-retry-recovery.passed`
+
+
+## Foundation 10.3 — OCR / IDP / LLM Performance & Resource Controls
+
+10.3 formalizes the resource controls already used by the production worker without changing extraction or declaration authority.
+
+- BullMQ worker concurrency remains explicit through `IDP_WORKER_CONCURRENCY` / `env.idpWorkerConcurrency`.
+- DIGITAL documents have zero OCR budget; SCANNED/MIXED documents have a finite page-count budget.
+- LLM remains explicit-only. Disabled LLM has no timeout budget; enabled LLM requires a positive timeout.
+- The policy is deterministic and side-effect free, ready for later runtime metrics and DGX Spark benchmarking.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyPerformanceResourceControls.ts
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyBullMqConcurrencyIsolationE2E.ts
+```
+
+Expected: `foundation-10.3.performance-resource-controls.passed` plus the existing Foundation 6.17 concurrency/isolation PASS event.
+
+
+## Foundation 10.4 — Observability / Diagnostics / Recovery
+
+10.4 adds a read-only operational diagnostic projection for a ProcessingRun.
+
+- Diagnostic lookup is fail-closed on company + declaration + ProcessingRun.
+- Exposes status, current stage, attempt, processor version, timestamps/duration and structured persisted failure.
+- Returns a deterministic recovery recommendation (`NONE`, `WAIT_FOR_RETRY`, `RETRY_PROCESSING_RUN`, `INVESTIGATE_CONFIGURATION`).
+- Diagnostics never trigger retry and never mutate ProcessingRun, declaration authority, candidates or normalized data.
+- API: `GET /api/declarations/:id/idp-diagnostics/:processingRunId`.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyObservabilityDiagnosticsRecovery.ts
+```
+
+Expected: `foundation-10.4.observability-diagnostics-recovery.passed`.
+
+
+## Foundation 10.5 — Security / Tenant / Failure Regression
+
+10.5 is a production security/regression gate, not a new authority path. It reuses the real verified boundaries accumulated across Foundations 6, 9 and 10.
+
+The suite verifies:
+- production configuration fails closed;
+- ProcessingRun ↔ physical-document ownership remains enforced;
+- malformed candidate snapshots fail before persisted mutation;
+- human-review company/actor identity remains server-owned and stale sources fail closed;
+- exception API remains tenant-isolated and read-only;
+- diagnostics remain tenant + declaration scoped and cannot trigger retry.
+
+Run:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifySecurityTenantFailureRegression.ts
+```
+
+Expected final event: `foundation-10.5.security-tenant-failure-regression.passed`.
