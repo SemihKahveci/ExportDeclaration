@@ -1326,7 +1326,7 @@ Foundation 10 roadmap:
 - **10.3 — OCR / IDP / LLM Performance & Resource Controls — COMPLETED**
 - **10.4 — Observability / Diagnostics / Recovery — COMPLETED**
 - **10.5 — Security / Tenant / Failure Regression — COMPLETED**
-- **10.6 — Production Release Checklist + Foundation 6–10 Full Regression — ACTIVE**
+- **10.6 — Production Release Checklist + Foundation 6–10 Full Regression — COMPLETED**
 - **DGX Spark migration / benchmark — AFTER Foundation 10**
 
 
@@ -1473,3 +1473,67 @@ Foundation 10.2 production duplicate-delivery protection skips a normal COMPLETE
 Foundation 6.19, however, intentionally re-enters the same completed run to verify persisted MIXED OCR checkpoint replay.
 That regression now opts in explicitly with `allowCompletedReplay: true`; the BullMQ production worker does not set this option.
 This preserves both guarantees: production terminal duplicate delivery is skipped, while the historical checkpoint/replay contract remains testable.
+
+
+## Post-Foundation 10 — Windows Productization Roadmap
+
+Foundation 10 is CLOSED after the full 9/9 production release regression.
+
+The next Windows-local phases are deliberately separated from DGX Spark migration:
+
+1. **Production Cleanup & Optimization**
+   - generated artifacts first;
+   - then evidence-backed dead/duplicate code only;
+   - preserve historical Foundation regression verifiers;
+   - preserve compatibility/legacy runtime paths until call-site and regression evidence proves removal is safe;
+   - after each cleanup slice: typecheck + focused verifier; after the cleanup phase: full Foundation 10 release regression.
+
+2. **Real Invoice Corpus / Product E2E**
+   - build a diverse corpus across companies/layouts;
+   - DIGITAL, SCANNED and MIXED; single/multi-page;
+   - compare extracted declaration fields against explicit ground truth;
+   - record per-field correctness, missing/extra values, review-required behavior and provenance;
+   - no parser rule is accepted from a single invoice without regression against the corpus.
+
+3. **Windows Product-Ready Hardening**
+   - UI upload-to-result flow;
+   - failure/retry/recovery and human-review flows;
+   - operational diagnostics;
+   - repeatability/idempotency;
+   - performance baseline and release checklist.
+
+4. **DGX Spark Migration / Benchmark**
+   - only after the Windows product-ready checkpoint;
+   - move/benchmark local AI runtime without changing declaration authority semantics.
+
+### Cleanup 0.1 — generated artifact hygiene
+
+Safe first slice:
+- remove generated Python `__pycache__` / bytecode from the working tree;
+- keep ignore rules already protecting `__pycache__`, `*.py[cod]`, `dist`, `uploads` and diagnostic outputs;
+- do not delete historical Foundation verifier scripts;
+- do not remove legacy runtime compatibility code in this slice.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductionCleanupGeneratedArtifacts.ts
+```
+
+Expected: `production-cleanup.generated-artifact-audit.passed`.
+
+### Cleanup 0.4 — dependency/runtime optimization evidence pass
+
+This is an audit-only slice. Package candidates are reported from static source imports, but **no dependency is removed automatically** because CLI/build/compiler/test packages can be valid without a runtime import.
+
+The audit includes backend/frontend source plus build-tool configuration entrypoints and explicitly protects historical Foundation regression scripts.
+
+Run:
+
+```powershell
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/auditProductionDependenciesAndRuntime.ts
+```
+
+The output is evidence for Cleanup 0.5. Each reported package must be checked against `package.json` scripts, build configuration, Docker/runtime entrypoints and actual call-sites before removal or replacement.
