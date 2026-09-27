@@ -69,6 +69,12 @@ export const env = {
   llmApiKey: process.env.LLM_API_KEY ?? "",
   llmModel: process.env.LLM_MODEL ?? "Qwen3",
   llmTimeoutMs: num(process.env.LLM_TIMEOUT_MS, 120000),
+  // Vision invoice extraction is an explicit capability gate. A text-only LLM
+  // must never make the product believe PAGE_IMAGE extraction is available.
+  llmVisionEnabled: bool(process.env.LLM_VISION_ENABLED, false),
+  llmVisionModel: process.env.LLM_VISION_MODEL ?? "",
+  llmVisionMaxPages: Math.max(1, Math.floor(num(process.env.LLM_VISION_MAX_PAGES, 12))),
+  llmVisionMaxImageBytes: Math.max(256 * 1024, Math.floor(num(process.env.LLM_VISION_MAX_IMAGE_BYTES, 8 * 1024 * 1024))),
   
   superAdminResetPassword: bool(process.env.SUPERADMIN_RESET_PASSWORD, false),
   

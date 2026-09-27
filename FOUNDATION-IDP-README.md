@@ -1537,3 +1537,389 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/audi
 ```
 
 The output is evidence for Cleanup 0.5. Each reported package must be checked against `package.json` scripts, build configuration, Docker/runtime entrypoints and actual call-sites before removal or replacement.
+
+## Windows Product E2E 1.1 — First-Class LLM Invoice Extraction Contract
+
+The productization phase treats local LLM extraction as a peer IDP path, not only as a conflict-resolution helper.
+
+Target routing:
+- strong native text -> deterministic extraction + LLM text evidence (`HYBRID_TEXT`);
+- usable but imperfect text/OCR -> deterministic and LLM candidate extraction run as peer evidence paths (`HYBRID_PARALLEL`);
+- weak/missing OCR with rendered page images and a vision-capable local model -> the LLM may parse the invoice directly from page images (`LLM_VISION_PRIMARY`);
+- no usable evidence/provider -> fail closed to review.
+
+`invoice-extraction-v1` is the versioned extraction skill. It defines export-invoice fields, multi-page/line rules, image-vs-OCR behavior, evidence requirements, and the rule that verified retrieval knowledge is guidance rather than authority.
+
+Important boundary: direct LLM parsing means **direct candidate/evidence extraction**, not direct mutation of `normalizedData`. LLM-derived candidates still pass through the Foundation 6 resolution/promotion authority boundary. This preserves provenance, conflict handling, human review and append-only audit semantics.
+
+The existing `qwen3:8b` OpenAI-compatible path is currently text-oriented. Product E2E 1.1 defines the vision route without pretending that the current text provider can consume page images. A later product slice will wire a vision-capable local provider and page-image transport before `LLM_VISION_PRIMARY` is enabled in production.
+
+Verified knowledge will be populated only from deterministic/validated results or explicit human approval. Raw LLM output must never self-promote into long-term knowledge. Vendor/layout examples are retrieved as few-shot guidance for later invoices.
+
+Verification:
+
+```powershell
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E11FirstClassLlmContract.ts
+```
+
+Expected: `product-e2e-1.1.first-class-llm-contract.passed`.
+
+
+## Windows Product E2E 1.2 — Vision-capable local Qwen transport
+
+`LLM_VISION_PRIMARY` now has a concrete, separately gated OpenAI-compatible multimodal provider. `LLM_VISION_ENABLED` and `LLM_VISION_MODEL` are intentionally independent from the existing text model so `qwen3:8b` is never misrepresented as image-capable. PDF pages are rendered to PNG and transported as data-URL image content together with the versioned `invoice-extraction-v1` skill.
+
+The provider enforces page/image budgets, JSON-only structured extraction, requested-field allowlisting, confidence bounds and evidence on every returned field. PAGE_IMAGE-only extraction must cite PAGE_IMAGE evidence. Its output remains `InvoiceLlmExtractionResponse` candidate evidence; there is no normalized-data write path.
+
+This slice validates transport and fail-closed capability semantics without pretending a vision model is installed. The next gate is a real local vision-model run against corpus invoices, including an OCR-weak/image-first case.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E12VisionProviderTransport.ts
+```
+
+Expected: `product-e2e-1.2.vision-provider-transport.passed`.
+
+## Windows Product E2E 1.3 — Real image-only Qwen vision gate
+
+This is the first real multimodal product gate. It is intentionally not a mock and does not provide native PDF text or OCR text to the model. A real invoice page is rendered to PNG, sent to the separately configured local vision model, and checked against explicit invoice ground truth.
+
+The initial acceptance invoice is `AAA2026000000009.pdf` (Fiber Beton). It is useful because the single goods row is in the main table while GTIP, origin, delivery term and weights are in the general-explanations area. The verifier therefore checks both table reading and whole-page document understanding.
+
+The invoice extraction skill now defines an exact JSON response shape and explicit `goodsLines[]` array semantics. The vision provider additionally rejects duplicate fields, scalar/array shape violations, and PAGE_IMAGE evidence that cites a page not actually supplied to the model.
+
+Real customer invoices remain local test data under the ignored `uploads/` directory and must not be committed.
+
+Local runtime for the first baseline:
+
+```env
+LLM_ENABLED=true
+LLM_BASE_URL=http://host.docker.internal:11434
+LLM_MODEL=qwen3:8b
+LLM_VISION_ENABLED=true
+LLM_VISION_MODEL=qwen3-vl:8b
+LLM_TIMEOUT_MS=180000
+```
+
+Place the acceptance PDF at `uploads/product-e2e/AAA2026000000009.pdf`, recreate backend so Compose receives the changed environment, then run:
+
+```powershell
+docker compose -f compose.dev.yaml up -d --force-recreate backend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E13RealImageOnlyQwenVision.ts
+```
+
+Expected: `product-e2e-1.3.real-image-only-qwen-vision.passed`.
+
+This proves image-only extraction capability only. Production worker routing to `LLM_VISION_PRIMARY` remains a later gate and must not be claimed from this verifier alone.
+
+### Product E2E 1.3.1 — Ollama-native vision transport compatibility
+
+- Real Qwen3-VL image-only E2E reached the model but Ollama's OpenAI-compatible response returned an empty assistant `content` for this structured multimodal call.
+- The local Qwen vision provider now uses Ollama's native `/api/chat` multimodal transport with base64 `images`, `stream: false`, `think: false`, JSON output mode, and temperature 0.
+- This is a transport compatibility correction only: PAGE_IMAGE evidence validation, requested-field allowlisting, resource budgets, Foundation 6 authority, and the prohibition on direct normalized-data writes are unchanged.
+- The 1.2 transport verifier is updated to assert the Ollama-native provider identity; 1.3 remains the real image-only accuracy gate.
+
+### Product E2E 1.3.2 — Provider-Owned PAGE_IMAGE Provenance
+
+- PAGE_IMAGE provenance is normalized from the actual rendered page inputs instead of trusting the vision model to reproduce transport metadata.
+- Single-page image-only extraction safely binds evidence to that supplied page while preserving a model quote when present.
+- Multi-page image extraction remains fail-closed: the model must identify a PAGE_IMAGE page that was actually supplied; ambiguous provenance is rejected.
+- Extraction values/confidence remain model output. This change does not repair or substitute invoice values and does not write normalized data directly.
+
+### Product E2E 1.3.3 — Full Vision Accuracy Report
+
+- The real image-only verifier no longer stops at the first ground-truth mismatch.
+- A single Qwen3-VL inference is evaluated against every configured field and prints expected/actual/PASS status plus aggregate accuracy before the gate fails.
+- Exact identifiers such as invoice number and GTIP remain exact-match requirements; the verifier does not relax expected values to accommodate model output.
+- The gate still exits non-zero when any ground-truth field fails. This is diagnostic expansion only, not an accuracy waiver.
+
+
+### Product E2E 1.3.4 — Vision extraction hardening
+
+The image-only invoice gate now separates semantic extraction from deterministic representation handling:
+
+- identifiers are exact-transcription strings; repeated digits/zeroes must not be collapsed,
+- numeric observations are requested as raw visible strings; locale normalization is application-owned,
+- goods origin is explicitly distinguished from seller/buyer/address/destination country mentions,
+- Unicode spelling differences such as Turkish dotted `İ` do not create false description failures in the verifier,
+- the AAA fixture remains strict ground truth; expected values are not changed to match model output.
+
+For the current Turkish AAA fixture, the verifier applies a deterministic Turkish numeric policy after extraction. This is fixture/product normalization logic, not LLM arithmetic. The gate remains image-only and still requires PAGE_IMAGE provenance.
+
+
+### Product E2E 1.3.5 — Goods-row association + identifier reliability
+
+The 8B image-only baseline improved from 4/12 (33.3%) to 8/12 (66.7%) after Product E2E 1.3.4. Remaining observed mismatches on the AAA fixture were: invoice number and GTIP each lost one repeated zero, while `4 PALET` was incorrectly associated as the commercial goods quantity/unit instead of the invoiced `2.250 KG`.
+
+1.3.5 hardens the shared, vendor-neutral extraction skill without changing ground truth:
+- commercial goods fields must be associated as one row tuple;
+- packaging/logistics counts (pallet/package/box/container etc.) must not replace goods quantity/unit unless the invoice row explicitly uses them;
+- visible quantity × unit-price × line-total consistency may be used only as a row-association cross-check, never to invent/correct a value;
+- invoice/GTIP/product identifiers require a second independent visual transcription and character-by-character agreement; disagreement must become PARTIAL/REVIEW_REQUIRED rather than a guessed identifier.
+
+This is still an image-only model-quality gate. Foundation 6 remains the authority boundary and no direct normalized-data write is introduced.
+
+
+### Product E2E 1.3.5.1 — vision transport robustness
+- Keeps Product E2E 1.3.5 extraction semantics and ground truth unchanged.
+- Raises Ollama structured-output budget with `num_predict: 8192` for multi-field vision JSON.
+- Keeps model output compact: short evidence quotes, no reasoning/working in the contract.
+- Malformed JSON is never silently repaired. Provider now reports Ollama completion diagnostics (`done`, `done_reason`, content bytes, eval count, likely-truncated hint) instead of leaking a raw `JSON.parse` SyntaxError.
+- Acceptance remains the unchanged Product E2E 1.3 verifier; 1.3.5 accuracy is still unmeasured until a complete contract response is received.
+
+## Product E2E 1.3.6 — Compact Vision Contract + Explicit Ollama Context
+
+Status: implementation patch prepared; local Windows verification required.
+
+The 1.3.5 extraction rules improved row semantics but the real image-only run ended with
+`done_reason=length` and malformed JSON. Product E2E 1.3.5.1 made that failure observable:
+the response stopped after 787 evaluated output tokens. Increasing only `num_predict` did not
+increase the model's effective context budget.
+
+1.3.6 keeps the production-safe malformed-JSON diagnostics and changes two things without
+changing ground truth:
+
+- The vision skill is compact again. It retains the general rules that mattered: exact
+  identifier transcription, raw locale-preserving numeric observation, explicit goods-origin
+  semantics, same-commercial-row association, and packaging/logistics exclusion. The
+  expensive "second visual pass" instruction and verbose contract guidance are removed.
+- Ollama vision requests explicitly set `num_ctx: 8192` and cap output with
+  `num_predict: 4096`. This gives the page image + prompt + structured response a larger
+  actual context window instead of merely increasing the output cap.
+
+The LLM still produces candidate/evidence only. It does not write normalized declaration
+data, repair missing identifier digits, or silently change expected values. Identifier
+format/reliability checks remain deterministic downstream concerns; an illegible or
+conflicting identifier must become partial/review rather than a guessed value.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E13RealImageOnlyQwenVision.ts
+```
+
+Acceptance: the same AAA real-image verifier must complete with valid JSON and report the
+unchanged 12-field accuracy matrix. Its result is measured, not assumed. After this run,
+the next product-E2E step moves to additional real invoices to avoid single-document
+prompt overfitting.
+
+## Product E2E 1.3.6.1 — Exact Requested-Field Contract
+
+Status: implementation patch prepared; local Windows verification required.
+
+The compact 1.3.6 request completed without the previous truncation, but the model returned
+the parent field `goodsLines[]` instead of one of the requested leaf field names. The provider
+correctly rejected that schema drift.
+
+1.3.6.1 keeps provider validation strict and adds one compact, general contract rule:
+every returned `field` must match a caller-requested field name character-for-character;
+parent/container aliases such as `goodsLines[]` are forbidden. No AAA-specific values,
+ground-truth changes, or permissive provider remapping were added.
+
+Verification remains:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E13RealImageOnlyQwenVision.ts
+```
+
+Acceptance: valid structured response using only requested leaf field names, followed by the
+unchanged 12-field accuracy report.
+
+## Product E2E 1.3.7 — Natural Invoice JSON Adapter
+
+Status: implementation patch prepared; local Windows verification required.
+
+The 1.3.6.x experiments showed that making an 8B vision model emit the application's
+internal leaf-field envelope directly is unnecessarily brittle: after truncation was fixed,
+the model alternated between a parent `goodsLines[]` field and scalar values where the
+internal contract expected parallel arrays.
+
+1.3.7 separates model-facing and application-facing contracts:
+
+- The vision model returns a simple invoice object with document scalars plus a natural
+  `goodsLines: [{...}]` array.
+- The TypeScript provider deterministically projects that object into the existing strict
+  requested-field response: `goodsLines[].description`, `goodsLines[].quantity`, etc. become
+  aligned arrays owned by application code.
+- The adapter only emits caller-requested fields. It never invents missing values or repairs
+  identifiers. Single-page PAGE_IMAGE provenance remains provider-owned.
+- F6 authority is unchanged: this output is still candidate/evidence input and has no direct
+  normalized-data write path.
+- The prior strict-envelope parser remains available for compatibility with providers that
+  already return the old envelope.
+
+This is a contract-boundary refactor, not an AAA-specific prompt patch. Ground truth remains
+unchanged.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E13RealImageOnlyQwenVision.ts
+```
+
+Acceptance: the real image-only verifier reaches its unchanged 12-field accuracy report
+without requiring the model to understand internal parallel-array mechanics. After this
+measurement, continue with additional real invoices instead of optimizing only for AAA.
+
+## Product E2E 1.3.8 — Real Invoice Corpus Harness
+
+Status: implementation patch prepared; local Windows measurement required.
+
+The single AAA invoice is no longer used for prompt tuning. 1.3.8 introduces a
+measurement-first corpus harness over three additional real invoice layouts:
+
+- `CLK2026000001021.pdf` — Çelikel, EUR, EXW, multi-line goods table.
+- `792CD3D2-CAAE-4E7B-978F-C1FE94E50709.pdf` — Textilium, EUR, CIP, textile lines.
+- `IHR2026000000035_FAISAL SOUDİ~21770191.pdf` — Makro Boya, USD, EXW, larger goods table.
+
+Real customer PDFs remain local and ignored under `/app/uploads/product-e2e/`; they are not
+included in this patch or committed. Expected values are fixed from the supplied invoices
+and are not rewritten from model output. This first corpus gate intentionally renders page 1
+only so PAGE_IMAGE provenance stays unambiguous while measuring layout generalization.
+
+The harness reports every field mismatch and an aggregate percentage but does not fail the
+process merely because model accuracy is below 100%. Runtime, transport, missing-file and
+contract failures still fail. This separates "the test infrastructure broke" from "the model
+made an extraction mistake".
+
+Copy the three PDFs into local `uploads/product-e2e/` if they are not already there, then run:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E138RealInvoiceCorpus.ts
+```
+
+This corpus stage is a baseline measurement. Do not tune the prompt to one failing invoice.
+The next steps expand coverage to multi-page/scanned invoices and then wire the proven vision
+provider into production worker routing while preserving F6 authority.
+
+## Product E2E 1.3.8.1 — Long-Running Vision Corpus Reliability
+
+Status: implementation patch prepared; local Windows verification required.
+
+The first 1.3.8 corpus run reached Node/Undici's independent HTTP headers timeout before
+Ollama returned response headers. `LLM_TIMEOUT_MS=900000` therefore could not protect a slow
+local vision inference even though the application-level AbortController allowed 15 minutes.
+
+1.3.8.1 changes only transport/harness reliability:
+
+- Ollama vision POST uses Node's native `http`/`https` request path instead of `fetch`, avoiding
+  Undici's separate headers-timeout ceiling.
+- The existing `LLM_TIMEOUT_MS` AbortController remains the authoritative request deadline.
+- Model, prompt, ground truth, context budget and extraction contract are unchanged.
+- Corpus runner prints a `started` event and each completed case immediately, then prints the
+  aggregate report. If a later case fails, earlier measurements remain visible.
+
+Run:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E138RealInvoiceCorpus.ts
+```
+
+Local Windows speed is not an acceptance criterion at this stage; the goal is reliable,
+observable accuracy measurement. Performance benchmarking belongs to the later deployment
+target/Spark or company GPU-server phase.
+
+## Product E2E 1.3.9 — Multi-page + Scanned Vision Corpus
+
+Status: implementation patch prepared; local Windows verification required.
+
+1.3.9 expands the image-only baseline without changing the model, prompt, provider contract,
+Foundation 6 authority, or production worker routing.
+
+### DIGITAL multi-page: VED2026000000146(2).pdf
+
+- Renders all 8 pages and sends them in one vision request.
+- Fixed source-PDF ground truth is used for document fields plus the first and last goods rows.
+- The source PDF contains 56 goods lines. The report also records returned array lengths so
+  truncation/alignment loss across pages is visible instead of hidden.
+- Ground truth includes invoice `VED2026000000146`, currency `EUR`, delivery `FCA`, and
+  source-backed first/last goods values.
+
+### SCANNED multi-page: VED2026000000110(2).pdf
+
+- Renders all 3 scanned pages and sends them image-only.
+- This first pass is deliberately observational: it reports extracted fields but does not invent
+  expected values that have not been source-verified.
+- After the observed output is compared against the real PDF, fixed ground truth can be locked
+  for the scanned regression corpus.
+
+Place both real customer PDFs under ignored local `uploads/product-e2e/`; they are never included
+in the patch or committed.
+
+Run:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E139MultiPageScannedCorpus.ts
+```
+
+Long local inference time is acceptable. Performance remains outside the Windows accuracy gate.
+
+### 1.3.9.1 verifier call-signature fix
+
+The initial 1.3.9 verifier incorrectly placed `pageImages` inside the extraction request object.
+`QwenVisionInvoiceProvider.extractInvoice` accepts page images as its second argument. The verifier
+now uses the same provider call signature already proven by the 1.3.8 corpus. No model, prompt,
+ground truth, provider, or production behavior changed.
+
+### 1.3.9.2 context-safe multi-page chunking
+
+The initial all-pages request established a real model/runtime boundary: VED146 produced a
+16,314-token prompt while the current Windows Qwen Vision provider intentionally uses an
+8,192-token context. This is not treated as an extraction-accuracy failure.
+
+The corpus verifier now uses bounded page chunks:
+
+- VED146: `[1,2]`, `[3,4]`, `[5,6]`, `[7,8]`
+- VED110 scanned: `[1,2]`, `[3]`
+
+Each chunk is independently rendered and extracted through the unchanged provider/model/prompt.
+The verifier deterministically concatenates goods-line arrays in page order and takes the first
+non-empty document-level value for reporting. This is corpus-harness orchestration only; it does
+not yet change production worker routing or Foundation 6 authority.
+
+The provider `num_ctx=8192` is deliberately unchanged. Raising context just to force eight
+high-resolution page images into one request would hide the architectural boundary and increase
+local memory pressure. Production multi-page vision should use bounded chunking/checkpointing.
+
+### 1.3.9.3 deterministic numeric verifier normalization
+
+The first VED146 chunked run completed all four image chunks and returned 55 aligned goods rows
+out of 56. Several visually correct numeric extractions were incorrectly scored as failures only
+because the verifier passed raw values such as `106,800 EUR`, `1.602,00 EUR`, `73,7100 EUR`, and
+`368,55 EUR` directly to `Number`.
+
+1.3.9.3 fixes only comparison normalization:
+
+- strips non-numeric currency/unit suffixes before parsing;
+- handles mixed European thousands/decimal separators deterministically;
+- treats comma-only values as decimal values for this corpus;
+- removes the old ambiguous "single dot + three digits means thousands" heuristic.
+
+Model output remains raw and unchanged. No prompt, provider, expected value, production worker,
+Foundation 6 authority, or normalized-data behavior changes.
+
+### 1.3.9.4 scanned-page checkpoint isolation
+
+VED146 now has a corrected digital multi-page baseline of 16/18 checks (88.9%) and 55/56 aligned
+goods rows. VED110's first two-page scanned chunk hit the configured inference timeout before an
+extraction result was produced; this is a runtime boundary, not an accuracy result.
+
+The scanned verifier now sends one page per bounded inference checkpoint: `[1]`, `[2]`, `[3]`.
+Completed chunks are logged before the next page and the existing deterministic page-order merge
+is preserved. No timeout, model, prompt, provider, ground truth, production worker, Foundation 6
+authority, or normalized-data behavior changes.
