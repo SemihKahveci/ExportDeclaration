@@ -2111,3 +2111,7 @@ Verifier: `backend/scripts/idp/verifyProductE2E153GtipSourceCoverageMatrix.ts`.
 - Exact 12-digit GTIP evidence is no longer rejected only because it appears outside the legacy goods-table/right-side geometry.
 - Ambiguous repaired 10/11-digit candidates remain behind the historical geometry guard; this change does not globally promote padded values.
 - Corpus verifier requires all fixed DIGITAL corpus GTIPs to materialize as deterministic NATIVE_TEXT candidates without supplier-specific rules or model inference.
+
+### Product E2E 1.5.5 — Full production corpus fusion matrix
+
+Measurement checkpoint over the fixed real-invoice corpus. Each case runs through the real production worker (native/deterministic extraction, OCR when applicable, configured Vision fusion, persisted declaration candidate snapshot, and Foundation 6 authority). The matrix scores only values actually promoted into declaration normalizedData; REVIEW_REQUIRED remains a valid fail-closed product outcome and is reported rather than converted into a false success. Candidate evidence-source coverage is emitted beside every scored field so subsequent hardening targets general extraction/normalization/authority gaps instead of supplier-specific rules. Customer PDFs remain local under ignored `uploads/product-e2e/`.
