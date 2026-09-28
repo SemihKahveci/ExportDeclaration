@@ -2115,3 +2115,9 @@ Verifier: `backend/scripts/idp/verifyProductE2E153GtipSourceCoverageMatrix.ts`.
 ### Product E2E 1.5.5 — Full production corpus fusion matrix
 
 Measurement checkpoint over the fixed real-invoice corpus. Each case runs through the real production worker (native/deterministic extraction, OCR when applicable, configured Vision fusion, persisted declaration candidate snapshot, and Foundation 6 authority). The matrix scores only values actually promoted into declaration normalizedData; REVIEW_REQUIRED remains a valid fail-closed product outcome and is reported rather than converted into a false success. Candidate evidence-source coverage is emitted beside every scored field so subsequent hardening targets general extraction/normalization/authority gaps instead of supplier-specific rules. Customer PDFs remain local under ignored `uploads/product-e2e/`.
+
+### Product E2E 1.5.6 — Declaration authority validation gate
+
+The 1.5.5 production corpus matrix exposed an authority-ordering problem rather than a corpus accuracy result: peer Native/Vision candidates were persisted, but the legacy segment-level invoice validator could stop the worker before Foundation 6 saw those candidates. This made every corpus case REVIEW_REQUIRED with zero promoted fields even when correct peer evidence existed.
+
+1.5.6 keeps legacy validation and its audit result, but when a non-empty declaration-facing FieldCandidate envelope is already persisted, invoice validation REVIEW_REQUIRED becomes advisory for worker completion so Foundation 6 can make the authoritative field-level decision. Missing/empty declaration candidates and unrelated validators remain fail-closed. This does not write normalizedData directly and does not weaken Foundation 6 authority.

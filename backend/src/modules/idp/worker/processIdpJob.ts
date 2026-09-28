@@ -15,6 +15,7 @@ import { resolveCandidatesWithLlm } from "../llm/resolveCandidatesWithLlm.js";
 import { CandidateResolutionStatus } from "../domain/candidateResolution.types.js";
 import { validateResolvedCandidate } from "../validator/documentValidatorRegistry.js";
 import { ValidationStatus } from "../domain/validation.types.js";
+import { shouldDeferValidationReviewToDeclarationAuthority } from "../validator/declarationAuthorityValidationGate.js";
 import { materializeLogicalDocuments } from "../domain/logicalDocumentMaterializer.js";
 import { tryOrchestrateDeclarationAfterProcessing } from "../domain/declarationFieldLifecycle.service.js";
 import { persistWorkerCandidateExtraction } from "../domain/workerCandidatePersistence.js";
@@ -312,15 +313,27 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
       });
 
       if (validation.status !== ValidationStatus.VALID) {
-        run.status = ProcessingStatus.REVIEW_REQUIRED;
-        run.currentStage = ProcessingStage.VALIDATE;
-        run.completedAt = new Date();
-        await run.save();
-        file.extractionStatus = "MANUAL_REQUIRED";
-        file.parseErrors = validation.issues.filter((issue) => issue.severity === "ERROR").map((issue) => issue.message);
-        await file.save();
-        log("idp.validation.review_required", { jobId: processingRunId, issues: validation.issues.map((issue) => issue.code) });
-        return;
+        const deferredToDeclarationAuthority = shouldDeferValidationReviewToDeclarationAuthority({
+          validation,
+          declarationCandidates: run.declarationCandidates
+        });
+
+        if (!deferredToDeclarationAuthority) {
+          run.status = ProcessingStatus.REVIEW_REQUIRED;
+          run.currentStage = ProcessingStage.VALIDATE;
+          run.completedAt = new Date();
+          await run.save();
+          file.extractionStatus = "MANUAL_REQUIRED";
+          file.parseErrors = validation.issues.filter((issue) => issue.severity === "ERROR").map((issue) => issue.message);
+          await file.save();
+          log("idp.validation.review_required", { jobId: processingRunId, issues: validation.issues.map((issue) => issue.code) });
+          return;
+        }
+
+        log("idp.validation.deferred_to_declaration_authority", {
+          jobId: processingRunId,
+          issues: validation.issues.map((issue) => issue.code)
+        });
       }
 
       extractedData = resolution.data;
