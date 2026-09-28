@@ -2072,3 +2072,22 @@ asserts source coexistence, persistence, provenance, and authority boundaries.
 - Fields actually promoted by F6 must retain ProcessingRun / UploadedFile / LogicalDocument provenance and OCR / DERIVED / PAGE_IMAGE evidence.
 - Fields left for human review are explicitly allowed to remain unpromoted; their candidates must remain persisted and the verifier guards against silent normalized/sourceTrace promotion.
 - This is verifier-only hardening; production resolver, F6 authority, worker and promotion behavior are unchanged.
+
+### Product E2E 1.4.6 — real MIXED production worker fusion E2E
+
+1.4.6 extends the production worker proof to the existing Foundation 6.19 two-page MIXED fixture. Page 1 remains DIGITAL/native text while page 2 is image-only and is selectively enriched by real PaddleOCR. Production Vision executes in bounded one-page checkpoints for the INVOICE segment and its PAGE_IMAGE candidates are fused without replacing deterministic/native candidates. The verifier asserts the DIGITAL page is not OCR-enriched, the SCANNED page is OCR-enriched, both Vision page checkpoints succeed, native and PAGE_IMAGE candidates coexist in the persisted declaration-facing snapshot, Foundation 6 resolution audit is reached, and declaration lifecycle promotion remains the sole normalized-data authority. The scanned continuation contains shipping notes rather than a second goods row, so this verifier reports OCR declaration-candidate count rather than requiring one; Product E2E 1.4.5 separately proves OCR and PAGE_IMAGE candidate coexistence.
+
+Verifier:
+
+```powershell
+npx tsx backend/scripts/idp/verifyProductE2E146RealMixedWorkerFusionE2E.ts
+```
+
+### Product E2E 1.4.6.1 — MIXED authority-boundary hardening
+
+The real MIXED worker verifier accepts only two production-safe terminal outcomes after real Native/OCR/Vision fusion: `COMPLETED`, which must reach Foundation 6 declaration promotion, or fail-closed `REVIEW_REQUIRED` specifically caused by `FIELD_LLM_REVIEW_REQUIRED`. The review path must retain the fused candidate snapshot while creating no Foundation 6 resolution audit, normalized declaration data, or source trace. This keeps model uncertainty from being converted into silent authority while avoiding a flaky requirement that the configured local model must always choose a winner for the mixed fixture.
+
+
+### Product E2E 1.4.6.2 — persisted-state authority invariant
+
+The MIXED review-path verifier now compares the declaration after the worker with its actual persisted pre-worker state. Mongoose may materialize empty nested `normalizedData` containers (for example `header`) even when a declaration is created with `normalizedData: {}`, so key-count assertions do not prove whether the worker wrote authority data. On `FIELD_LLM_REVIEW_REQUIRED`, the verifier now requires `normalizedData`, `sourceTrace`, and `idpResolution` to remain exactly unchanged and still requires zero Foundation 6 resolution audits. This is verifier-only hardening; production extraction, resolver, worker, and promotion behavior are unchanged.
