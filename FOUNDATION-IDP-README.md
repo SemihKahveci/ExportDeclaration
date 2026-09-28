@@ -1923,3 +1923,121 @@ The scanned verifier now sends one page per bounded inference checkpoint: `[1]`,
 Completed chunks are logged before the next page and the existing deterministic page-order merge
 is preserved. No timeout, model, prompt, provider, ground truth, production worker, Foundation 6
 authority, or normalized-data behavior changes.
+
+## Product E2E 1.4 — Native + OCR + Vision Production Orchestration
+
+### 1.4.1 Production candidate fusion contract
+
+Product E2E 1.3.x established the Windows Qwen Vision baseline and its runtime boundaries. 1.4 moves from isolated Vision benchmarking into the production extraction architecture.
+
+1.4.1 adds the authority-safe fusion boundary:
+
+- Native/OCR deterministic extraction and Vision are peer candidate sources; neither bypasses Foundation 6.
+- `PAGE_IMAGE` is now a first-class `FieldCandidate` evidence source.
+- Vision `goodsLines[]` arrays are deterministically projected to indexed F6 fields such as `goodsLines.0.hsCode`.
+- Vision candidates carry segment/page provenance and stable candidate IDs.
+- Candidate fusion only combines evidence-backed candidates; it never selects a winner or writes normalized data.
+- Production planning derives Native/OCR evidence quality from the canonical document and retains the 1.1 routing contract.
+- Vision work is planned page-by-page so production can checkpoint around the context/output boundaries measured in 1.3.9.
+
+This checkpoint intentionally does not invoke the live Vision provider from the worker yet. The next checkpoint wires bounded Vision execution into invoice segment extraction while retaining deterministic fallback and F6 resolution authority.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E141ProductionCandidateFusion.ts
+```
+
+### Product E2E 1.4.2 — bounded production Vision execution
+
+1.4.2 adds the production-safe execution boundary behind the 1.4.1 plan/fusion contract.
+
+- Vision inference is one page per provider call/checkpoint.
+- A failed/timeout/truncated page is explicit and does not discard candidates from completed pages.
+- Every successful page response is projected to ordinary F6 `FieldCandidate` evidence with
+  `PAGE_IMAGE` provenance.
+- Page results are merged as peer candidates only; no winner is selected here.
+- There is still no direct `normalizedData` write path.
+- Provider/model/prompt/context limits are unchanged.
+
+This checkpoint deliberately keeps persistence/worker wiring separate. The next checkpoint wires
+this bounded executor into the real invoice worker after deterministic extraction, then persists the
+fused candidate snapshot through the existing worker/F6 boundary.
+
+### Product E2E 1.4.3 — real worker Vision candidate fusion
+
+The invoice worker now executes the production sequence:
+
+`Native/OCR deterministic extraction -> bounded per-page Vision -> peer candidate fusion -> existing worker candidate persistence -> existing resolver/validator/F6 lifecycle`.
+
+Important authority/reliability properties:
+
+- Vision is enabled only through the existing LLM/Vision environment gates.
+- Every invoice page is an independent Vision inference boundary.
+- A failed Vision page is retained in `visionCandidateAudit.failedPages`; successful page candidates
+  and deterministic Native/OCR candidates remain usable.
+- Multi-page goods rows receive a cumulative page-order offset so page-local `goodsLines[0]` values
+  do not collide with earlier pages.
+- The fused raw extraction envelope is persisted through the existing
+  `persistWorkerCandidateExtraction()` boundary; F6 remains the only declaration authority.
+- No Vision code writes `normalizedData` directly.
+
+1.4.3 intentionally does not require every Vision page to succeed. Product readiness depends on
+the fused evidence/resolution/review path, not on pretending a local 8B model has unlimited context
+or generation capacity.
+
+### Product E2E 1.4.4 — real production worker fusion E2E
+
+1.4.4 crosses the synthetic boundary. The verifier creates a real DIGITAL invoice PDF, invokes the
+actual production `processIdpJob()`, renders the invoice page, calls the configured real Vision
+provider, and then inspects persisted worker/F6 state.
+
+Acceptance is architectural rather than tied to one model's exact wording:
+
+- production worker completes;
+- at least one bounded Vision page checkpoint succeeds and no page is silently lost;
+- deterministic Native/OCR/derived candidates survive;
+- real `PAGE_IMAGE` Vision candidates coexist in the persisted declaration snapshot;
+- the fused snapshot reaches the existing Foundation 6 declaration-resolution audit;
+- Vision still has no direct `normalizedData` write authority.
+
+This verifier intentionally requires `LLM_ENABLED=true` and `LLM_VISION_ENABLED=true`. It is a
+real-model E2E and may take materially longer than 1.4.1-1.4.3 contract verifiers.
+
+### Product E2E 1.4.4.1 — Field resolver local-model contract hardening
+
+The real 1.4.4 worker run proved both Vision inference and the text conflict resolver were invoked.
+The text model returned the protocol version as JSON number `1`, while the field resolver accepted
+only string `"1"`. The field response adapter now mirrors the already-established declaration
+adapter behavior: string `"1"` and numeric `1` are canonicalized to protocol version `"1"`;
+missing or any other version still fails closed and reports the received value.
+
+The field resolver prompt now also states the exact evidence-constrained response contract. No
+candidate authority, Foundation 6 resolution rule, or normalized-data write boundary changed.
+
+### Product E2E 1.4.4.2 — Vision numeric candidate canonicalization
+
+The real 1.4.4 worker reached field-level LLM resolution successfully, then deterministic invoice
+validation rejected quantity, unit price, and line total because the selected Vision candidates
+carried numeric values as JSON strings. Production Vision projection now canonicalizes only known
+numeric invoice fields (`quantity`, `unitPrice`, `lineTotal`, `grossKg`, `netKg`) before candidate
+fusion. Common invoice formats such as `10.00 USD`, `7,50`, and `1.602,00 EUR` become finite numbers.
+
+This is representation normalization, not candidate selection: the Vision candidate and PAGE_IMAGE
+evidence remain intact, F6 still chooses authority, and unrecognized numeric text remains unchanged
+so validation continues to fail closed rather than guessing.
+
+### Product E2E 1.4.4.3 — Invoice-date promotion canonicalization + lifecycle assertion
+
+The real 1.4.4 worker completed extraction/resolution/validation, but declaration lifecycle promotion
+failed because the selected invoice date `23.09.2026` was written directly to a Mongoose `Date`
+path. Foundation 6 promotion now canonicalizes only the mapped `header.invoiceDate` value at the
+persistence boundary. Strict `DD.MM.YYYY`/`DD/MM/YYYY` and `YYYY-MM-DD`-style calendar dates become
+UTC `Date` values; impossible or unrecognized dates are left unchanged so the existing schema
+continues to fail closed rather than guessing.
+
+The immutable resolution/source provenance retains the selected candidate's original value. The
+1.4.4 real-worker verifier now also requires a persisted declaration resolution plus the canonical
+`2026-09-23` Date, so a swallowed declaration-lifecycle failure can no longer produce a false PASS.

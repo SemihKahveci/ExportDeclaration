@@ -65,6 +65,38 @@ function setPromotionValue(target: MutableObject, path: string, value: unknown):
   setByPath(target, path, value);
 }
 
+function canonicalPromotionValue(targetPath: string, value: unknown): unknown {
+  if (targetPath !== "header.invoiceDate" || typeof value !== "string") return value;
+
+  const raw = value.trim();
+  const match = /^(\d{1,4})[.\/-](\d{1,2})[.\/-](\d{1,4})$/.exec(raw);
+  if (!match) return value;
+
+  let year: number;
+  let month: number;
+  let day: number;
+  if (match[1]!.length === 4) {
+    year = Number(match[1]);
+    month = Number(match[2]);
+    day = Number(match[3]);
+  } else if (match[3]!.length === 4) {
+    day = Number(match[1]);
+    month = Number(match[2]);
+    year = Number(match[3]);
+  } else {
+    return value;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return value;
+
+  return date;
+}
+
 function clonePromotionValue(value: unknown): unknown {
   // structuredClone() does not preserve BSON ObjectId instances. In particular,
   // Mongoose adds _id to normalizedData.goodsLines subdocuments after the first
@@ -145,7 +177,8 @@ export async function promotePersistedDeclarationFieldResolution(params: {
 
     assertPromotable(fieldResolution);
     const selected = fieldResolution.selectedCandidate;
-    setPromotionValue(normalizedData, targetPath, fieldResolution.value);
+    const promotedValue = canonicalPromotionValue(targetPath, fieldResolution.value);
+    setPromotionValue(normalizedData, targetPath, promotedValue);
     sourceTrace[targetPath] = {
       value: fieldResolution.value,
       source: selected.documentType,

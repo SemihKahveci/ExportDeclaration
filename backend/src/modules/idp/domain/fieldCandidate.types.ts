@@ -1,6 +1,6 @@
 import type { CanonicalBBox } from "./canonicalDocument.types.js";
 
-export type FieldCandidateContentSource = "NATIVE_TEXT" | "OCR" | "DERIVED";
+export type FieldCandidateContentSource = "NATIVE_TEXT" | "OCR" | "PAGE_IMAGE" | "DERIVED";
 
 export interface FieldCandidateEvidence {
   segmentId: string;

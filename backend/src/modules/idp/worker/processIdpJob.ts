@@ -21,6 +21,7 @@ import { persistWorkerCandidateExtraction } from "../domain/workerCandidatePersi
 import { tryOrchestrateDeclarationIntelligenceAfterProcessing } from "../domain/declarationIntelligenceLifecycle.service.js";
 import { tryOrchestrateDeclarationLlmAssistAfterProcessing } from "../llm/declarationLlmAssistLifecycle.service.js";
 import { tryAssessDeclarationExceptionsAfterProcessing } from "../domain/declarationExceptionLifecycle.service.js";
+import { fuseInvoiceVisionIntoWorkerCandidates } from "../llm/invoiceProductionWorkerFusion.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
@@ -202,10 +203,22 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
     let extractedData: Record<string, unknown>;
 
     if (isInvoiceDocument && canonicalDocument && segments?.length && classifications?.length) {
-      const candidateEnvelope = await stage(
+      let candidateEnvelope = await stage(
         "CANDIDATE_EXTRACT",
         ProcessingStage.EXTRACT_CANDIDATES,
         () => extractCandidatesBySegment(file, canonicalDocument!, segments!, classifications!)
+      );
+
+      candidateEnvelope = await stage(
+        "VISION_CANDIDATE_FUSION",
+        ProcessingStage.EXTRACT_CANDIDATES,
+        () => fuseInvoiceVisionIntoWorkerCandidates({
+          pdfPath: file.filePath!,
+          canonicalDocument: canonicalDocument!,
+          segments: segments!,
+          classifications: classifications!,
+          candidateEnvelope
+        })
       );
 
       await persistWorkerCandidateExtraction(run, candidateEnvelope);

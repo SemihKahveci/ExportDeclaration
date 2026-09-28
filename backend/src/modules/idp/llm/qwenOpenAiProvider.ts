@@ -18,7 +18,13 @@ function parseSegmentResponse(content: string): Omit<LlmResolveResponse, "model"
 
 function parseFieldResponse(content: string): Omit<FieldLlmResolveResponse, "model" | "provider"> {
   const parsed = JSON.parse(stripFence(content)) as Partial<FieldLlmResolveResponse>;
-  if (parsed.version !== "1") throw new Error("Field LLM response version geçersiz.");
+  // OpenAI-compatible local runtimes/models may serialize the protocol marker as
+  // JSON number 1 despite being prompted with string "1". Treat only those two
+  // representations as transport-equivalent and keep every other version invalid.
+  const rawVersion = (parsed as { version?: unknown }).version;
+  if (rawVersion !== "1" && rawVersion !== 1) {
+    throw new Error(`Field LLM response version geçersiz (received=${JSON.stringify(rawVersion)}).`);
+  }
   if (parsed.decision !== FieldLlmResolveDecision.RESOLVED && parsed.decision !== FieldLlmResolveDecision.REVIEW_REQUIRED) throw new Error("Field LLM response decision geçersiz.");
   if (!Array.isArray(parsed.selections) || !Array.isArray(parsed.issues)) throw new Error("Field LLM response contract eksik.");
   for (const selection of parsed.selections) {
@@ -78,7 +84,7 @@ export class QwenOpenAiProvider implements LlmProvider, FieldLlmProvider {
   }
 
   async resolveFieldCandidates(request: FieldLlmResolveRequest): Promise<FieldLlmResolveResponse> {
-    const content = await this.complete(request, "You are an evidence-constrained IDP field resolver. Return JSON only. For each ambiguous field, select only an existing candidateId supplied for that exact field. Never output or invent a replacement field value. If evidence is insufficient, return REVIEW_REQUIRED.");
+    const content = await this.complete(request, 'You are an evidence-constrained IDP field resolver. Return one JSON object only, with exactly this contract: {"version":"1","decision":"RESOLVED|REVIEW_REQUIRED","selections":[{"field":"<requested field>","candidateId":"<existing candidateId>"}],"issues":[]}. The version value MUST be the JSON string "1", never the number 1. For each ambiguous field, select only an existing candidateId supplied for that exact field. Never output or invent a replacement field value. If evidence is insufficient, return REVIEW_REQUIRED.');
     return { ...parseFieldResponse(content), model: env.llmModel, provider: this.name };
   }
 
