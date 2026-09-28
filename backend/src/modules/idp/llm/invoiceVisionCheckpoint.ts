@@ -15,6 +15,8 @@ export interface PersistedInvoiceVisionSegmentCheckpoint {
 
 export interface PersistedInvoiceVisionCheckpoint {
   version: "1";
+  /** Compatibility key for model/request semantics. Old or changed keys must not reuse page candidates. */
+  executionKey?: string;
   segments: Record<string, PersistedInvoiceVisionSegmentCheckpoint>;
 }
 
@@ -29,4 +31,19 @@ export function normalizeInvoiceVisionCheckpoint(value: unknown): PersistedInvoi
     return emptyInvoiceVisionCheckpoint();
   }
   return checkpoint as PersistedInvoiceVisionCheckpoint;
+}
+
+
+export function prepareInvoiceVisionCheckpoint(
+  value: unknown,
+  executionKey: string
+): { checkpoint: PersistedInvoiceVisionCheckpoint; reusedCompatibleCheckpoint: boolean } {
+  const checkpoint = normalizeInvoiceVisionCheckpoint(value);
+  if (checkpoint.executionKey !== executionKey) {
+    return {
+      checkpoint: { version: "1", executionKey, segments: {} },
+      reusedCompatibleCheckpoint: false
+    };
+  }
+  return { checkpoint, reusedCompatibleCheckpoint: true };
 }

@@ -12,7 +12,7 @@ import {
   planInvoiceProductionExtraction
 } from "./invoiceProductionExtractionOrchestrator.js";
 import { executeInvoiceVisionByPage } from "./invoiceProductionVisionExecution.js";
-import { normalizeInvoiceVisionCheckpoint, type PersistedInvoiceVisionCheckpoint } from "./invoiceVisionCheckpoint.js";
+import { prepareInvoiceVisionCheckpoint, type PersistedInvoiceVisionCheckpoint } from "./invoiceVisionCheckpoint.js";
 
 const REQUESTED_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency", "deliveryTerm",
@@ -55,7 +55,16 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
   const classificationBySegment = new Map(params.classifications.map((item) => [item.segmentId, item]));
   const segmentById = new Map(params.segments.map((item) => [item.segmentId, item]));
   const provider = new QwenVisionInvoiceProvider();
-  const persistedCheckpoint = normalizeInvoiceVisionCheckpoint(params.visionCheckpoint);
+  const executionKey = [
+    "invoice-vision-v1",
+    provider.name,
+    env.llmVisionModel.trim(),
+    [...REQUESTED_FIELDS].sort().join(",")
+  ].join("|");
+  const { checkpoint: persistedCheckpoint } = prepareInvoiceVisionCheckpoint(
+    params.visionCheckpoint,
+    executionKey
+  );
 
   for (const result of params.candidateEnvelope.segments) {
     const classification = classificationBySegment.get(result.segmentId);

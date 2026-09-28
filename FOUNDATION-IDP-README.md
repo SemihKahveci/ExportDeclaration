@@ -2049,3 +2049,13 @@ The immutable resolution/source provenance retains the selected candidate's orig
 - Persisted page candidates reconstruct the fused envelope without direct normalized-data authority.
 - Goods-line ordinal offset is reconstructed from persisted page candidates before later pages resume.
 - Verification: `backend/scripts/idp/verifyProductE2E147PersistedVisionCheckpointResume.ts`.
+
+### Product E2E 1.4.8 — Vision checkpoint compatibility / stale-reuse guard
+
+Persisted Vision page candidates are now scoped by an execution compatibility key derived from the
+invoice Vision contract, provider, configured Vision model, and requested field set. COMPLETED pages
+are reused only when that key matches exactly. A model/contract/field-set change, or a legacy
+checkpoint without a key, starts a fresh Vision checkpoint instead of silently reusing stale model
+output. F6 remains the only normalized-data authority.
+
+Verification: `backend/scripts/idp/verifyProductE2E148VisionCheckpointCompatibility.ts`.
