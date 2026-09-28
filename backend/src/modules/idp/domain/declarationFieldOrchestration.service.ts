@@ -38,6 +38,16 @@ function orchestrationKey(params: {
 }
 
 
+const INCOTERMS_2020 = new Set([
+  "EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"
+]);
+
+function canonicalIncoterm(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const term = value.trim().toUpperCase();
+  return INCOTERMS_2020.has(term) ? term : undefined;
+}
+
 function exactTwelveDigitGtip(value: unknown): string | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
   const digits = String(value).replace(/\D/g, "");
@@ -55,14 +65,20 @@ export function selectDirectSourceEvidenceAuthority(
 ): DeclarationCandidateAuthoritySelection[] {
   const selections: DeclarationCandidateAuthoritySelection[] = [];
   for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
-    if (!/^goodsLines\.\d+\.hsCode$/.test(field)) continue;
+    const canonicalValue = /^goodsLines\.\d+\.hsCode$/.test(field)
+      ? exactTwelveDigitGtip
+      : field === "deliveryTerm"
+        ? canonicalIncoterm
+        : undefined;
+    if (!canonicalValue) continue;
+
     const native = fieldCandidates.filter((candidate) =>
       !candidate.derived &&
-      exactTwelveDigitGtip(candidate.value) !== undefined &&
+      canonicalValue(candidate.value) !== undefined &&
       candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
     );
     if (native.length === 0) continue;
-    const values = new Set(native.map((candidate) => exactTwelveDigitGtip(candidate.value)));
+    const values = new Set(native.map((candidate) => canonicalValue(candidate.value)));
     if (values.size !== 1) continue;
     const selected = native.slice().sort((a, b) => b.confidence - a.confidence || a.candidateId.localeCompare(b.candidateId))[0]!;
     selections.push({ field, candidateId: selected.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });

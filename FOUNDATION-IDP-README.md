@@ -2145,3 +2145,9 @@ When a goods-line HS/GTIP field contains one unambiguous exact 12-digit value ba
 Before changing delivery-term authority or extraction, the fixed real-invoice corpus measures whether the existing deterministic commercial-terms discovery already exposes the source-verified Incoterm as `trade.deliveryTerm`. The verifier reports candidate values, provenance and evidence text and classifies each invoice as deterministic peer-source coverage, deterministic source conflict, or deterministic source gap. It performs no model inference and writes no declaration state. This checkpoint is measurement-only so a Vision semantic error such as `IHRACAT` versus `CIP` is not patched with invoice-specific logic.
 
 Verification: `backend/scripts/idp/verifyProductE2E1510DeliveryTermSourceCoverage.ts`.
+
+### Product E2E 1.5.11 — Direct-source delivery-term authority
+
+The 1.5.10 corpus measurement proved that all four fixed DIGITAL invoices already expose the source-verified Incoterm through deterministic `NATIVE_TEXT` commercial-term discovery. Production fusion now projects that shadow `trade.deliveryTerm` evidence onto the canonical Foundation 6 `deliveryTerm` field before Vision fusion. When exactly one valid Incoterms 2020 value is unambiguously backed by native text, Foundation 6 may explicitly select it over a conflicting PAGE_IMAGE interpretation while retaining every peer candidate in the audit envelope. Conflicting native Incoterms remain REVIEW_REQUIRED, arbitrary native text such as `IHRACAT` does not gain authority, GTIP authority remains unchanged, and no normalized declaration data is written outside Foundation 6 promotion.
+
+Verification: `backend/scripts/idp/verifyProductE2E1511DirectSourceDeliveryTermAuthority.ts`.

@@ -24,6 +24,26 @@ const REQUESTED_FIELDS = [
   "goodsLines[].lineTotal", "goodsLines[].origin"
 ];
 
+function canonicalCommercialTermsCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
+  const audit = data?.genericCandidateAudit as { commercialTermsCandidates?: FieldCandidateEnvelope } | undefined;
+  const source = audit?.commercialTermsCandidates;
+  if (source?.version !== "1" || !source.fields) return { version: "1", fields: {} };
+
+  const fields: Record<string, FieldCandidateEnvelope["fields"][string]> = {};
+  for (const [field, candidates] of Object.entries(source.fields)) {
+    // The generic commercial-terms discovery predates the declaration/F6
+    // vocabulary. Promote only the source-backed delivery term here; the
+    // original shadow audit remains untouched.
+    if (field !== "trade.deliveryTerm") continue;
+    fields.deliveryTerm = candidates.map((candidate) => ({
+      ...candidate,
+      field: "deliveryTerm",
+      candidateId: `${candidate.candidateId}:f6-delivery-term`
+    }));
+  }
+  return { version: "1", fields };
+}
+
 function fieldCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
   const value = data?.fieldCandidates as FieldCandidateEnvelope | undefined;
   return value?.version === "1" && value.fields ? value : { version: "1", fields: {} };
@@ -119,7 +139,11 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
 
     result.data = {
       ...result.data,
-      fieldCandidates: mergeInvoiceCandidateSources(fieldCandidatesOf(result.data), execution.candidates),
+      fieldCandidates: mergeInvoiceCandidateSources(
+        fieldCandidatesOf(result.data),
+        canonicalCommercialTermsCandidatesOf(result.data),
+        execution.candidates
+      ),
       visionCandidateAudit: {
         route: plan.route,
         checkpoints: execution.checkpoints,
