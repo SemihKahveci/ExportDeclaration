@@ -2121,3 +2121,9 @@ Measurement checkpoint over the fixed real-invoice corpus. Each case runs throug
 The 1.5.5 production corpus matrix exposed an authority-ordering problem rather than a corpus accuracy result: peer Native/Vision candidates were persisted, but the legacy segment-level invoice validator could stop the worker before Foundation 6 saw those candidates. This made every corpus case REVIEW_REQUIRED with zero promoted fields even when correct peer evidence existed.
 
 1.5.6 keeps legacy validation and its audit result, but when a non-empty declaration-facing FieldCandidate envelope is already persisted, invoice validation REVIEW_REQUIRED becomes advisory for worker completion so Foundation 6 can make the authoritative field-level decision. Missing/empty declaration candidates and unrelated validators remain fail-closed. This does not write normalizedData directly and does not weaken Foundation 6 authority.
+
+### Product E2E 1.5.7 — Declaration Authority Resolution Gate
+
+- Legacy segment-level LLM resolution remains useful for validation/extractedData, but a `REVIEW_REQUIRED` result no longer blocks Foundation 6 when a non-empty persisted declaration candidate envelope already exists.
+- Missing/empty declaration candidates preserve the previous fail-closed behavior.
+- The deferred path carries candidate extraction forward only; it does not write `normalizedData`. Foundation 6 remains the sole declaration authority.

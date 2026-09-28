@@ -13,6 +13,7 @@ import { DocumentType } from "../../../common/enums/documentType.js";
 import { extractCandidatesBySegment } from "../candidates/candidateExtractorRegistry.js";
 import { resolveCandidatesWithLlm } from "../llm/resolveCandidatesWithLlm.js";
 import { CandidateResolutionStatus } from "../domain/candidateResolution.types.js";
+import { shouldDeferResolutionReviewToDeclarationAuthority } from "../llm/declarationAuthorityResolutionGate.js";
 import { validateResolvedCandidate } from "../validator/documentValidatorRegistry.js";
 import { ValidationStatus } from "../domain/validation.types.js";
 import { shouldDeferValidationReviewToDeclarationAuthority } from "../validator/declarationAuthorityValidationGate.js";
@@ -274,24 +275,37 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
       });
 
       if (resolution.status !== CandidateResolutionStatus.RESOLVED || !resolution.data) {
-        run.status = ProcessingStatus.REVIEW_REQUIRED;
-        run.currentStage = ProcessingStage.RESOLVE;
-        run.completedAt = new Date();
-        await run.save();
-
-        file.extractionStatus = "MANUAL_REQUIRED";
-        file.parseErrors = resolution.issues.map((issue) => issue.message);
-        await file.save();
-
-        log("idp.resolve.review_required", {
-          jobId: processingRunId,
-          issues: resolution.issues.map((issue) => ({
-            code: issue.code,
-            segmentIds: issue.segmentIds
-          }))
+        const deferredToDeclarationAuthority = shouldDeferResolutionReviewToDeclarationAuthority({
+          resolution,
+          declarationCandidates: run.declarationCandidates
         });
-        return;
-      }
+
+        if (!deferredToDeclarationAuthority) {
+          run.status = ProcessingStatus.REVIEW_REQUIRED;
+          run.currentStage = ProcessingStage.RESOLVE;
+          run.completedAt = new Date();
+          await run.save();
+
+          file.extractionStatus = "MANUAL_REQUIRED";
+          file.parseErrors = resolution.issues.map((issue) => issue.message);
+          await file.save();
+
+          log("idp.resolve.review_required", {
+            jobId: processingRunId,
+            issues: resolution.issues.map((issue) => ({
+              code: issue.code,
+              segmentIds: issue.segmentIds
+            }))
+          });
+          return;
+        }
+
+        log("idp.resolve.deferred_to_declaration_authority", {
+          jobId: processingRunId,
+          issues: resolution.issues.map((issue) => issue.code)
+        });
+        extractedData = { candidateExtraction: candidateEnvelope };
+      } else {
 
       const validation = await stage(
         "VALIDATE",
@@ -337,6 +351,7 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
       }
 
       extractedData = resolution.data;
+      }
     } else if (canonicalDocument && segments?.length && classifications?.length) {
       // Foundation 7.7 allows non-INVOICE document roles with registered segment
       // extractors to contribute declaration-facing evidence without pretending
