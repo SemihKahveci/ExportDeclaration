@@ -2041,3 +2041,34 @@ continues to fail closed rather than guessing.
 The immutable resolution/source provenance retains the selected candidate's original value. The
 1.4.4 real-worker verifier now also requires a persisted declaration resolution plus the canonical
 `2026-09-23` Date, so a swallowed declaration-lifecycle failure can no longer produce a false PASS.
+
+### Product E2E 1.4.5 — real SCANNED production worker fusion E2E
+
+1.4.5 extends the production fusion proof to a real image-only SCANNED invoice. The verifier reuses
+Foundation 6.18's real PaddleOCR fixture and invokes the actual production `processIdpJob()` with
+both text and Vision LLM gates enabled. The production path must run PaddleOCR first, preserve its
+OCR/DERIVED candidates, execute bounded per-page Vision, and persist real `PAGE_IMAGE` candidates
+beside them in the same declaration-facing candidate snapshot.
+
+Acceptance requires:
+
+- canonical analysis classifies the fixture as `SCANNED` and real PaddleOCR produces OCR words;
+- production `visionCandidateAudit` contains at least one successful page checkpoint and no hidden
+  failed page;
+- persisted declaration candidates contain both real `OCR` and real `PAGE_IMAGE` evidence after
+  fusion, while derived deterministic evidence may remain alongside them;
+- the original OCR HS-code candidate survives fusion, proving Vision does not replace the OCR source;
+- the fused snapshot reaches the existing Foundation 6 resolution audit and declaration lifecycle;
+- selected promotion provenance remains constrained to `OCR`, `DERIVED`, or `PAGE_IMAGE` evidence;
+- Vision/OCR fusion still has no direct `normalizedData` write authority.
+
+This is a real-model E2E and intentionally does not assert that Foundation 6 must select OCR over
+Vision (or vice versa). Candidate selection remains the resolver's responsibility; the verifier
+asserts source coexistence, persistence, provenance, and authority boundaries.
+
+### Product E2E 1.4.5.1 — SCANNED verifier authority hardening
+- Real SCANNED worker verifier now distinguishes fused candidate presence from F6 promotion authority.
+- Expected goods fields must all remain present in the persisted fused candidate snapshot.
+- Fields actually promoted by F6 must retain ProcessingRun / UploadedFile / LogicalDocument provenance and OCR / DERIVED / PAGE_IMAGE evidence.
+- Fields left for human review are explicitly allowed to remain unpromoted; their candidates must remain persisted and the verifier guards against silent normalized/sourceTrace promotion.
+- This is verifier-only hardening; production resolver, F6 authority, worker and promotion behavior are unchanged.
