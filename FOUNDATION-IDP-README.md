@@ -2094,3 +2094,9 @@ Verification: `backend/scripts/idp/verifyProductE2E150CorpusGroundTruthContract.
 - Measurement-first: extraction mismatches are reported per field and do not masquerade as infrastructure failures.
 - `PRODUCT_E2E_CASE=<id>` can isolate one corpus case without changing production code.
 - No customer PDF is committed and no normalized declaration state is written.
+
+### Product E2E 1.5.2 — Vision invoice-number canonicalization
+
+The fixed corpus exposed a repeated Vision-only error: three independent Turkish-style invoice identifiers lost exactly one leading zero from the numeric sequence. The provider now applies a deliberately narrow repair only to the 15-character `AAA + 20YY + 8 digits` shape, padding the sequence to nine digits. Already-canonical 16-character identifiers and arbitrary/foreign identifier shapes are preserved unchanged. This is provider-side candidate canonicalization only; it does not write `normalizedData` and does not change F6 authority.
+
+Verifier: `backend/scripts/idp/verifyProductE2E152VisionInvoiceNumberCanonicalization.ts`.

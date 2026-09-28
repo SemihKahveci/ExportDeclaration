@@ -49,6 +49,20 @@ function naturalScalar(value: unknown): string | number | null | undefined {
   return undefined;
 }
 
+/**
+ * Qwen Vision occasionally drops one leading zero from the 9-digit sequence
+ * portion of a Turkish-style 16-character invoice identifier. Repair only the
+ * narrow, structurally unambiguous 15-character shape (AAA + YYYY + 8 digits).
+ * Arbitrary/foreign invoice identifiers are returned untouched.
+ */
+export function canonicalizeVisionInvoiceNumber(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([A-Za-z0-9]{3})(20\d{2})(\d{8})$/);
+  if (!match) return value;
+  return `${match[1]}${match[2]}0${match[3]}`;
+}
+
 function adaptNaturalInvoiceResponse(
   parsed: NaturalInvoice,
   request: InvoiceLlmExtractionRequest,
@@ -69,6 +83,7 @@ function adaptNaturalInvoiceResponse(
       if ((value as unknown[]).every((item) => item === null)) continue;
     } else {
       value = naturalScalar(parsed[requestedField as keyof NaturalInvoice]);
+      if (requestedField === "invoiceNumber") value = canonicalizeVisionInvoiceNumber(value);
       if (value === null || value === undefined) continue;
     }
 
