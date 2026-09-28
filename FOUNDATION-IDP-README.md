@@ -2127,3 +2127,15 @@ The 1.5.5 production corpus matrix exposed an authority-ordering problem rather 
 - Legacy segment-level LLM resolution remains useful for validation/extractedData, but a `REVIEW_REQUIRED` result no longer blocks Foundation 6 when a non-empty persisted declaration candidate envelope already exists.
 - Missing/empty declaration candidates preserve the previous fail-closed behavior.
 - The deferred path carries candidate extraction forward only; it does not write `normalizedData`. Foundation 6 remains the sole declaration authority.
+
+### Product E2E 1.5.8 — Vision → Foundation 6 Field Contract
+
+- Maps natural Vision invoice field names onto the canonical declaration/F6 field vocabulary before candidate persistence.
+- `invoiceNumber → invoiceNo`, `seller/buyer → parties.*.name`, `origin → originCountry`, and `grossKg/netKg → grossWeight/netWeight`.
+- Adds explicit promotion targets for canonical seller/buyer name fields; existing header/trade/package and goods-line targets remain unchanged.
+- This is a contract adapter only: Vision remains peer evidence, PAGE_IMAGE provenance is preserved, and normalizedData is still written only by Foundation 6 promotion.
+- Verification: `backend/scripts/idp/verifyProductE2E158VisionFoundation6FieldContract.ts`.
+
+### Product E2E 1.5.9 — Direct-source GTIP authority
+
+When a goods-line HS/GTIP field contains one unambiguous exact 12-digit value backed by direct `NATIVE_TEXT` evidence, Foundation 6 may explicitly select that candidate over a conflicting `PAGE_IMAGE` interpretation. All peer candidates remain in the persisted/audited resolution envelope. Vision-only GTIPs are unchanged; conflicting native GTIPs remain `REVIEW_REQUIRED`; no authority is generalized to unrelated fields.

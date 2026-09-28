@@ -12,6 +12,19 @@ import {
 const VISION_EXTRACTOR = "invoice-qwen-vision-v1";
 const GOODS_PREFIX = "goodsLines[].";
 
+const VISION_TO_DECLARATION_FIELD: Readonly<Record<string, string>> = {
+  invoiceNumber: "invoiceNo",
+  seller: "parties.seller.name",
+  buyer: "parties.buyer.name",
+  origin: "originCountry",
+  grossKg: "grossWeight",
+  netKg: "netWeight"
+};
+
+function declarationFieldName(visionField: string): string {
+  return VISION_TO_DECLARATION_FIELD[visionField] ?? visionField;
+}
+
 const NUMERIC_INVOICE_FIELDS = new Set([
   "grossKg",
   "netKg",
@@ -141,7 +154,7 @@ export function projectVisionResponseToFieldCandidates(params: {
       if (value === null || value === undefined || value === "") return;
       const field = extracted.field.startsWith(GOODS_PREFIX)
         ? `goodsLines.${(params.goodsLineOffset ?? 0) + index}.${leaf}`
-        : extracted.field;
+        : declarationFieldName(extracted.field);
       const evidence = extracted.evidence.find((item) => item.source === "PAGE_IMAGE" && item.pageNumber === params.pageNumber);
       if (!evidence) throw new Error(`Vision candidate PAGE_IMAGE evidence missing for ${field} on page ${params.pageNumber}.`);
       const candidate: FieldCandidate = {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import mongoose from "mongoose";
 import type { CrossDocumentFieldRule } from "./crossDocumentFieldResolution.types.js";
+import type { DeclarationCandidateAuthoritySelection } from "./declarationFieldResolution.types.js";
 import type { SourceFieldCandidates } from "./declarationFieldCandidateProjector.js";
 import { projectDeclarationFieldCandidates } from "./declarationFieldCandidateProjector.js";
 import { loadDeclarationDocumentSet } from "./declarationDocumentSet.service.js";
@@ -36,6 +37,39 @@ function orchestrationKey(params: {
   return createHash("sha256").update(payload).digest("hex");
 }
 
+
+function exactTwelveDigitGtip(value: unknown): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const digits = String(value).replace(/\D/g, "");
+  return /^\d{12}$/.test(digits) ? digits : undefined;
+}
+
+/**
+ * A machine-readable native-text GTIP is stronger evidence than a conflicting
+ * image interpretation only when the direct source is unambiguous. We keep all
+ * peer candidates in the audit envelope; this merely supplies an explicit,
+ * deterministic authority selection to Foundation 6.
+ */
+export function selectDirectSourceEvidenceAuthority(
+  candidates: ReturnType<typeof projectDeclarationFieldCandidates>
+): DeclarationCandidateAuthoritySelection[] {
+  const selections: DeclarationCandidateAuthoritySelection[] = [];
+  for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
+    if (!/^goodsLines\.\d+\.hsCode$/.test(field)) continue;
+    const native = fieldCandidates.filter((candidate) =>
+      !candidate.derived &&
+      exactTwelveDigitGtip(candidate.value) !== undefined &&
+      candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (native.length === 0) continue;
+    const values = new Set(native.map((candidate) => exactTwelveDigitGtip(candidate.value)));
+    if (values.size !== 1) continue;
+    const selected = native.slice().sort((a, b) => b.confidence - a.confidence || a.candidateId.localeCompare(b.candidateId))[0]!;
+    selections.push({ field, candidateId: selected.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+  }
+  return selections.sort((a, b) => a.field.localeCompare(b.field));
+}
+
 /**
  * Production boundary for Foundation 6 declaration-wide resolution.
  * A single call loads the persisted logical-document set, validates it, projects
@@ -63,6 +97,7 @@ export async function orchestrateDeclarationFieldResolution(params: {
     sources: params.sources
   });
   const rules = params.rules ?? [];
+  const candidateSelections = selectDirectSourceEvidenceAuthority(candidates);
   const key = orchestrationKey({
     companyId: params.companyId,
     declarationId: params.declarationId,
@@ -76,6 +111,7 @@ export async function orchestrateDeclarationFieldResolution(params: {
     declarationId: params.declarationId,
     candidates,
     rules,
+    candidateSelections,
     orchestrationKey: key
   });
 

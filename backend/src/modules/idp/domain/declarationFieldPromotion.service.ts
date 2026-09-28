@@ -15,7 +15,9 @@ export const DEFAULT_DECLARATION_FIELD_TARGETS: Readonly<Record<string, string>>
   totalPackage: "packageInfo.totalPackage",
   packageType: "packageInfo.packageType",
   grossWeight: "packageInfo.grossKg",
-  netWeight: "packageInfo.netKg"
+  netWeight: "packageInfo.netKg",
+  "parties.seller.name": "parties.seller.name",
+  "parties.buyer.name": "parties.buyer.name"
 };
 
 type MutableObject = Record<string, unknown>;
