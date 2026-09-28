@@ -2139,3 +2139,9 @@ The 1.5.5 production corpus matrix exposed an authority-ordering problem rather 
 ### Product E2E 1.5.9 — Direct-source GTIP authority
 
 When a goods-line HS/GTIP field contains one unambiguous exact 12-digit value backed by direct `NATIVE_TEXT` evidence, Foundation 6 may explicitly select that candidate over a conflicting `PAGE_IMAGE` interpretation. All peer candidates remain in the persisted/audited resolution envelope. Vision-only GTIPs are unchanged; conflicting native GTIPs remain `REVIEW_REQUIRED`; no authority is generalized to unrelated fields.
+
+### Product E2E 1.5.10 — Delivery-term source coverage measurement
+
+Before changing delivery-term authority or extraction, the fixed real-invoice corpus measures whether the existing deterministic commercial-terms discovery already exposes the source-verified Incoterm as `trade.deliveryTerm`. The verifier reports candidate values, provenance and evidence text and classifies each invoice as deterministic peer-source coverage, deterministic source conflict, or deterministic source gap. It performs no model inference and writes no declaration state. This checkpoint is measurement-only so a Vision semantic error such as `IHRACAT` versus `CIP` is not patched with invoice-specific logic.
+
+Verification: `backend/scripts/idp/verifyProductE2E1510DeliveryTermSourceCoverage.ts`.
