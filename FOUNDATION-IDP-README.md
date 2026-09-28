@@ -2087,3 +2087,10 @@ write authority. Subsequent 1.5.x checkpoints use this stable corpus to measure 
 and classify failures by pipeline layer before any general-purpose fix is accepted.
 
 Verification: `backend/scripts/idp/verifyProductE2E150CorpusGroundTruthContract.ts`.
+
+### Product E2E 1.5.1 — Real corpus Vision accuracy matrix
+- Uses the fixed 1.5.0 ground-truth contract as the single source of expected values.
+- Measures first-page PAGE_IMAGE extraction for all four heterogeneous real invoices using the configured Vision provider.
+- Measurement-first: extraction mismatches are reported per field and do not masquerade as infrastructure failures.
+- `PRODUCT_E2E_CASE=<id>` can isolate one corpus case without changing production code.
+- No customer PDF is committed and no normalized declaration state is written.
