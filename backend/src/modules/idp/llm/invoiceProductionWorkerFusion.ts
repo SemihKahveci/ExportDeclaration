@@ -6,6 +6,8 @@ import type { SegmentClassification } from "../domain/segmentClassification.type
 import { ClassifiedDocumentType } from "../domain/segmentClassification.types.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 import { QwenVisionInvoiceProvider } from "./qwenVisionInvoiceProvider.js";
+import type { InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
+import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
 import { renderInvoicePagesForVision } from "./renderInvoicePagesForVision.js";
 import {
   mergeInvoiceCandidateSources,
@@ -43,6 +45,10 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
   candidateEnvelope: CandidateExtractionEnvelope;
   visionCheckpoint?: unknown;
   persistVisionCheckpoint?: (checkpoint: PersistedInvoiceVisionCheckpoint) => Promise<void>;
+  /** Injectable seams for deterministic recovery verification; production callers omit these. */
+  visionProvider?: InvoiceLlmExtractionProvider;
+  renderVisionPage?: InvoiceVisionPageRenderer;
+  visionModelIdentity?: string;
 }): Promise<CandidateExtractionEnvelope> {
   const plan = planInvoiceProductionExtraction({
     canonicalDocument: params.canonicalDocument,
@@ -54,11 +60,12 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
 
   const classificationBySegment = new Map(params.classifications.map((item) => [item.segmentId, item]));
   const segmentById = new Map(params.segments.map((item) => [item.segmentId, item]));
-  const provider = new QwenVisionInvoiceProvider();
+  const provider = params.visionProvider ?? new QwenVisionInvoiceProvider();
+  const visionModelIdentity = params.visionModelIdentity ?? env.llmVisionModel.trim();
   const executionKey = [
     "invoice-vision-v1",
     provider.name,
-    env.llmVisionModel.trim(),
+    visionModelIdentity,
     [...REQUESTED_FIELDS].sort().join(",")
   ].join("|");
   const { checkpoint: persistedCheckpoint } = prepareInvoiceVisionCheckpoint(
@@ -88,7 +95,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       segmentId: result.segmentId,
       pageNumbers: [...segment.pageNumbers],
       provider,
-      renderPage: async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!,
+      renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
       request: {
         version: "1",
         requestedFields: REQUESTED_FIELDS,

@@ -2059,3 +2059,31 @@ checkpoint without a key, starts a fresh Vision checkpoint instead of silently r
 output. F6 remains the only normalized-data authority.
 
 Verification: `backend/scripts/idp/verifyProductE2E148VisionCheckpointCompatibility.ts`.
+
+### Product E2E 1.4.9 — Production fusion persisted retry boundary
+
+The production invoice Vision fusion now exposes narrow injectable provider/renderer seams so recovery
+can be verified deterministically without spending a real-model inference run. Normal worker callers
+still use `QwenVisionInvoiceProvider` and the real PDF renderer by default.
+
+The verifier persists page checkpoints on a real `ProcessingRun` in MongoDB, leaves page 1 COMPLETED
+and page 2 FAILED, then reconstructs a retry from the persisted checkpoint. The retry must skip page 1,
+retry page 2, recover page 1 candidates into the fused envelope, preserve goods-line ordinals, and
+replace the failed page checkpoint with COMPLETED. No normalized-data authority is added.
+
+Verification: `backend/scripts/idp/verifyProductE2E149ProductionFusionPersistedRetry.ts`.
+
+### Product E2E 1.5.0 — Fixed real-invoice corpus ground-truth contract
+
+The Windows product-hardening phase starts from a fixed local real-invoice corpus rather than
+invoice-specific production fixes. The first corpus contract contains four heterogeneous invoices
+with source-verified first-line expectations for invoice identity, currency/delivery metadata and
+core goods fields. Customer PDFs remain under ignored `uploads/product-e2e/`; only the verifier's
+fixed expectations are versioned.
+
+The contract fails on missing local fixtures, duplicate corpus identities, malformed 12-digit GTIP
+expectations, or non-finite numeric ground truth. It performs no LLM inference and has no declaration
+write authority. Subsequent 1.5.x checkpoints use this stable corpus to measure production extraction
+and classify failures by pipeline layer before any general-purpose fix is accepted.
+
+Verification: `backend/scripts/idp/verifyProductE2E150CorpusGroundTruthContract.ts`.
