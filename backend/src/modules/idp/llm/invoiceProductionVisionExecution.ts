@@ -42,6 +42,15 @@ export async function executeInvoiceVisionByPage(params: {
   provider: InvoiceLlmExtractionProvider;
   renderPage: InvoiceVisionPageRenderer;
   request: Omit<InvoiceLlmExtractionRequest, "documentId" | "evidenceMode">;
+  completedPages?: Record<number, { candidates: FieldCandidateEnvelope; decision: string; candidateCount: number }>;
+  onPageCheckpoint?: (checkpoint: {
+    pageNumber: number;
+    status: "COMPLETED" | "FAILED";
+    decision?: string;
+    candidateCount?: number;
+    candidates?: FieldCandidateEnvelope;
+    error?: string;
+  }) => Promise<void>;
 }): Promise<InvoiceProductionVisionExecution> {
   const validPages = new Set(params.canonicalDocument.pages.map((page) => page.pageNumber));
   const sources: FieldCandidateEnvelope[] = [];
@@ -51,6 +60,18 @@ export async function executeInvoiceVisionByPage(params: {
   let goodsLineOffset = 0;
 
   for (const pageNumber of params.pageNumbers) {
+    const persisted = params.completedPages?.[pageNumber];
+    if (persisted) {
+      sources.push(persisted.candidates);
+      checkpoints.push({ pageNumber, decision: persisted.decision, candidateCount: persisted.candidateCount });
+      const persistedGoodsCount = Object.keys(persisted.candidates.fields)
+        .map((field) => /^goodsLines\.(\d+)\./.exec(field)?.[1])
+        .filter((value): value is string => Boolean(value))
+        .reduce((max, value) => Math.max(max, Number(value) + 1), 0);
+      goodsLineOffset = Math.max(goodsLineOffset, persistedGoodsCount);
+      continue;
+    }
+
     if (!validPages.has(pageNumber)) {
       failedPages.push({ pageNumber, error: "PAGE_NOT_IN_CANONICAL_DOCUMENT" });
       continue;
@@ -77,16 +98,19 @@ export async function executeInvoiceVisionByPage(params: {
         .filter((field) => field.field.startsWith("goodsLines[].") && Array.isArray(field.value))
         .reduce((max, field) => Math.max(max, (field.value as unknown[]).length), 0);
       goodsLineOffset += pageGoodsCount;
-      checkpoints.push({
+      const candidateCount = Object.values(projected.fields).reduce((sum, candidates) => sum + candidates.length, 0);
+      checkpoints.push({ pageNumber, decision: response.decision, candidateCount });
+      await params.onPageCheckpoint?.({
         pageNumber,
+        status: "COMPLETED",
         decision: response.decision,
-        candidateCount: Object.values(projected.fields).reduce((sum, candidates) => sum + candidates.length, 0)
+        candidateCount,
+        candidates: projected
       });
     } catch (error) {
-      failedPages.push({
-        pageNumber,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      const message = error instanceof Error ? error.message : String(error);
+      failedPages.push({ pageNumber, error: message });
+      await params.onPageCheckpoint?.({ pageNumber, status: "FAILED", error: message });
     }
   }
 

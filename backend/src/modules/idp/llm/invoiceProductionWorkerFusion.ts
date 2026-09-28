@@ -12,6 +12,7 @@ import {
   planInvoiceProductionExtraction
 } from "./invoiceProductionExtractionOrchestrator.js";
 import { executeInvoiceVisionByPage } from "./invoiceProductionVisionExecution.js";
+import { normalizeInvoiceVisionCheckpoint, type PersistedInvoiceVisionCheckpoint } from "./invoiceVisionCheckpoint.js";
 
 const REQUESTED_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency", "deliveryTerm",
@@ -40,6 +41,8 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
   segments: DocumentSegment[];
   classifications: SegmentClassification[];
   candidateEnvelope: CandidateExtractionEnvelope;
+  visionCheckpoint?: unknown;
+  persistVisionCheckpoint?: (checkpoint: PersistedInvoiceVisionCheckpoint) => Promise<void>;
 }): Promise<CandidateExtractionEnvelope> {
   const plan = planInvoiceProductionExtraction({
     canonicalDocument: params.canonicalDocument,
@@ -52,11 +55,24 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
   const classificationBySegment = new Map(params.classifications.map((item) => [item.segmentId, item]));
   const segmentById = new Map(params.segments.map((item) => [item.segmentId, item]));
   const provider = new QwenVisionInvoiceProvider();
+  const persistedCheckpoint = normalizeInvoiceVisionCheckpoint(params.visionCheckpoint);
 
   for (const result of params.candidateEnvelope.segments) {
     const classification = classificationBySegment.get(result.segmentId);
     const segment = segmentById.get(result.segmentId);
     if (!classification || !segment || classification.documentType !== ClassifiedDocumentType.INVOICE || !result.data) continue;
+
+    const segmentCheckpoint = persistedCheckpoint.segments[result.segmentId] ?? { pages: {} };
+    persistedCheckpoint.segments[result.segmentId] = segmentCheckpoint;
+    const completedPages = Object.fromEntries(
+      Object.values(segmentCheckpoint.pages)
+        .filter((page) => page.status === "COMPLETED" && page.candidates && page.decision && typeof page.candidateCount === "number")
+        .map((page) => [page.pageNumber, {
+          candidates: page.candidates!,
+          decision: page.decision!,
+          candidateCount: page.candidateCount!
+        }])
+    );
 
     const execution = await executeInvoiceVisionByPage({
       canonicalDocument: params.canonicalDocument,
@@ -70,6 +86,18 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         nativeText: "",
         ocrText: "",
         verifiedKnowledge: []
+      },
+      completedPages,
+      onPageCheckpoint: async (page) => {
+        segmentCheckpoint.pages[String(page.pageNumber)] = {
+          status: page.status,
+          pageNumber: page.pageNumber,
+          decision: page.decision,
+          candidateCount: page.candidateCount,
+          candidates: page.candidates,
+          error: page.error
+        };
+        await params.persistVisionCheckpoint?.(persistedCheckpoint);
       }
     });
 

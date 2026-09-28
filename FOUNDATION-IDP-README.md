@@ -2042,52 +2042,10 @@ The immutable resolution/source provenance retains the selected candidate's orig
 1.4.4 real-worker verifier now also requires a persisted declaration resolution plus the canonical
 `2026-09-23` Date, so a swallowed declaration-lifecycle failure can no longer produce a false PASS.
 
-### Product E2E 1.4.5 — real SCANNED production worker fusion E2E
+### Product E2E 1.4.7 — Persisted Vision checkpoint / retry resume
 
-1.4.5 extends the production fusion proof to a real image-only SCANNED invoice. The verifier reuses
-Foundation 6.18's real PaddleOCR fixture and invokes the actual production `processIdpJob()` with
-both text and Vision LLM gates enabled. The production path must run PaddleOCR first, preserve its
-OCR/DERIVED candidates, execute bounded per-page Vision, and persist real `PAGE_IMAGE` candidates
-beside them in the same declaration-facing candidate snapshot.
-
-Acceptance requires:
-
-- canonical analysis classifies the fixture as `SCANNED` and real PaddleOCR produces OCR words;
-- production `visionCandidateAudit` contains at least one successful page checkpoint and no hidden
-  failed page;
-- persisted declaration candidates contain both real `OCR` and real `PAGE_IMAGE` evidence after
-  fusion, while derived deterministic evidence may remain alongside them;
-- the original OCR HS-code candidate survives fusion, proving Vision does not replace the OCR source;
-- the fused snapshot reaches the existing Foundation 6 resolution audit and declaration lifecycle;
-- selected promotion provenance remains constrained to `OCR`, `DERIVED`, or `PAGE_IMAGE` evidence;
-- Vision/OCR fusion still has no direct `normalizedData` write authority.
-
-This is a real-model E2E and intentionally does not assert that Foundation 6 must select OCR over
-Vision (or vice versa). Candidate selection remains the resolver's responsibility; the verifier
-asserts source coexistence, persistence, provenance, and authority boundaries.
-
-### Product E2E 1.4.5.1 — SCANNED verifier authority hardening
-- Real SCANNED worker verifier now distinguishes fused candidate presence from F6 promotion authority.
-- Expected goods fields must all remain present in the persisted fused candidate snapshot.
-- Fields actually promoted by F6 must retain ProcessingRun / UploadedFile / LogicalDocument provenance and OCR / DERIVED / PAGE_IMAGE evidence.
-- Fields left for human review are explicitly allowed to remain unpromoted; their candidates must remain persisted and the verifier guards against silent normalized/sourceTrace promotion.
-- This is verifier-only hardening; production resolver, F6 authority, worker and promotion behavior are unchanged.
-
-### Product E2E 1.4.6 — real MIXED production worker fusion E2E
-
-1.4.6 extends the production worker proof to the existing Foundation 6.19 two-page MIXED fixture. Page 1 remains DIGITAL/native text while page 2 is image-only and is selectively enriched by real PaddleOCR. Production Vision executes in bounded one-page checkpoints for the INVOICE segment and its PAGE_IMAGE candidates are fused without replacing deterministic/native candidates. The verifier asserts the DIGITAL page is not OCR-enriched, the SCANNED page is OCR-enriched, both Vision page checkpoints succeed, native and PAGE_IMAGE candidates coexist in the persisted declaration-facing snapshot, Foundation 6 resolution audit is reached, and declaration lifecycle promotion remains the sole normalized-data authority. The scanned continuation contains shipping notes rather than a second goods row, so this verifier reports OCR declaration-candidate count rather than requiring one; Product E2E 1.4.5 separately proves OCR and PAGE_IMAGE candidate coexistence.
-
-Verifier:
-
-```powershell
-npx tsx backend/scripts/idp/verifyProductE2E146RealMixedWorkerFusionE2E.ts
-```
-
-### Product E2E 1.4.6.1 — MIXED authority-boundary hardening
-
-The real MIXED worker verifier accepts only two production-safe terminal outcomes after real Native/OCR/Vision fusion: `COMPLETED`, which must reach Foundation 6 declaration promotion, or fail-closed `REVIEW_REQUIRED` specifically caused by `FIELD_LLM_REVIEW_REQUIRED`. The review path must retain the fused candidate snapshot while creating no Foundation 6 resolution audit, normalized declaration data, or source trace. This keeps model uncertainty from being converted into silent authority while avoiding a flaky requirement that the configured local model must always choose a winner for the mixed fixture.
-
-
-### Product E2E 1.4.6.2 — persisted-state authority invariant
-
-The MIXED review-path verifier now compares the declaration after the worker with its actual persisted pre-worker state. Mongoose may materialize empty nested `normalizedData` containers (for example `header`) even when a declaration is created with `normalizedData: {}`, so key-count assertions do not prove whether the worker wrote authority data. On `FIELD_LLM_REVIEW_REQUIRED`, the verifier now requires `normalizedData`, `sourceTrace`, and `idpResolution` to remain exactly unchanged and still requires zero Foundation 6 resolution audits. This is verifier-only hardening; production extraction, resolver, worker, and promotion behavior are unchanged.
+- `ProcessingRun.visionCandidateCheckpoint` persists bounded PAGE_IMAGE extraction after every page.
+- A retry reuses COMPLETED page candidates and invokes Vision only for missing/FAILED pages.
+- Persisted page candidates reconstruct the fused envelope without direct normalized-data authority.
+- Goods-line ordinal offset is reconstructed from persisted page candidates before later pages resume.
+- Verification: `backend/scripts/idp/verifyProductE2E147PersistedVisionCheckpointResume.ts`.

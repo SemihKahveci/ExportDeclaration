@@ -217,7 +217,13 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
           canonicalDocument: canonicalDocument!,
           segments: segments!,
           classifications: classifications!,
-          candidateEnvelope
+          candidateEnvelope,
+          visionCheckpoint: run.visionCandidateCheckpoint,
+          persistVisionCheckpoint: async (checkpoint) => {
+            run.visionCandidateCheckpoint = checkpoint;
+            run.markModified("visionCandidateCheckpoint");
+            await run.save();
+          }
         })
       );
 
