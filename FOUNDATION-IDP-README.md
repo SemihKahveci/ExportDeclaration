@@ -2106,3 +2106,8 @@ Verifier: `backend/scripts/idp/verifyProductE2E152VisionInvoiceNumberCanonicaliz
 The real-invoice corpus now classifies Vision GTIP misses before any extraction rule is changed. For each fixed corpus invoice, the verifier checks whether the source PDF's native canonical text contains the expected 12-digit GTIP and whether the existing deterministic invoice candidate path already produces that GTIP. Each case is classified as deterministic peer-source coverage, source-visible parser gap, or GTIP not visible to native text. This is measurement-only, performs no model inference, and writes no normalized declaration state.
 
 Verifier: `backend/scripts/idp/verifyProductE2E153GtipSourceCoverageMatrix.ts`.
+
+### Product E2E 1.5.4 — source-visible GTIP association hardening
+- Exact 12-digit GTIP evidence is no longer rejected only because it appears outside the legacy goods-table/right-side geometry.
+- Ambiguous repaired 10/11-digit candidates remain behind the historical geometry guard; this change does not globally promote padded values.
+- Corpus verifier requires all fixed DIGITAL corpus GTIPs to materialize as deterministic NATIVE_TEXT candidates without supplier-specific rules or model inference.

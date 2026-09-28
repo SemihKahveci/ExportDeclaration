@@ -67,19 +67,24 @@ def extract_gtip_candidates(words, page_no):
 
     for word in words:
         text = word.get("text", "")
-
-        if not is_right_side_candidate(word):
-            continue
-
-        if page_no == 1 and word["y0"] < 650:
-            continue
-
         found_gtips = extract_gtips_from_text(text)
 
         if not found_gtips:
             continue
 
-        for found in found_gtips:
+        # Exact 12-digit GTIP values are strong semantic evidence and may live
+        # outside the goods table (for example in invoice explanations). Do not
+        # discard them solely because of legacy right-side/table coordinates.
+        # Keep the historical geometry guard for repaired 10/11-digit values:
+        # those are ambiguous and must not become global candidates.
+        exact_candidates = [found for found in found_gtips if found["isExact12"]]
+        repaired_candidates = [found for found in found_gtips if not found["isExact12"]]
+
+        accepted = list(exact_candidates)
+        if is_right_side_candidate(word) and not (page_no == 1 and word["y0"] < 650):
+            accepted.extend(repaired_candidates)
+
+        for found in accepted:
             candidates.append({
                 **found,
                 "raw": text,
