@@ -2100,3 +2100,9 @@ Verification: `backend/scripts/idp/verifyProductE2E150CorpusGroundTruthContract.
 The fixed corpus exposed a repeated Vision-only error: three independent Turkish-style invoice identifiers lost exactly one leading zero from the numeric sequence. The provider now applies a deliberately narrow repair only to the 15-character `AAA + 20YY + 8 digits` shape, padding the sequence to nine digits. Already-canonical 16-character identifiers and arbitrary/foreign identifier shapes are preserved unchanged. This is provider-side candidate canonicalization only; it does not write `normalizedData` and does not change F6 authority.
 
 Verifier: `backend/scripts/idp/verifyProductE2E152VisionInvoiceNumberCanonicalization.ts`.
+
+### Product E2E 1.5.3 — GTIP source-coverage matrix
+
+The real-invoice corpus now classifies Vision GTIP misses before any extraction rule is changed. For each fixed corpus invoice, the verifier checks whether the source PDF's native canonical text contains the expected 12-digit GTIP and whether the existing deterministic invoice candidate path already produces that GTIP. Each case is classified as deterministic peer-source coverage, source-visible parser gap, or GTIP not visible to native text. This is measurement-only, performs no model inference, and writes no normalized declaration state.
+
+Verifier: `backend/scripts/idp/verifyProductE2E153GtipSourceCoverageMatrix.ts`.
