@@ -2202,3 +2202,14 @@ Verification: `backend/scripts/idp/verifyProductE2E1517CanonicalGoodsUnitNormali
 - Peer numeric/string representations can therefore reach Foundation 6 consensus and packageInfo receives numeric values without direct normalizedData writes.
 
 Verification: `backend/scripts/idp/verifyProductE2E1518ContextAwareWeightCandidateCanonicalization.ts`.
+
+### Product E2E 1.5.19 — Fiber Beton unit source coverage diagnostic
+- Measurement-only diagnostic for the remaining Fiber Beton `goodsLines.0.unit` gap after weight canonicalization restored declaration lifecycle.
+- Compares legacy production and generic unit candidates and records canonical KG/quantity source tokens without model inference or database mutation.
+- The diagnostic classifies the gap before any unit-association rule is added; customer corpus PDFs remain local/ignored.
+
+### Product E2E 1.5.20 — Geometry-aware goods unit association
+
+- When a fused `goodsLines.N.quantity` is known but its unit is missing, production fusion may recover an explicit unit only from canonical source words that contain the same numeric quantity immediately followed by a recognized unit on the same visual row.
+- The rule is source/layout generic: no supplier coordinates or invoice-specific literals. Conflicting explicit units are retained as peer candidates so Foundation 6 remains fail-closed; existing unit candidates are never overridden.
+- Unit evidence keeps the original source token and Native/OCR provenance. No direct `normalizedData` write and no model inference are introduced.

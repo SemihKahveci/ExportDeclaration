@@ -15,6 +15,7 @@ import {
 } from "./invoiceProductionExtractionOrchestrator.js";
 import { executeInvoiceVisionByPage } from "./invoiceProductionVisionExecution.js";
 import { prepareInvoiceVisionCheckpoint, type PersistedInvoiceVisionCheckpoint } from "./invoiceVisionCheckpoint.js";
+import { associateExplicitGoodsUnitsFromQuantity } from "./invoiceGoodsUnitAssociation.js";
 
 const REQUESTED_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency", "deliveryTerm",
@@ -137,13 +138,19 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       }
     });
 
+    const fusedCandidates = mergeInvoiceCandidateSources(
+      fieldCandidatesOf(result.data),
+      canonicalCommercialTermsCandidatesOf(result.data),
+      execution.candidates
+    );
+
     result.data = {
       ...result.data,
-      fieldCandidates: mergeInvoiceCandidateSources(
-        fieldCandidatesOf(result.data),
-        canonicalCommercialTermsCandidatesOf(result.data),
-        execution.candidates
-      ),
+      fieldCandidates: associateExplicitGoodsUnitsFromQuantity({
+        canonicalDocument: params.canonicalDocument,
+        segmentId: result.segmentId,
+        candidates: fusedCandidates
+      }),
       visionCandidateAudit: {
         route: plan.route,
         checkpoints: execution.checkpoints,
