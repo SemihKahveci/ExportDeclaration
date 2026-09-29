@@ -60,6 +60,82 @@ function exactTwelveDigitGtip(value: unknown): string | undefined {
  * peer candidates in the audit envelope; this merely supplies an explicit,
  * deterministic authority selection to Foundation 6.
  */
+function exactTurkishInvoiceNumber(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value.trim().replace(/\s+/g, "");
+  return /^[A-Za-z0-9]{3}20\d{2}\d{9}$/.test(compact) ? compact.toUpperCase() : undefined;
+}
+
+function evidenceTextMatchesValue(candidate: { value: unknown; evidence: Array<{ contentSource: string; text?: string }> }): boolean {
+  if (typeof candidate.value !== "string") return false;
+  const expected = candidate.value.trim().replace(/\s+/g, "").toUpperCase();
+  return candidate.evidence.some((evidence) =>
+    evidence.contentSource === "NATIVE_TEXT" &&
+    typeof evidence.text === "string" &&
+    evidence.text.trim().replace(/\s+/g, "").toUpperCase() === expected
+  );
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function approximatelyEqual(a: number, b: number): boolean {
+  const scale = Math.max(1, Math.abs(a), Math.abs(b));
+  return Math.abs(a - b) <= scale * 1e-6;
+}
+
+/**
+ * Select a native unit-price candidate only when the same commercial row
+ * independently corroborates it through quantity × unitPrice = lineTotal.
+ * Conflicting peer candidates remain in the audit envelope. Ambiguous or
+ * incomplete arithmetic deliberately produces no authority selection.
+ */
+function selectArithmeticCorroboratedUnitPrices(
+  candidates: ReturnType<typeof projectDeclarationFieldCandidates>
+): DeclarationCandidateAuthoritySelection[] {
+  const selections: DeclarationCandidateAuthoritySelection[] = [];
+  for (const [field, prices] of Object.entries(candidates.fields)) {
+    const match = /^goodsLines\.(\d+)\.unitPrice$/.exec(field);
+    if (!match) continue;
+    const row = match[1]!;
+    const quantities = candidates.fields[`goodsLines.${row}.quantity`] ?? [];
+    const totals = candidates.fields[`goodsLines.${row}.lineTotal`] ?? [];
+    if (quantities.length === 0 || totals.length === 0) continue;
+
+    const nativePrices = prices.filter((candidate) =>
+      !candidate.derived &&
+      finiteNumber(candidate.value) !== undefined &&
+      candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    const corroborated = nativePrices.filter((priceCandidate) => {
+      const price = finiteNumber(priceCandidate.value)!;
+      return quantities.some((quantityCandidate) => {
+        const quantity = finiteNumber(quantityCandidate.value);
+        if (quantity === undefined) return false;
+        return totals.some((totalCandidate) => {
+          const total = finiteNumber(totalCandidate.value);
+          return total !== undefined && approximatelyEqual(quantity * price, total);
+        });
+      });
+    });
+    if (corroborated.length === 0) continue;
+    const values = new Set(corroborated.map((candidate) => String(finiteNumber(candidate.value))));
+    if (values.size !== 1) continue;
+    const selected = corroborated.slice().sort((a, b) => b.confidence - a.confidence || a.candidateId.localeCompare(b.candidateId))[0]!;
+    selections.push({ field, candidateId: selected.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+  }
+  return selections;
+}
+
+/**
+ * Direct-source authority is intentionally narrow. Structured identifiers and
+ * commercial terms must be self-validating in native text; numeric unit prices
+ * additionally require same-row arithmetic corroboration. This keeps Foundation
+ * 6 fail-closed while preventing a conflicting image interpretation from
+ * outranking machine-readable source evidence that the document itself proves.
+ */
 export function selectDirectSourceEvidenceAuthority(
   candidates: ReturnType<typeof projectDeclarationFieldCandidates>
 ): DeclarationCandidateAuthoritySelection[] {
@@ -69,13 +145,16 @@ export function selectDirectSourceEvidenceAuthority(
       ? exactTwelveDigitGtip
       : field === "deliveryTerm"
         ? canonicalIncoterm
-        : undefined;
+        : field === "invoiceNo"
+          ? exactTurkishInvoiceNumber
+          : undefined;
     if (!canonicalValue) continue;
 
     const native = fieldCandidates.filter((candidate) =>
       !candidate.derived &&
       canonicalValue(candidate.value) !== undefined &&
-      candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+      candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT") &&
+      (field !== "invoiceNo" || evidenceTextMatchesValue(candidate))
     );
     if (native.length === 0) continue;
     const values = new Set(native.map((candidate) => canonicalValue(candidate.value)));
@@ -83,7 +162,10 @@ export function selectDirectSourceEvidenceAuthority(
     const selected = native.slice().sort((a, b) => b.confidence - a.confidence || a.candidateId.localeCompare(b.candidateId))[0]!;
     selections.push({ field, candidateId: selected.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
   }
-  return selections.sort((a, b) => a.field.localeCompare(b.field));
+
+  selections.push(...selectArithmeticCorroboratedUnitPrices(candidates));
+  const unique = new Map(selections.map((selection) => [selection.field, selection]));
+  return [...unique.values()].sort((a, b) => a.field.localeCompare(b.field));
 }
 
 /**
