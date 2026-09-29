@@ -2151,3 +2151,9 @@ Verification: `backend/scripts/idp/verifyProductE2E1510DeliveryTermSourceCoverag
 The 1.5.10 corpus measurement proved that all four fixed DIGITAL invoices already expose the source-verified Incoterm through deterministic `NATIVE_TEXT` commercial-term discovery. Production fusion now projects that shadow `trade.deliveryTerm` evidence onto the canonical Foundation 6 `deliveryTerm` field before Vision fusion. When exactly one valid Incoterms 2020 value is unambiguously backed by native text, Foundation 6 may explicitly select it over a conflicting PAGE_IMAGE interpretation while retaining every peer candidate in the audit envelope. Conflicting native Incoterms remain REVIEW_REQUIRED, arbitrary native text such as `IHRACAT` does not gain authority, GTIP authority remains unchanged, and no normalized declaration data is written outside Foundation 6 promotion.
 
 Verification: `backend/scripts/idp/verifyProductE2E1511DirectSourceDeliveryTermAuthority.ts`.
+
+### Product E2E 1.5.12 — GTIP / business-identifier disambiguation
+- Hardens generic source-visible GTIP discovery after the real Textilium production rerun exposed a 12-digit trade-registry identifier being treated as the first goods-line GTIP.
+- A 12-digit token is rejected only when its visual line carries an explicit business-identifier label (VKN/tax id/trade registry/MERSIS/ETTN). This is semantic context, not supplier/layout coordinates.
+- Exact source-visible GTIPs in goods rows or explanation text remain eligible; Foundation 6 remains the only normalized-data authority.
+- Verification: `backend/scripts/idp/verifyProductE2E1512GtipIdentifierDisambiguation.ts`.

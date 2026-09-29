@@ -46,6 +46,31 @@ function parseNumber(text: string): number | undefined {
 }
 
 function centerY(word: CanonicalWord): number { return (word.bbox.y0 + word.bbox.y1) / 2; }
+
+const BUSINESS_IDENTIFIER_CONTEXT_RE = /(?:\bVKN\b|VERG[Iİ]\s*(?:NO|NUMARA)|TAX\s*(?:ID|NO)|T[Iİ]CARET\s*S[Iİ]C[Iİ]L|T[Iİ]CARETS[Iİ]C[Iİ]L|MERS[Iİ]S|ETTN)/i;
+
+/**
+ * A bare 12-digit token is not automatically a GTIP. Turkish e-invoices can
+ * contain equally shaped identifiers (for example a trade-registry/VKN-derived
+ * number) in the header. Reject only when the token is on the same visual line
+ * as an explicit business-identifier label; goods-table and explanation GTIPs
+ * remain eligible without supplier-specific coordinates.
+ */
+function isBusinessIdentifierContext(page: CanonicalPage, word: CanonicalWord): boolean {
+  const y = centerY(word);
+  const matchingLines = page.lines.filter((line) => {
+    const lineY = (line.bbox.y0 + line.bbox.y1) / 2;
+    const tolerance = Math.max(0.006, (line.bbox.y1 - line.bbox.y0) * 1.5, height(word) * 1.5);
+    return Math.abs(lineY - y) <= tolerance;
+  });
+  if (matchingLines.some((line) => BUSINESS_IDENTIFIER_CONTEXT_RE.test(line.text))) return true;
+
+  const nearbyText = page.words
+    .filter((candidate) => Math.abs(centerY(candidate) - y) <= Math.max(0.006, height(word) * 1.5))
+    .map((candidate) => candidate.text)
+    .join(" ");
+  return BUSINESS_IDENTIFIER_CONTEXT_RE.test(nearbyText);
+}
 function height(word: CanonicalWord): number { return Math.max(0.001, word.bbox.y1 - word.bbox.y0); }
 
 function unionBox(words: CanonicalWord[]): CanonicalBBox {
@@ -386,7 +411,7 @@ export function discoverGenericInvoiceFieldCandidates(canonicalDocument: Canonic
 
   for (const page of canonicalDocument.pages) for (const word of page.words) {
     const hsCode = hsCodeFromText(word.text);
-    if (hsCode) anchors.push({ page, word, hsCode });
+    if (hsCode && !isBusinessIdentifierContext(page, word)) anchors.push({ page, word, hsCode });
   }
   anchors.sort((a, b) => a.page.pageNumber - b.page.pageNumber || centerY(a.word) - centerY(b.word));
 
