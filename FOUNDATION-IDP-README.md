@@ -2157,3 +2157,10 @@ Verification: `backend/scripts/idp/verifyProductE2E1511DirectSourceDeliveryTermA
 - A 12-digit token is rejected only when its visual line carries an explicit business-identifier label (VKN/tax id/trade registry/MERSIS/ETTN). This is semantic context, not supplier/layout coordinates.
 - Exact source-visible GTIPs in goods rows or explanation text remain eligible; Foundation 6 remains the only normalized-data authority.
 - Verification: `backend/scripts/idp/verifyProductE2E1512GtipIdentifierDisambiguation.ts`.
+
+### Product E2E 1.5.13 — GTIP candidate provenance diagnostic
+
+- Adds a measurement-only Textilium diagnostic for the remaining false `goodsLines.0.hsCode=084104695730` production result.
+- Runs the real PDF analyzer and deterministic invoice extractor without LLM/Vision inference or database mutation.
+- Compares the production legacy candidate enricher with generic candidate discovery and prints raw item GTIP/box/source provenance.
+- Purpose: identify the exact upstream path before changing GTIP authority or adding another heuristic.
