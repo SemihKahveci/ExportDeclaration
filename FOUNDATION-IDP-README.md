@@ -2213,3 +2213,9 @@ Verification: `backend/scripts/idp/verifyProductE2E1518ContextAwareWeightCandida
 - When a fused `goodsLines.N.quantity` is known but its unit is missing, production fusion may recover an explicit unit only from canonical source words that contain the same numeric quantity immediately followed by a recognized unit on the same visual row.
 - The rule is source/layout generic: no supplier coordinates or invoice-specific literals. Conflicting explicit units are retained as peer candidates so Foundation 6 remains fail-closed; existing unit candidates are never overridden.
 - Unit evidence keeps the original source token and Native/OCR provenance. No direct `normalizedData` write and no model inference are introduced.
+
+### Product E2E 1.5.21 — Invoice date-time promotion canonicalization
+- Extends the existing narrow invoice-date promotion boundary to accept a valid optional `HH:mm[:ss]` suffix (for example `24-04-2026 16:41`).
+- Persists the invoice calendar date as UTC midnight; source/provenance evidence remains unchanged.
+- Invalid clock/calendar values and unrelated fields remain fail-closed/unchanged.
+- No supplier-specific rule, model inference, database-side mutation shortcut, or direct normalized-data authority is introduced.

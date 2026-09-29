@@ -67,12 +67,25 @@ function setPromotionValue(target: MutableObject, path: string, value: unknown):
   setByPath(target, path, value);
 }
 
-function canonicalPromotionValue(targetPath: string, value: unknown): unknown {
+export function canonicalPromotionValue(targetPath: string, value: unknown): unknown {
   if (targetPath !== "header.invoiceDate" || typeof value !== "string") return value;
 
   const raw = value.trim();
-  const match = /^(\d{1,4})[.\/-](\d{1,2})[.\/-](\d{1,4})$/.exec(raw);
+  // Invoice sources commonly append a clock time to the calendar date. The
+  // declaration schema stores invoiceDate as a Date, so accept a narrow
+  // date-first form with an optional HH:mm[:ss] suffix. The time is deliberately
+  // discarded: it must not change the invoice's calendar date or create a
+  // timezone-dependent value. Unsupported/invalid strings remain unchanged and
+  // therefore continue to fail closed at schema validation.
+  const match = /^(\d{1,4})[.\/-](\d{1,2})[.\/-](\d{1,4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
   if (!match) return value;
+
+  if (match[4] !== undefined) {
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = match[6] === undefined ? 0 : Number(match[6]);
+    if (hour > 23 || minute > 59 || second > 59) return value;
+  }
 
   let year: number;
   let month: number;
