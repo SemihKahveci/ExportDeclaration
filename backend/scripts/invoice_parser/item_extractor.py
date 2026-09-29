@@ -188,7 +188,7 @@ def find_currency(words):
     return None
 
 def extract_money(text):
-    match = re.search(r"\d{1,3}(?:\.\d{3})*,\d{2,4}", text or "")
+    match = re.search(r"\d{1,3}(?:\.\d{3})*,\d{1,4}", text or "")
     return match.group(0) if match else None
 
 def parse_tr_number(value):
@@ -333,8 +333,19 @@ def extract_quantity(words):
                     number_candidates.append(n)
 
             if number_candidates:
+                # In invoice goods tables the commercial quantity normally follows
+                # the unit token (e.g. "Adet 569"). A leading row number such as
+                # "1" can be geometrically closer on the left and must not win the
+                # quantity association merely because it is nearby. Prefer same-row
+                # numeric tokens to the right of the unit; fall back to the legacy
+                # nearest-neighbour rule for layouts where quantity precedes unit.
+                right_candidates = [
+                    n for n in number_candidates
+                    if n["x0"] >= w["x0"]
+                ]
+                pool = right_candidates or number_candidates
                 best = min(
-                    number_candidates,
+                    pool,
                     key=lambda n: abs(n["x0"] - w["x0"]) + abs(n["y0"] - w["y0"])
                 )
                 return normalize_text(best["text"]), unit_match.group(1)
@@ -356,7 +367,7 @@ def extract_money_candidates(words):
     for w in words:
         text = normalize_money_ocr(w["text"])
 
-        for money in re.findall(r"\d{1,3}(?:\.\d{3})*,\d{2,4}", text):
+        for money in re.findall(r"\d{1,3}(?:\.\d{3})*,\d{1,4}", text):
             candidates.append(money)
 
     return candidates
@@ -436,7 +447,7 @@ def find_best_amount(words, quantity, unit_price):
     candidates = []
 
     for w in sorted(words, key=lambda x: x["x0"]):
-        money_values = re.findall(r"\d{1,3}(?:\.\d{3})*,\d{2,4}", w["text"])
+        money_values = re.findall(r"\d{1,3}(?:\.\d{3})*,\d{1,4}", w["text"])
 
         for money in money_values:
             value = parse_tr_number(money)
@@ -575,7 +586,7 @@ def extract_items(paddle_all, gtip_result):
             money_values = []
 
             for w in same_line:
-                money_values.extend(re.findall(r"\d{1,3}(?:\.\d{3})*,\d{2,4}", w["text"]))
+                money_values.extend(re.findall(r"\d{1,3}(?:\.\d{3})*,\d{1,4}", w["text"]))
 
             # Sıfırları at
             non_zero_money = [

@@ -2171,3 +2171,18 @@ Verification: `backend/scripts/idp/verifyProductE2E1511DirectSourceDeliveryTermA
 - Exact GTIP authority in the legacy path now requires a standalone 12-digit token and rejects explicit business-identifier row context; repaired 10/11-digit behavior retains its existing geometry guard.
 - This prevents invoice-number/registry substrings from shifting goods-line ordinals while preserving real standalone GTIP rows.
 - Added a real Textilium deterministic verifier that requires the production legacy candidates to compact to `goodsLines.0=610510000000` and `goodsLines.1=610990200012`, with generic discovery unchanged. No model inference or normalized-data write is involved.
+
+### Product E2E 1.5.15 — Goods-row alignment diagnostic
+
+- Adds a measurement-only Textilium diagnostic after 1.5.14 corrected GTIP row ordinals but the real production rerun left quantity/unit/unitPrice in review.
+- Compares complete goods-row candidates from `invoice-canonical-v1` and `invoice-generic-layout-v15`, together with normalized goods lines and legacy raw-item values.
+- Purpose: determine whether the remaining mismatch originates in legacy row extraction, normalized-item mapping, or peer-candidate conflict before changing Foundation 6 authority.
+- No LLM/Vision inference, database mutation, or normalized-data write is performed.
+
+Verification: `backend/scripts/idp/verifyProductE2E1515GoodsRowAlignmentDiagnostic.ts`.
+
+### Product E2E 1.5.16 — Legacy goods scalar association hardening
+- Hardened legacy invoice goods-row scalar extraction after 1.5.15 showed that GTIP row identity was correct while row 0 quantity/unitPrice were still taken from the row number/line total.
+- Quantity association now prefers a numeric token to the right of an explicit unit token before falling back to legacy nearest-neighbour behavior.
+- Turkish money parsing accepts 1–4 decimal digits so source values such as `14,8` can participate in quantity × unitPrice = lineTotal validation instead of falling back to the line total as unit price.
+- No supplier-specific rule, no direct normalizedData write, and no LLM inference are introduced.
