@@ -41,6 +41,18 @@ def is_right_side_candidate(word):
     return word.get("x0", 0) > 1000
 
 
+BUSINESS_IDENTIFIER_RE = re.compile(
+    r"(?:\bVKN\b|VERG[Iİ]\s*(?:NO|NUMARA)|TAX\s*(?:ID|NO)|T[Iİ]CARET\s*S[Iİ]C[Iİ]L|T[Iİ]CARETS[Iİ]C[Iİ]L|MERS[Iİ]S|ETTN)",
+    re.IGNORECASE,
+)
+
+
+def is_business_identifier_context(words, target, y_threshold=18):
+    ty = target.get("y0", 0)
+    nearby = [w.get("text", "") for w in words if abs(w.get("y0", 0) - ty) <= y_threshold]
+    return bool(BUSINESS_IDENTIFIER_RE.search(" ".join(nearby)))
+
+
 def has_transport_nearby(words, target, y_threshold=40):
     ty = target["y0"]
 
@@ -77,7 +89,17 @@ def extract_gtip_candidates(words, page_no):
         # discard them solely because of legacy right-side/table coordinates.
         # Keep the historical geometry guard for repaired 10/11-digit values:
         # those are ambiguous and must not become global candidates.
-        exact_candidates = [found for found in found_gtips if found["isExact12"]]
+        # A 12-digit substring embedded in another identifier is not enough to
+        # create a goods row. Examples include invoice numbers and registry IDs.
+        # Legacy extraction may only treat an exact standalone 12-digit token as
+        # strong GTIP evidence, and even that is rejected when the visual row is
+        # explicitly labelled as business metadata. Repaired 10/11-digit values
+        # keep the historical geometry guard.
+        standalone_exact = bool(re.fullmatch(r"\s*\d{12}\s*", text))
+        exact_candidates = [
+            found for found in found_gtips
+            if found["isExact12"] and standalone_exact and not is_business_identifier_context(words, word)
+        ]
         repaired_candidates = [found for found in found_gtips if not found["isExact12"]]
 
         accepted = list(exact_candidates)

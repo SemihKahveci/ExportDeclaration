@@ -2164,3 +2164,10 @@ Verification: `backend/scripts/idp/verifyProductE2E1511DirectSourceDeliveryTermA
 - Runs the real PDF analyzer and deterministic invoice extractor without LLM/Vision inference or database mutation.
 - Compares the production legacy candidate enricher with generic candidate discovery and prints raw item GTIP/box/source provenance.
 - Purpose: identify the exact upstream path before changing GTIP authority or adding another heuristic.
+
+### Product E2E 1.5.14 — Legacy GTIP goods-row hardening
+
+- Hardened the legacy Python GTIP discovery path after 1.5.13 proved that embedded 12-digit substrings from business/header identifiers were being materialized as goods rows.
+- Exact GTIP authority in the legacy path now requires a standalone 12-digit token and rejects explicit business-identifier row context; repaired 10/11-digit behavior retains its existing geometry guard.
+- This prevents invoice-number/registry substrings from shifting goods-line ordinals while preserving real standalone GTIP rows.
+- Added a real Textilium deterministic verifier that requires the production legacy candidates to compact to `goodsLines.0=610510000000` and `goodsLines.1=610990200012`, with generic discovery unchanged. No model inference or normalized-data write is involved.
