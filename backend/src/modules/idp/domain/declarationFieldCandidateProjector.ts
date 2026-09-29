@@ -44,8 +44,46 @@ export function canonicalGoodsUnit(value: unknown): unknown {
   return compact ? compact.toLocaleUpperCase("tr-TR") : value;
 }
 
+/**
+ * Shipment weights occasionally arrive from peer extractors as display strings
+ * (for example `2.320 Kg.`). Declaration packageInfo stores numeric kilograms,
+ * so normalize only grossWeight/netWeight when the value explicitly carries a
+ * kilogram unit. Turkish invoice formatting is interpreted narrowly: a single
+ * dot followed by exactly three digits is a grouping separator, while comma is
+ * decimal. Ambiguous unitless strings are deliberately left untouched.
+ */
+export function canonicalKilogramWeight(value: unknown): unknown {
+  if (typeof value === "number") return Number.isFinite(value) ? value : value;
+  if (typeof value !== "string") return value;
+
+  const match = /^\s*([+-]?[0-9][0-9.,\s]*)\s*(?:kg|kgs|kilogram(?:s)?)\.?\s*$/i.exec(value);
+  if (!match) return value;
+
+  let numeric = match[1]!.replace(/\s+/g, "");
+  const dots = (numeric.match(/\./g) ?? []).length;
+  const commas = (numeric.match(/,/g) ?? []).length;
+
+  if (dots > 0 && commas > 0) {
+    // Turkish display form: 2.320,50 kg -> 2320.50
+    numeric = numeric.replace(/\./g, "").replace(",", ".");
+  } else if (commas === 1 && dots === 0) {
+    // Turkish decimal form: 2,320 kg -> 2.320
+    numeric = numeric.replace(",", ".");
+  } else if (dots === 1 && commas === 0 && /^[-+]?\d{1,3}\.\d{3}$/.test(numeric)) {
+    // Turkish grouping form seen in invoice weights: 2.320 kg -> 2320
+    numeric = numeric.replace(".", "");
+  } else if (dots > 1 && commas === 0 && /^[-+]?\d{1,3}(?:\.\d{3})+$/.test(numeric)) {
+    numeric = numeric.replace(/\./g, "");
+  }
+
+  const parsed = Number(numeric);
+  return Number.isFinite(parsed) ? parsed : value;
+}
+
 function canonicalDeclarationCandidateValue(field: string, value: unknown): unknown {
-  return /^goodsLines\.\d+\.unit$/.test(field) ? canonicalGoodsUnit(value) : value;
+  if (/^goodsLines\.\d+\.unit$/.test(field)) return canonicalGoodsUnit(value);
+  if (field === "grossWeight" || field === "netWeight") return canonicalKilogramWeight(value);
+  return value;
 }
 
 /**

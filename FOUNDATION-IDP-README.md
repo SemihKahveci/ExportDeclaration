@@ -2194,3 +2194,11 @@ Verification: `backend/scripts/idp/verifyProductE2E1515GoodsRowAlignmentDiagnost
 - No supplier-specific rule, model inference, database mutation, or direct normalizedData write is introduced.
 
 Verification: `backend/scripts/idp/verifyProductE2E1517CanonicalGoodsUnitNormalization.ts`.
+
+### Product E2E 1.5.18 — Context-aware weight candidate canonicalization
+- Canonicalizes only declaration-facing `grossWeight` / `netWeight` candidates that explicitly carry a kilogram unit, before Foundation 6 resolution.
+- Turkish invoice display forms such as `2.320 Kg.` and `2.250 Kg.` become numeric kilograms `2320` and `2250`; decimal forms such as `2,320 kg` remain `2.32`.
+- Unitless numeric strings and non-kilogram units remain untouched, avoiding a global numeric heuristic. Candidate evidence keeps the original source text for audit.
+- Peer numeric/string representations can therefore reach Foundation 6 consensus and packageInfo receives numeric values without direct normalizedData writes.
+
+Verification: `backend/scripts/idp/verifyProductE2E1518ContextAwareWeightCandidateCanonicalization.ts`.
