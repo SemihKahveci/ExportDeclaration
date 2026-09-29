@@ -32,6 +32,23 @@ function containingDocuments(documents: DeclarationDocumentRef[], candidate: Fie
 }
 
 /**
+ * Unit labels are categorical values. Peer extractors frequently preserve the
+ * same source unit with different casing (for example ADET vs Adet or KG vs Kg).
+ * Canonicalize only the goods-unit field at the declaration-candidate boundary
+ * so Foundation 6 can form consensus without granting either extractor implicit
+ * authority. Evidence remains untouched and therefore retains the source text.
+ */
+export function canonicalGoodsUnit(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const compact = value.trim().replace(/\s+/g, " ");
+  return compact ? compact.toLocaleUpperCase("tr-TR") : value;
+}
+
+function canonicalDeclarationCandidateValue(field: string, value: unknown): unknown {
+  return /^goodsLines\.\d+\.unit$/.test(field) ? canonicalGoodsUnit(value) : value;
+}
+
+/**
  * Projects file/segment field candidates onto the persisted logical-document boundary.
  * Evidence pages are authoritative for the mapping. We never attach a candidate to
  * the first document of a file and never allow evidence to straddle document ranges.
@@ -80,7 +97,7 @@ export function projectDeclarationFieldCandidates(params: {
         const projected: DeclarationFieldCandidate = {
           candidateId: candidate.candidateId,
           field,
-          value: candidate.value,
+          value: canonicalDeclarationCandidateValue(field, candidate.value),
           confidence: candidate.confidence,
           extractor: candidate.extractor,
           logicalDocumentId: document.logicalDocumentId,

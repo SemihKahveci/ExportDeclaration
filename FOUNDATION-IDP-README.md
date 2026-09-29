@@ -2186,3 +2186,11 @@ Verification: `backend/scripts/idp/verifyProductE2E1515GoodsRowAlignmentDiagnost
 - Quantity association now prefers a numeric token to the right of an explicit unit token before falling back to legacy nearest-neighbour behavior.
 - Turkish money parsing accepts 1–4 decimal digits so source values such as `14,8` can participate in quantity × unitPrice = lineTotal validation instead of falling back to the line total as unit price.
 - No supplier-specific rule, no direct normalizedData write, and no LLM inference are introduced.
+
+### Product E2E 1.5.17 — Canonical goods-unit normalization
+- Canonicalizes only `goodsLines.N.unit` string candidate values at the declaration-candidate projection boundary by trimming/collapsing whitespace and applying locale-aware uppercase normalization.
+- Peer values such as `ADET`/`Adet`, `KG`/`Kg`, and `pcs`/`PCS` therefore reach Foundation 6 as the same categorical value and resolve by normal consensus rather than an extractor-specific authority rule.
+- Candidate evidence is left untouched, preserving the original source text for audit; unrelated fields are unchanged.
+- No supplier-specific rule, model inference, database mutation, or direct normalizedData write is introduced.
+
+Verification: `backend/scripts/idp/verifyProductE2E1517CanonicalGoodsUnitNormalization.ts`.
