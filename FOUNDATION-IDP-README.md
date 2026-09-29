@@ -2219,3 +2219,39 @@ Verification: `backend/scripts/idp/verifyProductE2E1518ContextAwareWeightCandida
 - Persists the invoice calendar date as UTC midnight; source/provenance evidence remains unchanged.
 - Invalid clock/calendar values and unrelated fields remain fail-closed/unchanged.
 - No supplier-specific rule, model inference, database-side mutation shortcut, or direct normalized-data authority is introduced.
+
+### Product E2E 1.5.22 — Remaining corpus conflict diagnostic
+- Measurement-only deterministic diagnostic for the five remaining fixed-corpus checks after Textilium/Fiber Beton reached 9/9.
+- Compares production legacy and generic deterministic candidates for Çelikel `invoiceNo`/row-0 quantity and Makro row-0 description/quantity/unitPrice, together with normalized/raw row data and matching canonical source lines.
+- Purpose: separate upstream extraction/row-association errors from peer-source/F6 conflicts before adding authority or normalization rules.
+- No LLM/Vision inference, database mutation, customer-PDF commit, or direct normalized-data write is introduced.
+
+Verification: `backend/scripts/idp/verifyProductE2E1522RemainingCorpusConflictDiagnostic.ts`.
+
+### Product E2E 1.5.23 — source-backed header + arithmetic quantity canonicalization
+- Promotes source-visible generic header/party candidates into the production F6 candidate fusion vocabulary (`header.invoiceNo` -> `invoiceNo`, date likewise) without bypassing Foundation 6.
+- Resolves the otherwise ambiguous `1.600` / `1.575` quantity representation only when the same goods row's `unitPrice × quantity = lineTotal` arithmetic uniquely supports one interpretation. Genuine decimal quantities remain decimal; unresolved ambiguity fails closed.
+- Source evidence remains unchanged and no normalized declaration field is written directly.
+
+### Product E2E 1.5.24 — persisted authority conflict diagnostic
+
+- Reads the latest persisted Product E2E ProcessingRun for CLK/Çelikel and Makro Boya without invoking OCR, Vision, or the text LLM again.
+- Dumps the exact F6/declaration-facing candidates for the remaining accuracy gaps: CLK `invoiceNo`; Makro `goodsLines.0.description` and `goodsLines.0.unitPrice`.
+- Includes candidate value, confidence, extractor, evidence source/text/bbox, worker-fusion snapshot, and resolver output so the next fix is based on the actual persisted conflict rather than supplier-specific assumptions.
+- Measurement only: no DB mutation, no direct normalized write, no customer PDF is committed.
+
+Verifier:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1524PersistedAuthorityConflictDiagnostic.ts
+```
+
+### Product E2E 1.5.24.1 — In-run authority conflict diagnostic
+- Replaces the invalid 1.5.24 assumption that product-E2E uploads/runs remain persisted after the harness completes; the 1.5.5 harness intentionally deletes its temporary declaration/upload/run records in `finally`.
+- With `PRODUCT_E2E_CONFLICT_DIAGNOSTIC=true`, the existing full-production corpus harness now emits the targeted declaration-candidate values/evidence **before** cleanup for the remaining authority conflicts: Çelikel `invoiceNo`, Makro `goodsLines.0.description`, and Makro `goodsLines.0.unitPrice`.
+- The diagnostic does not trigger any model call beyond the production run already requested and does not change candidate generation, Foundation 6 authority, promotion, or normalized data.
+- Customer PDFs remain local/ignored; diagnostic output is measurement-only.
+
+Verification: run `verifyProductE2E155FullProductionCorpusFusionMatrix.ts` with both `PRODUCT_E2E_CASE=<case>` and `PRODUCT_E2E_CONFLICT_DIAGNOSTIC=true`.

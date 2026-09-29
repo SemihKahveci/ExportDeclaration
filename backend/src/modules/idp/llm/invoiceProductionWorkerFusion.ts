@@ -45,6 +45,30 @@ function canonicalCommercialTermsCandidatesOf(data: Record<string, unknown> | un
   return { version: "1", fields };
 }
 
+export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
+  const audit = data?.genericCandidateAudit as { headerPartyCandidates?: FieldCandidateEnvelope } | undefined;
+  const source = audit?.headerPartyCandidates;
+  if (source?.version !== "1" || !source.fields) return { version: "1", fields: {} };
+
+  const fields: Record<string, FieldCandidateEnvelope["fields"][string]> = {};
+  const fieldMap: Readonly<Record<string, string>> = {
+    "header.invoiceNo": "invoiceNo",
+    "header.invoiceDate": "invoiceDate",
+    "parties.seller.name": "parties.seller.name",
+    "parties.buyer.name": "parties.buyer.name"
+  };
+  for (const [field, candidates] of Object.entries(source.fields)) {
+    const target = fieldMap[field];
+    if (!target) continue;
+    fields[target] = candidates.map((candidate) => ({
+      ...candidate,
+      field: target,
+      candidateId: `${candidate.candidateId}:f6-header-party`
+    }));
+  }
+  return { version: "1", fields };
+}
+
 function fieldCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
   const value = data?.fieldCandidates as FieldCandidateEnvelope | undefined;
   return value?.version === "1" && value.fields ? value : { version: "1", fields: {} };
@@ -141,6 +165,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const fusedCandidates = mergeInvoiceCandidateSources(
       fieldCandidatesOf(result.data),
       canonicalCommercialTermsCandidatesOf(result.data),
+      canonicalHeaderPartyCandidatesOf(result.data),
       execution.candidates
     );
 

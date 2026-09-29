@@ -35,6 +35,39 @@ function asFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+function approximatelyEqual(a: number, b: number): boolean {
+  const scale = Math.max(1, Math.abs(a), Math.abs(b));
+  return Math.abs(a - b) <= scale * 1e-6;
+}
+
+/**
+ * A single dot followed by three digits is ambiguous in invoice source text:
+ * `1.575` may mean either 1.575 or 1,575. Resolve that ambiguity only when
+ * the same commercial row supplies unit price and line total and exactly one
+ * interpretation satisfies quantity * unitPrice = lineTotal.
+ */
+function arithmeticConsistentQuantity(
+  rawQuantity: unknown,
+  normalizedQuantity: unknown,
+  unitPrice: unknown,
+  lineTotal: unknown
+): unknown {
+  if (typeof rawQuantity !== "string") return normalizedQuantity;
+  const raw = rawQuantity.trim().replace(/\s+/g, "");
+  if (!/^[+-]?\d{1,3}\.\d{3}$/.test(raw)) return normalizedQuantity;
+
+  const decimal = Number(raw);
+  const grouped = Number(raw.replace(".", ""));
+  const price = asFiniteNumber(unitPrice);
+  const total = asFiniteNumber(lineTotal);
+  if (![decimal, grouped, price, total].every((value) => Number.isFinite(value))) return normalizedQuantity;
+
+  const decimalMatches = approximatelyEqual(decimal * price!, total!);
+  const groupedMatches = approximatelyEqual(grouped * price!, total!);
+  if (decimalMatches === groupedMatches) return normalizedQuantity;
+  return groupedMatches ? grouped : decimal;
+}
+
 function legacyDimensions(page: CanonicalPage): { width: number; height: number } {
   if (page.contentKind === "DIGITAL") return { width: 1700, height: 2500 };
   return { width: page.width * 3, height: page.height * 3 };
@@ -135,10 +168,16 @@ export function buildInvoiceFieldCandidates(
     if (!page) return;
 
     const boxes = item.boxes ?? {};
+    const quantity = arithmeticConsistentQuantity(
+      item.quantity,
+      normalized.quantity,
+      normalized.unitPrice,
+      normalized.lineTotal
+    );
     const fieldSpecs: Array<[string, unknown, unknown, number]> = [
       [`goodsLines.${index}.hsCode`, normalized.hsCode, boxes.gtip, 0.99],
       [`goodsLines.${index}.productCode`, normalized.productCode, boxes.productCode, 0.95],
-      [`goodsLines.${index}.quantity`, normalized.quantity, boxes.quantity, 0.95],
+      [`goodsLines.${index}.quantity`, quantity, boxes.quantity, 0.95],
       [`goodsLines.${index}.unitPrice`, normalized.unitPrice, boxes.unitPrice, 0.95],
       [`goodsLines.${index}.lineTotal`, normalized.lineTotal, boxes.amount, 0.95]
     ];

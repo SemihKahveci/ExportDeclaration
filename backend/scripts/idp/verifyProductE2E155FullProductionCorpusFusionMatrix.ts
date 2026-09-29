@@ -23,6 +23,36 @@ function candidateSources(snapshot: any, field: string): string[] {
   return [...new Set(candidates.flatMap((c: any) => (c?.evidence ?? []).map((e: any) => e?.contentSource).filter(Boolean)))].sort() as string[];
 }
 
+const CONFLICT_TARGETS: Record<string, string[]> = {
+  "clk-celikel": ["invoiceNo"],
+  "makro-boya": ["goodsLines.0.description", "goodsLines.0.unitPrice"]
+};
+
+function compactConflictCandidate(candidate: any) {
+  return {
+    value: candidate?.value,
+    valueType: typeof candidate?.value,
+    confidence: candidate?.confidence,
+    extractor: candidate?.extractor,
+    candidateId: candidate?.candidateId,
+    evidence: Array.isArray(candidate?.evidence)
+      ? candidate.evidence.map((e: any) => ({
+          contentSource: e?.contentSource,
+          pageNumber: e?.pageNumber,
+          text: e?.text,
+          bbox: e?.bbox
+        }))
+      : []
+  };
+}
+
+function conflictCandidateDump(snapshot: any, fields: string[]) {
+  return Object.fromEntries(fields.map((field) => [
+    field,
+    (snapshot?.fields?.[field] ?? []).map(compactConflictCandidate)
+  ]));
+}
+
 async function main() {
   assert.equal(env.llmEnabled, true, "1.5.5 requires LLM_ENABLED=true.");
   assert.equal(env.llmVisionEnabled, true, "1.5.5 requires LLM_VISION_ENABLED=true.");
@@ -75,6 +105,27 @@ async function main() {
           derived: allCandidates.filter((c) => c?.evidence?.some((e:any) => e.contentSource === "DERIVED")).length,
           vision: allCandidates.filter((c) => c?.evidence?.some((e:any) => e.contentSource === "PAGE_IMAGE")).length
         };
+
+        if (process.env.PRODUCT_E2E_CONFLICT_DIAGNOSTIC === "true") {
+          const targets = CONFLICT_TARGETS[corpus.id] ?? [];
+          if (targets.length > 0) {
+            console.log(JSON.stringify({
+              event: "product-e2e-1.5.24.1.in-run-authority-conflict-diagnostic.measured",
+              id: corpus.id,
+              processingRunId: String(run._id),
+              targets,
+              declarationCandidates: conflictCandidateDump(snapshot, targets),
+              guardrails: {
+                measurementOnly: true,
+                noAdditionalModelInference: true,
+                noAdditionalDatabaseMutation: true,
+                capturedBeforeHarnessCleanup: true,
+                customerPdfsCommitted: false,
+                directNormalizedWrite: false
+              }
+            }, null, 2));
+          }
+        }
 
         const nd:any = declaration.normalizedData ?? {};
         const goods = Array.isArray(nd.goodsLines) ? nd.goodsLines : [];
