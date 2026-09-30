@@ -86,6 +86,75 @@ function approximatelyEqual(a: number, b: number): boolean {
   return Math.abs(a - b) <= scale * 1e-6;
 }
 
+
+function normalizedEvidenceText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function goodsRowCandidatePrefix(field: string, candidateId: string): string | undefined {
+  const fieldMatch = /^goodsLines\.(\d+)\./.exec(field);
+  if (!fieldMatch) return undefined;
+  const rowIndex = Number(fieldMatch[1]);
+  if (!Number.isInteger(rowIndex)) return undefined;
+  const lineNo = rowIndex + 1;
+  const suffix = `:line-${lineNo}:`;
+  const suffixIndex = candidateId.lastIndexOf(suffix);
+  return suffixIndex >= 0 ? candidateId.slice(0, suffixIndex + suffix.length) : undefined;
+}
+
+/**
+ * A native description can outrank a conflicting page-image interpretation only
+ * when it is direct source text and its production candidate is tied to the same
+ * deterministic goods row as multiple independent row anchors. Column order is
+ * deliberately irrelevant: row identity/evidence, not "description before qty",
+ * is the authority condition.
+ */
+function selectRowCorroboratedDescriptions(
+  candidates: ReturnType<typeof projectDeclarationFieldCandidates>
+): DeclarationCandidateAuthoritySelection[] {
+  const selections: DeclarationCandidateAuthoritySelection[] = [];
+  const anchorFields = ["hsCode", "productCode", "quantity", "unitPrice", "lineTotal"];
+
+  for (const [field, descriptions] of Object.entries(candidates.fields)) {
+    const match = /^goodsLines\.(\d+)\.description$/.exec(field);
+    if (!match) continue;
+    const row = match[1]!;
+
+    const corroborated = descriptions.filter((description) => {
+      if (description.derived) return false;
+      const descriptionText = normalizedEvidenceText(description.value);
+      if (!descriptionText) return false;
+      const directText = description.evidence.some((evidence) =>
+        evidence.contentSource === "NATIVE_TEXT" &&
+        normalizedEvidenceText(evidence.text) === descriptionText
+      );
+      if (!directText) return false;
+
+      const prefix = goodsRowCandidatePrefix(field, description.candidateId);
+      if (!prefix) return false;
+      let nativeAnchorCount = 0;
+      for (const anchor of anchorFields) {
+        const siblings = candidates.fields[`goodsLines.${row}.${anchor}`] ?? [];
+        if (siblings.some((candidate) =>
+          !candidate.derived &&
+          candidate.candidateId.startsWith(prefix) &&
+          candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+        )) nativeAnchorCount += 1;
+      }
+      return nativeAnchorCount >= 2;
+    });
+
+    if (corroborated.length === 0) continue;
+    const values = new Set(corroborated.map((candidate) => normalizedEvidenceText(candidate.value)!.toLocaleUpperCase("tr-TR")));
+    if (values.size !== 1) continue;
+    const selected = corroborated.slice().sort((a, b) => b.confidence - a.confidence || a.candidateId.localeCompare(b.candidateId))[0]!;
+    selections.push({ field, candidateId: selected.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+  }
+  return selections;
+}
+
 /**
  * Select a native unit-price candidate only when the same commercial row
  * independently corroborates it through quantity × unitPrice = lineTotal.
@@ -164,6 +233,7 @@ export function selectDirectSourceEvidenceAuthority(
   }
 
   selections.push(...selectArithmeticCorroboratedUnitPrices(candidates));
+  selections.push(...selectRowCorroboratedDescriptions(candidates));
   const unique = new Map(selections.map((selection) => [selection.field, selection]));
   return [...unique.values()].sort((a, b) => a.field.localeCompare(b.field));
 }

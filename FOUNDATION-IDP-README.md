@@ -2255,3 +2255,79 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 - Customer PDFs remain local/ignored; diagnostic output is measurement-only.
 
 Verification: run `verifyProductE2E155FullProductionCorpusFusionMatrix.ts` with both `PRODUCT_E2E_CASE=<case>` and `PRODUCT_E2E_CONFLICT_DIAGNOSTIC=true`.
+
+### Product E2E 1.5.25 — Evidence-aware declaration candidate authority
+- Extends the existing Foundation 6 explicit-candidate authority boundary without changing the fail-closed declaration resolver.
+- Exact native invoice-number evidence can outrank conflicting page-image header pollution only when the native evidence text directly contains the candidate value.
+- Native goods-line unit price can gain authority only when the same logical row provides a unique arithmetic corroboration (`quantity × unitPrice = lineTotal` within tolerance); ambiguous arithmetic remains `REVIEW_REQUIRED`.
+- Conflicting Vision candidates remain in the candidate/audit envelope; authority selection does not delete evidence or write normalized values directly.
+- Missing description truth is intentionally not synthesized by resolution. If no correct description candidate exists, the field remains review-required.
+- Focused verifier: `backend/scripts/idp/verifyProductE2E1525EvidenceAwareCandidateAuthority.ts`.
+- Production verification (2026-09-29): Çelikel improved from 8/9 to 9/9 with `invoiceNo=CLK2026000001021`; Makro Boya improved from 7/9 to 8/9 with `goodsLines.0.unitPrice=7.75`. Existing direct-source GTIP and Incoterm authority regressions remained green.
+
+### Product E2E 1.5.26 — Baseline-first goods description reconstruction
+- The measurement-only native coverage diagnostic proved the remaining Makro Boya description miss was not a PDF/native-text, Vision, resolver, or authority failure: the source-visible raw row contains the target item tokens, while legacy normalized extraction reduced the description to a continuation fragment.
+- Legacy goods description reconstruction now prefers human-readable tokens on the actual goods-row baseline before the detected quantity boundary. Nearby header/continuation text inside the broad legacy row window is therefore not allowed to replace primary row semantics.
+- Product/article codes remain eligible inside the human-readable description even when independently projected to `productCode`; this preserves invoice-visible item naming without collapsing the two semantic fields.
+- Only a leading short integer is treated as the row ordinal, so numeric model/article tokens inside the item text (for example `306` or `108`) remain valid description content.
+- If the anchor baseline contains no meaningful description, the established continuation/fallback extraction path remains active for wrapped descriptions.
+- No supplier/invoice literal, fixed supplier coordinate, model inference, declaration-resolver change, authority shortcut, or direct normalized-data write is introduced.
+- Deterministic verifier: `backend/scripts/invoice_parser/verify_description_reconstruction_1526.py`.
+- Real production acceptance remains the existing Makro Boya product E2E case; run it only after typecheck and the deterministic verifier pass.
+
+### Product E2E 1.5.26.1 — Row-corroborated native description authority
+- Production acceptance after 1.5.26 proved candidate generation is fixed (`TYLOSE 100000` is present in raw extraction, normalized goods lines, and the production native description candidate), while the declaration still remained review-required because the conflicting page-image description stayed a peer candidate.
+- Extends the existing explicit Foundation 6 direct-source authority boundary to goods descriptions only when the description value is directly present in native evidence and at least two independent native goods-row anchors (`hsCode`, `productCode`, `quantity`, `unitPrice`, `lineTotal`) share the same deterministic production row identity.
+- Authority is deliberately independent of left/right column order. A description may therefore appear before or after quantity in future layouts; row identity and source evidence, not a fixed coordinate/order rule, determine whether native evidence is authoritative.
+- A description with mismatched source text, insufficient row corroboration, or anchors belonging to another row receives no authority and remains fail-closed/`REVIEW_REQUIRED` when peers conflict.
+- Conflicting Vision candidates remain in the audit envelope. Foundation 6 resolver semantics are unchanged; no supplier/invoice literal, model inference, direct normalized-data write, or customer-PDF commit is introduced.
+- Focused verifier: `backend/scripts/idp/verifyProductE2E15261RowCorroboratedDescriptionAuthority.ts`.
+- After backend/frontend typecheck and the focused verifier pass, rerun only the Makro Boya product E2E case for real production acceptance before any full-corpus rerun.
+
+
+### Product E2E 1.5.26.2 — Baseline/continuation description compatibility
+- Full-corpus regression after 1.5.26/1.5.26.1 showed that absolute baseline-first return was too aggressive for wrapped goods descriptions: a valid first-line token could replace a richer multi-line description that had previously been extracted correctly.
+- Description reconstruction now computes both anchor-baseline and established continuation candidates. A continuation is preferred only when it contains every normalized semantic token already established on the anchor baseline; otherwise the baseline remains authoritative.
+- This keeps source-visible row semantics such as product/model tokens when the old column window misses them, while preserving legitimate wrapped descriptions instead of truncating them to one baseline fragment.
+- The rule is supplier-agnostic and does not depend on customer names, GTIP values, product literals, fixed coordinates, model inference, or direct normalized-data writes.
+- The existing row-corroborated declaration authority remains fail-closed and unchanged.
+- Deterministic verifier: `backend/scripts/invoice_parser/verify_description_reconstruction_1526.py`.
+- Full production corpus acceptance must be rerun only after deterministic/typecheck gates pass; target remains 36/36.
+
+### Product E2E 1.5.26.4 — Vertical description continuation + structured GTIP occurrence authority
+
+The focused native diagnostics isolated two parser-level regressions rather than declaration-authority defects:
+
+- wrapped goods descriptions may continue vertically below the commercial row baseline (for example, a baseline fragment followed by one or more semantic description lines);
+- a 12-digit GTIP may be repeated later in footer/notes, where it must not materialize a second pseudo goods row when the same page already contains a structured occurrence of that GTIP.
+
+Production behavior now reconstructs description text from the anchor baseline plus only close vertical semantic continuation rows inside the detected description right boundary. A leading short row ordinal terminates continuation so text from the next goods row cannot bleed into the current row. Product/article tokens remain valid visible description semantics.
+
+GTIP occurrence filtering is evidence-aware and fail-closed: for repeated page+GTIP occurrences, a weak occurrence is suppressed only when a peer occurrence has strong goods-row evidence (quantity/unit/price/amount). Multiple strong occurrences of the same GTIP are retained, preserving legitimate invoices where separate goods rows share one tariff code.
+
+Guardrails:
+
+- no supplier/customer names or invoice-specific literals in production logic;
+- no fixed GTIP/product-code allowlists;
+- no model/Vision inference added;
+- no declaration resolver or Foundation 6 authority change;
+- no direct normalized write;
+- footer suppression requires a stronger structured peer and does not globally deduplicate equal GTIPs.
+
+Deterministic verifier:
+
+`backend/scripts/invoice_parser/verify_description_reconstruction_1526.py`
+
+The verifier covers baseline/header-noise separation, visible product-code retention, multi-line vertical descriptions, next-row termination, footer GTIP suppression, and preservation of multiple strong rows sharing a GTIP.
+
+After this deterministic gate passes, rerun the model-free native corpus regression gate before any expensive Vision corpus run. The target remains restoration of the fixed four-document Product E2E corpus to 36/36 without supplier-specific rules.
+
+### Product E2E 1.5.26.5 — Detached GTIP / normalized row geometry hardening
+- Fixed canonical DIGITAL row-neighborhood handling so normalized 0..1 PDF coordinates use tight row bands instead of legacy pixel-scale tolerances.
+- Goods-row strength is derived only from structured commercial evidence (quantity, unit, unit price, amount and arithmetic corroboration); description/free text does not make a footer GTIP occurrence authoritative.
+- When a GTIP is disclosed away from the goods table, it is re-anchored only if the page has exactly one arithmetic-corroborated commercial row. Multiple plausible rows remain detached/fail-closed instead of being guessed.
+- Existing structured GTIP occurrences remain preferred, duplicate weak footer occurrences remain suppressed, and multiple genuine strong rows sharing the same GTIP remain preserved.
+- Description reconstruction uses coordinate-system-aware vertical windows, retaining legitimate wrapped descriptions without consuming distant footer/header text.
+- Deterministic regression coverage includes detached-footer GTIP re-anchoring, ambiguous multi-row fail-closed behavior, normalized DIGITAL row bands, vertical description continuation, duplicate suppression and same-GTIP multi-row preservation.
+- No supplier/customer-specific production rule, additional model inference, direct normalized write, or customer PDF commit is introduced.
+

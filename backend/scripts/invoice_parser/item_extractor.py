@@ -95,57 +95,137 @@ def build_description_column(columns):
         "xMax": 430,
     }
 
-def extract_description_from_words(words, product_code, description_col=None):
-    desc_words = []
+def unit_from_description_token(text):
+    normalized = normalize_text(text)
+    return normalized in {normalize_text(unit) for unit in QUANTITY_UNITS}
 
-    x_min = description_col["xMin"] if description_col else 90
+def _description_token_allowed(text, product_code=None, leading=False):
+    upper = normalize_text(text)
+    if not upper:
+        return False
+    if upper in {
+        "MALZEME", "HIZMET", "HİZMET", "MALZEME/HIZMET", "MALZEME/HİZMET",
+        "KODU", "AÇIKLAMASI", "ACIKLAMASI", "AÇIKLAMA", "ACIKLAMA", "SATIR"
+    }:
+        return False
+    if upper in ORIGINS or upper in STOP_DESCRIPTION_WORDS or unit_from_description_token(upper):
+        return False
+    if leading and re.fullmatch(r"\d{1,3}", upper):
+        return False
+    if re.fullmatch(r"\d{10,12}", normalize_code(text)):
+        return False
+    return True
+
+
+def extract_description_from_words(words, product_code, description_col=None, anchor_y=None, anchor_height=None):
+    # Build description from the actual goods baseline plus vertically wrapped
+    # semantic lines immediately below it.  This is deliberately driven by row
+    # geometry, not supplier/product literals.  The detected quantity boundary is
+    # the right edge; text may legitimately start left of the legacy PRODUCT gap.
     x_max = description_col["xMax"] if description_col else 430
 
-    for w in sorted(words, key=lambda x: (x["y0"], x["x0"])):
+    if anchor_y is None:
+        anchor_y = min((w["y0"] for w in words if w.get("text", "").strip()), default=None)
+    if anchor_y is None:
+        return None
+
+    height = anchor_height or max(
+        (w.get("y1", w["y0"]) - w["y0"] for w in words if w.get("y1") is not None),
+        default=10.0,
+    )
+    height = float(height or 0)
+    normalized_geometry = _normalized_geometry(words)
+    if normalized_geometry:
+        height = max(height, 0.006)
+        baseline_tolerance = max(0.003, min(0.008, height * 0.55))
+    else:
+        height = max(height, 1.0)
+        baseline_tolerance = max(2.0, min(6.0, height * 0.45))
+
+    baseline_words = [
+        w for w in sorted(words, key=lambda x: x["x0"])
+        if w.get("text", "").strip()
+        and abs(w["y0"] - anchor_y) <= baseline_tolerance
+        and w["x0"] <= x_max
+    ]
+
+    primary_words = []
+    for index, w in enumerate(baseline_words):
         text = w["text"].strip()
-        upper = normalize_text(text)
-        x = w["x0"]
+        if _description_token_allowed(text, product_code, leading=(index == 0)):
+            primary_words.append(text)
 
-        if not text:
-            continue
+    # Continuation rows are close vertical neighbours in the same description
+    # band.  Stop before a new row ordinal/structured goods baseline.  A maximum
+    # of ~2.5 line-heights is enough for wrapped descriptions while excluding
+    # distant totals/notes/header text.
+    continuation_limit = anchor_y + (
+        max(3.0 * height, 0.025) if normalized_geometry else max(2.5 * height, 18.0)
+    )
+    continuation_candidates = [
+        w for w in words
+        if w.get("text", "").strip()
+        and w["y0"] > anchor_y + baseline_tolerance
+        and w["y0"] <= continuation_limit
+        and w["x0"] <= x_max
+    ]
 
-        # Prefer the detected PRODUCT→QTY gap for the description column.
-        # Fall back to the legacy bounds when column detection is unavailable.
-        if not (x_min <= x <= x_max):
-            continue
+    rows = []
+    for w in sorted(continuation_candidates, key=lambda x: (x["y0"], x["x0"])):
+        row_tolerance = max(0.003, height * 0.55) if normalized_geometry else max(2.0, height * 0.45)
+        if not rows or abs(rows[-1][0] - w["y0"]) > row_tolerance:
+            rows.append([w["y0"], [w]])
+        else:
+            rows[-1][1].append(w)
 
-        # Headerları alma
-        if upper in {
-            "MALZEME", "HIZMET", "HİZMET", "KODU",
-            "AÇIKLAMASI", "ACIKLAMASI", "AÇIKLAMA", "ACIKLAMA",
-            "SATIR"
-        }:
-            continue
-
-        # Product code description içine girmesin
-        if product_code and normalize_code(product_code) == normalize_code(text):
-            continue
-
-        if upper in ORIGINS:
-            continue
-
-        if upper in ["ACIKLAMASI", "ACIKLAMAS!", "AGIKLAMASI", "AGIKLAMAS!"]:
-            continue
-        if re.fullmatch(r"\d{1,3}", upper):
-            continue
-        if upper in STOP_DESCRIPTION_WORDS:
+    continuation_words = []
+    for _, row in rows:
+        ordered = sorted(row, key=lambda x: x["x0"])
+        visible = [w for w in ordered if w["x0"] <= x_max]
+        # A short leading integer on a continuation row is evidence that another
+        # goods row has started; never bleed its description into this item.
+        if visible and re.fullmatch(r"\d{1,3}", normalize_text(visible[0]["text"])):
             break
-        desc_words.append(text)
+        semantic = [
+            w["text"].strip() for w in visible
+            if _description_token_allowed(w["text"].strip(), product_code)
+        ]
+        if semantic:
+            continuation_words.extend(semantic)
 
-    description = " ".join(desc_words)
-    description = re.sub(r"\s+", " ", description).strip()
+    combined = primary_words + continuation_words
+    if combined:
+        return re.sub(r"\s+", " ", " ".join(combined)).strip()
 
-    return description or None
+    # Compatibility fallback for layouts where the GTIP anchor is not on the
+    # description baseline but the supplied row window still contains semantic
+    # description text.
+    fallback = []
+    x_min = description_col["xMin"] if description_col else 90
+    for w in sorted(words, key=lambda x: (x["y0"], x["x0"])):
+        text = w.get("text", "").strip()
+        if text and x_min <= w["x0"] <= x_max and _description_token_allowed(text, product_code):
+            fallback.append(text)
+    return re.sub(r"\s+", " ", " ".join(fallback)).strip() or None
 
 def normalize_text(text):
     return (text or "").strip().upper().replace("İ", "I").replace("Ü", "U").replace("Ş", "S").replace("Ğ", "G").replace("Ö", "O").replace("Ç", "C")
 
-def find_nearby_words(words, y0, y_range=45):
+def _normalized_geometry(words):
+    """Return True when canonical PDF coordinates use the normalized 0..1 space."""
+    coords = [abs(float(w.get("y0", 0) or 0)) for w in words]
+    return bool(coords) and max(coords) <= 2.0
+
+
+def _row_y_range(words, legacy_range=45):
+    # Canonical DIGITAL words are normalized to page space.  Older OCR fixtures
+    # use pixel-like coordinates, so keep the legacy tolerance for those.
+    return 0.012 if _normalized_geometry(words) else legacy_range
+
+
+def find_nearby_words(words, y0, y_range=None):
+    if y_range is None:
+        y_range = _row_y_range(words)
     return [w for w in words if abs(w["y0"] - y0) <= y_range]
 
 def find_delivery_term(words):
@@ -549,22 +629,129 @@ def find_next_product_y(words, current_y):
 
 def get_description_row_words(words, product_code, fallback_y):
     product_word = find_product_word(words, product_code)
-
     desc_y = product_word["y0"] if product_word else fallback_y
     next_product_y = find_next_product_y(words, desc_y)
 
-    bottom_y = next_product_y - 5 if next_product_y else desc_y + 95
+    if _normalized_geometry(words):
+        top_y = desc_y - 0.018
+        bottom_y = min(next_product_y - 0.003, desc_y + 0.035) if next_product_y else desc_y + 0.035
+    else:
+        top_y = desc_y - 35
+        bottom_y = next_product_y - 5 if next_product_y else desc_y + 95
 
-    return [
-        w for w in words
-        if desc_y - 35 <= w["y0"] < bottom_y
-    ]
+    return [w for w in words if top_y <= w["y0"] < bottom_y]
+
+
+
+def _structured_goods_row_evidence(words, anchor_y):
+    """Measure commercial row structure without using description length/text."""
+    nearby = sorted(find_nearby_words(words, anchor_y), key=lambda w: w["x0"])
+    quantity, unit = extract_quantity(nearby)
+    unit_price, amount = find_unit_price_and_amount(nearby, quantity)
+    if not unit_price or not amount:
+        money_values = []
+        for w in nearby:
+            money_values.extend(re.findall(r"\d{1,3}(?:\.\d{3})*,\d{1,4}", w.get("text", "")))
+        non_zero = [m for m in money_values if parse_tr_number(m) not in [0, None]]
+        if not unit_price and non_zero:
+            unit_price = non_zero[0]
+        if not amount and len(non_zero) >= 2:
+            amount = non_zero[-1]
+
+    score = 0
+    if quantity:
+        score += 2
+    if unit:
+        score += 1
+    if unit_price:
+        score += 2
+    if amount:
+        score += 2
+
+    arithmetic = False
+    q = parse_tr_number(quantity) if quantity else None
+    p = parse_tr_number(unit_price) if unit_price else None
+    a = parse_tr_number(amount) if amount else None
+    if q and p and a and abs((q * p) - a) < max(0.05, abs(a) * 0.00001):
+        arithmetic = True
+        score += 2
+
+    return {
+        "score": score,
+        "quantity": quantity,
+        "unit": unit,
+        "unitPrice": unit_price,
+        "amount": amount,
+        "arithmetic": arithmetic,
+    }
+
+
+def _gtip_goods_row_evidence(words, gtip):
+    return _structured_goods_row_evidence(words, gtip["y0"])["score"]
+
+
+def _candidate_goods_row_anchors(words):
+    """Find independently structured commercial rows, without requiring a GTIP."""
+    # Quantity units are reliable row anchors and avoid scanning every text line.
+    unit_pattern = r"\b(" + "|".join(QUANTITY_UNITS) + r")\b"
+    anchors = []
+    for w in words:
+        if not re.search(unit_pattern, normalize_text(w.get("text", ""))):
+            continue
+        evidence = _structured_goods_row_evidence(words, w["y0"])
+        if evidence["score"] < 7 or not evidence["arithmetic"]:
+            continue
+        if any(abs(existing["y0"] - w["y0"]) <= _row_y_range(words) for existing in anchors):
+            continue
+        anchors.append({"y0": w["y0"], "evidence": evidence})
+    return anchors
+
+
+def _prefer_structured_gtip_occurrences(page_map, gtips):
+    # A GTIP can be printed in the goods table or repeated later in notes/footer.
+    # First keep strongly structured occurrences.  A weak occurrence may be
+    # re-anchored only when the page exposes exactly one unambiguous,
+    # arithmetic-corroborated commercial row.  Multiple possible rows fail closed.
+    grouped = {}
+    scored = []
+    for g in gtips:
+        words = page_map[g["page"]]
+        score = _gtip_goods_row_evidence(words, g)
+        scored.append((g, score))
+        grouped.setdefault((g["page"], g["gtip"]), []).append(score)
+
+    selected = []
+    for g, score in scored:
+        peer_scores = grouped[(g["page"], g["gtip"])]
+        if score >= 4:
+            selected.append(g)
+            continue
+        if any(peer >= 4 for peer in peer_scores):
+            # Same GTIP already has a real goods-row occurrence.
+            continue
+
+        words = page_map[g["page"]]
+        anchors = _candidate_goods_row_anchors(words)
+        # Do not guess in multi-row layouts.  This deliberately handles invoices
+        # where one item's GTIP is disclosed separately from its sole goods row.
+        if len(anchors) == 1:
+            rebound = dict(g)
+            rebound["y0"] = anchors[0]["y0"]
+            rebound["reanchoredFromY0"] = g["y0"]
+            rebound["gtipReanchorReason"] = "single-arithmetic-corroborated-goods-row"
+            selected.append(rebound)
+        else:
+            selected.append(g)
+
+    return selected
+
 
 def extract_items(paddle_all, gtip_result):
     items = []
 
     page_map = {p["page"]: p["words"] for p in paddle_all}
     gtips = sorted(gtip_result["allGtips"], key=lambda g: (g["page"], g["y0"]))
+    gtips = _prefer_structured_gtip_occurrences(page_map, gtips)
 
     for idx, g in enumerate(gtips, start=1):
         words = page_map[g["page"]]
@@ -631,7 +818,10 @@ def extract_items(paddle_all, gtip_result):
         columns = detect_columns(words)
         description_col = build_description_column(columns)
         row_words = get_description_row_words(words, product_code, y)
-        description = extract_description_from_words(row_words, product_code, description_col)
+        anchor_height = (g.get("y1") - g.get("y0")) if g.get("y1") is not None else None
+        description = extract_description_from_words(
+            row_words, product_code, description_col, anchor_y=y, anchor_height=anchor_height
+        )
 
         boxes = {
             "gtip": [g["x0"], g["y0"], g["x1"], g["y1"]] if g.get("x1") else None,
