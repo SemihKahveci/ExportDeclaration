@@ -2331,3 +2331,38 @@ After this deterministic gate passes, rerun the model-free native corpus regress
 - Deterministic regression coverage includes detached-footer GTIP re-anchoring, ambiguous multi-row fail-closed behavior, normalized DIGITAL row bands, vertical description continuation, duplicate suppression and same-GTIP multi-row preservation.
 - No supplier/customer-specific production rule, additional model inference, direct normalized write, or customer PDF commit is introduced.
 
+
+### Product E2E 1.5.27 — Concurrent production corpus queue + isolation
+
+- Extends the existing Foundation 6.17 synthetic BullMQ concurrency/isolation proof to the fixed four-invoice Product E2E production corpus.
+- Enqueues all four real corpus invoices together through `enqueueDocumentProcessing`; the verifier never invokes `processIdpJob` directly and therefore requires the external `idp-worker` service and Redis/BullMQ transport.
+- Requires at least two configured worker slots and more corpus jobs than worker concurrency, then proves overlapping processing plus observable queue backpressure while the worker is at capacity.
+- Re-validates the same 36 fixed ground-truth assertions after concurrent processing and requires every run to complete on attempt 1.
+- Verifies per-company/declaration logical-document ownership, ProcessingRun ownership, resolution-audit isolation, and absence of cross-company leakage.
+- Uses the real configured Vision provider. No supplier-specific production rule, direct normalized write, or customer-PDF commit is introduced.
+- Verifier: `backend/scripts/idp/verifyProductE2E1527ConcurrentProductionCorpusQueue.ts`.
+
+
+#### Product E2E 1.5.27.1 — Long-running concurrent queue observability
+
+The concurrent production-corpus verifier now allows up to 90 minutes for four real Vision/LLM jobs under shared worker capacity. The previous 45-minute verifier deadline could expire while BullMQ workers were still making healthy progress under concurrent model contention. The verifier emits a progress snapshot on every state transition and at least once per minute, including elapsed time, active/waiting counts, and per-corpus ProcessingRun/BullMQ state. Timeout errors now include the final state of every corpus job. This is verifier-only observability/timing hardening; production queue concurrency, worker behavior, candidate authority, resolution semantics, and normalized writes are unchanged.
+
+### Product E2E 1.5.27.2 — Concurrent description authority diagnostic
+
+The concurrent production-corpus verifier now emits the persisted declaration resolution audit before cleanup when a fixed-ground-truth field diverges. For the first goods-line description it records the exact candidate IDs, values, confidence, native/page-image evidence text, and persisted field resolution. This is measurement-only and does not weaken the production assertion or mutate normalized data.
+
+For focused reproduction, `PRODUCT_E2E_CONCURRENT_CASES` may select two or more fixed corpus IDs (for example `clk-celikel,makro-boya`). The selected jobs still travel through Redis/BullMQ and the external production worker concurrently; this avoids repeating all four expensive Vision jobs while diagnosing a concurrency-only divergence. The default remains the complete four-case corpus.
+
+Guardrails: no supplier-specific production rule, no resolver bypass, no direct normalized write, no additional model call beyond the selected production jobs, and cleanup remains best-effort after diagnostic capture.
+
+### Product E2E 1.5.27.3 — diagnostic assertion ordering
+
+The concurrent production-corpus verifier now distinguishes the full queue-capacity proof from a reduced diagnostic run. Backpressure is required only when the selected corpus contains more jobs than `IDP_WORKER_CONCURRENCY`; a two-case diagnostic on a two-slot worker still requires real overlap and concurrency ceilings, but cannot logically require a waiting job. Ground-truth validation runs before the optional backpressure assertion so a description-authority divergence emits its persisted candidate/resolution diagnostic instead of being masked by a queue-shape assertion. Production extraction, authority, worker, and normalized-write behavior are unchanged.
+
+### Product E2E 1.5.27.4 — Generic field lifecycle diagnostic
+
+The concurrent production-corpus verifier now emits one generic lifecycle diagnostic before a fixed-ground-truth assertion fails. The diagnostic covers the nine corpus-authoritative fields (`invoiceNo`, `currency`, `deliveryTerm`, first-line `description`, `hsCode`, `quantity`, `unit`, `unitPrice`, and `lineTotal`) instead of adding one-off diagnostics for individual fields or suppliers.
+
+For each field it records the normalized value, persisted candidate envelope, evidence provenance, field-resolution status/method/value, selected candidate, and available persisted promotion/review metadata. This is measurement-only verifier instrumentation: it does not mutate production data, weaken fixed ground truth, add supplier-specific parsing rules, invoke `processIdpJob()` directly, or write normalized declaration values.
+
+This checkpoint is intended to distinguish extraction/candidate loss from resolution/authority/promotion loss when concurrent model workloads produce a different normalized result. Production behavior must only be changed after the persisted lifecycle evidence identifies the common failing boundary.
