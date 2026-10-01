@@ -2398,9 +2398,10 @@ The gate requires every replay to return the original ProcessingRun, the BullMQ 
 
 Verifier: `backend/scripts/idp/verifyProductE2E1532CompletedReplayIdempotency.ts`.
 
-### Product E2E 1.5.32.1 - completed replay verifier output fix
+### Product E2E 1.5.x — queue / recovery lifecycle closeout
 
-- Fixes the 1.5.32 verifier summary output to reference the already-computed `finalBullState` value.
-- Verifier-only correction; no production queue, worker, parser, resolver, promotion, or lifecycle behavior changes.
-- The completed replay invariants remain unchanged: concurrent stale re-enqueue requests must reuse the original completed ProcessingRun without worker re-execution or persisted-result mutation.
+Product E2E 1.5.27–1.5.32 closes the queue/recovery hardening scope for the current product contract. The fixed four-invoice production corpus remains 36/36 under real concurrent BullMQ execution, while the deterministic lifecycle gates cover backpressure and tenant isolation, concurrent failure isolation, retry exhaustion, terminal manual recovery, duplicate recovery races, failed-job retention expiry, and completed-job replay idempotency. Processor-version changes are already a separate durable idempotency boundary under Foundation 10.2, and persisted Vision checkpoint/restart compatibility is covered by Product E2E 1.4.7–1.4.9.
 
+`CANCELLED` remains a terminal ProcessingRun state understood by the worker/enqueue boundary, but no user-facing cancellation service/API is part of the current product contract. Cancellation is therefore not added solely to extend this hardening series; if product requirements later introduce explicit cancellation, it must receive its own production lifecycle and BullMQ acceptance gate.
+
+With this closeout, further 1.5.x queue checkpoints should be opened only for a newly observed production defect or a newly accepted product requirement. The next product-validation phase is unseen/generalization corpus work: freeze new supplier-independent ground truth before execution, measure DIGITAL/SCANNED/MIXED and multi-line invoice behavior without per-supplier rules, and preserve fail-closed `REVIEW_REQUIRED` behavior where evidence is genuinely ambiguous.
