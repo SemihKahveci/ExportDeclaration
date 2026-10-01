@@ -2397,3 +2397,11 @@ Acceptance: backend typecheck plus `verifyProductE2E1529TerminalFailureManualRec
 - The verifier requires retry exhaustion before repair, then repairs the fixture and calls the normal production enqueue API; recovery must finish `COMPLETED`, clear the persisted error, materialize exactly one logical document and avoid duplicate resolution audits.
 - No production failure hook, direct worker invocation, direct normalized write, supplier rule or Vision/LLM call is introduced by this checkpoint.
 
+
+### Product E2E 1.5.30 - Concurrent terminal-recovery idempotency
+
+1.5.30 hardens the terminal-failure recovery path added in 1.5.29.1 against duplicate/manual concurrent re-enqueue requests. After a synthetic non-INVOICE upload exhausts every configured BullMQ attempt and reaches durable `FAILED/failed`, the fixture is repaired and eight calls to the normal production `enqueueDocumentProcessing()` API are issued concurrently for the same upload.
+
+The verifier requires every caller to converge on the original durable ProcessingRun, exactly one ProcessingRun to exist for the enqueue key, and recovery to produce exactly one additional worker execution (`final run.attempt = terminal attempt + 1`). The recovered job must finish `COMPLETED/completed`, clear the prior error, materialize exactly one logical document, and avoid duplicate resolution audits. This proves the `Job.retry("failed")` recovery boundary remains idempotent under a duplicate-request race instead of spawning replacement runs or multiple recovery executions.
+
+This checkpoint is verifier-only: it does not add another production recovery mechanism, invoke the worker directly, write normalized data directly, or require Vision/LLM. Acceptance is backend typecheck plus `verifyProductE2E1530DuplicateRecoveryRaceIdempotency.ts` reporting `product-e2e-1.5.30.duplicate-recovery-race-idempotency.passed`.
