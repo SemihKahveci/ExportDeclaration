@@ -2380,3 +2380,20 @@ Acceptance: backend/frontend typecheck plus `verifyProductE2E1528ConcurrentFailu
 The 1.5.28 failure-isolation run demonstrated the intended production behavior: the healthy peer completed on attempt 1 while the deterministic missing-file peer independently exhausted all configured BullMQ retries and reached terminal `FAILED`. The verifier then failed only because it treated the canonical empty normalized shape `{ goodsLines: [] }` as partial promotion.
 
 The verifier now checks the semantic invariant instead of requiring byte-for-byte `{}`: an empty `goodsLines` collection and other absent/null/empty values are non-promoted state, while any populated normalized scalar, object, or goods line remains a failure. Production worker, retry, parser, resolver, authority, and normalized-write behavior are unchanged.
+
+### Product E2E 1.5.29 — Terminal failure manual recovery boundary
+1.5.29 verifies the recovery boundary that begins only after BullMQ has exhausted every configured automatic attempt. A synthetic non-INVOICE upload is intentionally enqueued before its PDF exists, allowed to reach durable ProcessingRun `FAILED` plus BullMQ `failed`, then repaired on disk. The verifier calls the same production `enqueueDocumentProcessing` API again and requires the terminal work item to become executable and complete without creating a replacement ProcessingRun.
+
+This checkpoint is intentionally distinct from Foundation 6.16: 6.16 repairs the input during retry backoff, while 1.5.29 waits until automatic retry is fully exhausted first. It therefore detects whether the durable enqueue key / BullMQ job-id idempotency boundary accidentally makes a terminal failure permanently unrecoverable through the normal enqueue path.
+
+Acceptance: backend typecheck plus `verifyProductE2E1529TerminalFailureManualRecovery.ts`. PASS requires the same ProcessingRun identity, observable reactivation of the terminal BullMQ work item, final `COMPLETED/completed`, previous persisted error cleared, exactly one logical document, no duplicate resolution audit, and no direct worker invocation or normalized write. The verifier uses an ATR control document so Vision/LLM is not required. If the current production enqueue boundary cannot reactivate an exhausted BullMQ job, the verifier must fail closed and the next checkpoint should repair that generic queue lifecycle rather than weakening this assertion.
+
+### Product E2E 1.5.29.1 - Terminal failure manual recovery
+
+- `enqueueDocumentProcessing()` now distinguishes an ordinary idempotent re-enqueue from a retained terminal BullMQ `failed` job.
+- A repaired terminal failure is reactivated through BullMQ `Job.retry("failed")` while preserving the original durable `ProcessingRun`, enqueue key, ownership and audit identity.
+- If BullMQ retention has already removed the failed job, the same durable ProcessingRun id is added back to the queue instead of creating a replacement run.
+- Concurrent/manual repeated enqueue requests remain idempotent: once another request has already moved the job out of terminal `failed`, recovery does not force a second retry.
+- The verifier requires retry exhaustion before repair, then repairs the fixture and calls the normal production enqueue API; recovery must finish `COMPLETED`, clear the persisted error, materialize exactly one logical document and avoid duplicate resolution audits.
+- No production failure hook, direct worker invocation, direct normalized write, supplier rule or Vision/LLM call is introduced by this checkpoint.
+

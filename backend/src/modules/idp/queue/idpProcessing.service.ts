@@ -65,12 +65,32 @@ export async function enqueueDocumentProcessing(params: {
 
   // BullMQ jobId is the same durable ProcessingRun id. Repeated add() calls
   // therefore cannot create a second queue job for this exact processing unit.
+  //
+  // A terminal FAILED BullMQ job is different: Queue.add() with the same jobId
+  // is intentionally idempotent and will not reactivate the retained failed job.
+  // Explicitly retry that terminal job so a user can repair the input and invoke
+  // the normal enqueue API again without creating a replacement ProcessingRun.
   if (run.status !== ProcessingStatus.COMPLETED && run.status !== ProcessingStatus.CANCELLED) {
-    await getIdpQueue().add(
-      "process-document",
-      { processingRunId: String(run._id) },
-      { jobId: String(run._id) }
-    );
+    const queue = getIdpQueue();
+    const jobId = String(run._id);
+    const existingJob = await queue.getJob(jobId);
+
+    if (run.status === ProcessingStatus.FAILED && existingJob && await existingJob.getState() === "failed") {
+      try {
+        await existingJob.retry("failed");
+      } catch (error) {
+        // Concurrent re-enqueue requests may race after the first request has
+        // already moved the failed job back to an executable state. Treat that
+        // as idempotent success; only propagate if it is still terminal failed.
+        if (await existingJob.getState() === "failed") throw error;
+      }
+    } else {
+      await queue.add(
+        "process-document",
+        { processingRunId: jobId },
+        { jobId }
+      );
+    }
   }
   return run.toObject();
 }
