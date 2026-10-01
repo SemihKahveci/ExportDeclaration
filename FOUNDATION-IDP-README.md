@@ -2421,3 +2421,19 @@ Acceptance: backend typecheck plus `backend/scripts/idp/verifyProductE2E160Gener
 The intake schema supports DIGITAL/SCANNED/MIXED mode, multiple human-verified goods lines, and explicit `expectedReviewFields`. The deterministic verifier uses only a synthetic PDF-shaped fixture; it does not reuse the known four-invoice regression corpus as unseen evidence, invoke the production IDP worker, or spend Vision/LLM inference. Real holdout PDFs remain external/customer data and are added only after human ground truth has been frozen.
 
 Acceptance: backend typecheck plus `backend/scripts/idp/verifyProductE2E161GeneralizationFreezeIntake.ts`. PASS requires exact pre-execution SHA-256 capture, immutable frozen artifact creation, multi-line/review-field preservation, and zero IDP/Vision/LLM execution.
+
+### Product E2E 1.6.2 — frozen unseen holdout corpus
+
+1.6.2 freezes the first real unseen cohort before any production IDP execution. Six source invoices are identified by exact SHA-256 and human-transcribed ground truth: five DIGITAL cases and one genuinely image-only SCANNED case. The cohort includes multi-line goods tables, foreign invoice layouts, 6/8-digit source tariff codes that must not be promoted as authoritative 12-digit GTIP, and explicit fail-closed review expectations. Customer PDFs remain under ignored `uploads/` storage and are never committed.
+
+Acceptance: `verifyProductE2E162FrozenHoldoutCorpus.ts` re-hashes the staged source bytes and requires all six hashes to match the pre-execution manifest. It does not invoke IDP, OCR, Vision, or LLM inference. A PASS therefore proves corpus identity and freeze ordering, not extraction quality.
+
+### Product E2E 1.6.3 — blind generalization baseline
+
+1.6.3 is the first execution of the frozen 1.6.2 holdout cohort. Each selected invoice is re-hashed immediately before enqueue, then processed through the normal `enqueueDocumentProcessing` boundary, Redis/BullMQ, and the external production `idp-worker`; the verifier never calls `processIdpJob` directly. Cases are executed sequentially by default to avoid turning a generalization measurement into a model-contention benchmark. `GENERALIZATION_CASES` may select one or more frozen case IDs for focused reruns.
+
+This checkpoint is deliberately measurement-only for extraction quality. A wrong/missing extracted field is recorded against the immutable human ground truth but does not make the harness fail. Infrastructure and lifecycle violations still fail hard: changed source bytes, missing BullMQ job/run identity, worker `FAILED`, timeout, missing logical-document materialization, or ownership mismatch. `COMPLETED` and fail-closed `REVIEW_REQUIRED` are both valid terminal worker outcomes and are reported separately.
+
+The evaluator scores frozen scalar fields plus every preselected goods-line assertion. Expected goods rows are matched one-to-one to the best available normalized rows so repeated descriptions do not force positional assumptions. Explicit `expectedReviewFields` are measured separately as fail-closed behavior; for `goodsLines.hsCode`, any normalized tariff-code promotion is reported as a review-contract miss. Ground truth, production authority, and normalized data are never mutated by the harness.
+
+Acceptance: backend typecheck plus `backend/scripts/idp/verifyProductE2E163BlindGeneralizationBaseline.ts`. The final event is `product-e2e-1.6.3.blind-generalization-baseline.measured`, containing extraction accuracy, fail-closed review accuracy, per-case outcomes/checks, and guardrails proving frozen hashes, real production queue/worker execution, no supplier-specific rules, and no direct normalized writes. The measured percentage is a baseline, not a threshold to tune after seeing the result.
