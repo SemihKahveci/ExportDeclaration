@@ -2374,8 +2374,33 @@ The verifier requires the healthy job to complete on attempt 1 while the failing
 
 Acceptance: backend/frontend typecheck plus `verifyProductE2E1528ConcurrentFailureIsolationRecovery.ts`. Success is `product-e2e-1.5.28.concurrent-failure-isolation-recovery.passed` with `healthyCompletedWhileFailureRetried=true`, healthy `attempt=1`, failing attempts equal to `IDP_JOB_ATTEMPTS`, `partialNormalizedPromotionObserved=false`, and `crossTenantLeakageObserved=false`. This checkpoint intentionally avoids Qwen/Vision cost; Product E2E 1.5.27 already proves real configured Vision under concurrent successful production-corpus load.
 
+
+### Product E2E 1.5.29 / 1.5.29.1 — terminal failure manual recovery
+
+1.5.29 exposed a real lifecycle gap after BullMQ retry exhaustion: repairing an input and calling the normal `enqueueDocumentProcessing()` API reused the durable Mongo `ProcessingRun`, but the retained BullMQ job remained terminal `failed` and was not executable again. 1.5.29.1 fixes the production enqueue boundary without changing the durable idempotency key. For a durable `FAILED` run, a retained terminal failed BullMQ job is reactivated through BullMQ's failed-job retry mechanism; if retention has already removed that Redis job, the same durable ProcessingRun id is re-added as the BullMQ job id. Active/waiting/delayed work is never force-retried. Successful recovery preserves the ProcessingRun identity and audit lineage and clears the previous persisted error. No replacement run, direct normalized write, or production failure hook is introduced.
+
+### Product E2E 1.5.30 — duplicate recovery race idempotency
+
+1.5.30 stress-tests the 1.5.29.1 recovery boundary with eight concurrent normal re-enqueue requests after terminal failure and input repair. All requests must converge on the same durable ProcessingRun and exactly one additional worker execution: with three exhausted attempts, successful recovery must finish at ProcessingRun attempt four, never five or higher. The verifier also requires one logical document, no duplicate resolution audit, a cleared previous error, and no duplicate BullMQ recovery execution. It uses the lightweight non-Invoice fixture path and requires no Vision/LLM inference. No production behavior is changed by this checkpoint.
+
 ### Product E2E 1.5.31 — expired failed-job recovery
 
 1.5.31 closes the second terminal-recovery branch introduced by 1.5.29.1: a durable Mongo `ProcessingRun` may remain `FAILED` after BullMQ's `removeOnFail` retention has already removed the Redis job. The verifier exhausts the real retry policy, removes the terminal failed BullMQ job to deterministically model retention expiry, repairs the input, and calls the normal `enqueueDocumentProcessing()` API again.
 
 The gate requires the original ProcessingRun identity to be preserved, a BullMQ job with that same durable id to be recreated, exactly one recovery execution to complete, the previous error to clear, and exactly one logical document to be owned by the original run. It uses the lightweight ATR fixture path and requires no Vision/LLM inference. No new production behavior is introduced by this checkpoint; it verifies the retained-job-missing fallback already implemented in 1.5.29.1.
+
+
+### Product E2E 1.5.32 — completed replay idempotency
+
+1.5.32 closes the terminal-success replay boundary with a real external-worker completion rather than a manually assigned Mongo status. A lightweight ATR fixture is processed through Redis/BullMQ to durable `COMPLETED/completed`, then eight concurrent stale `enqueueDocumentProcessing()` requests are issued for the exact same upload and processor version.
+
+The gate requires every replay to return the original ProcessingRun, the BullMQ job to remain terminal `completed`, ProcessingRun `attempt` and BullMQ `attemptsMade` to remain unchanged, and no replacement run, logical-document duplication, resolution-audit duplication, normalized-data mutation, or extracted-data mutation. The verifier requires the external `idp-worker` and real Redis/BullMQ transport but intentionally avoids Invoice Vision/LLM inference. This checkpoint is verifier-only; production behavior is unchanged.
+
+Verifier: `backend/scripts/idp/verifyProductE2E1532CompletedReplayIdempotency.ts`.
+
+### Product E2E 1.5.32.1 - completed replay verifier output fix
+
+- Fixes the 1.5.32 verifier summary output to reference the already-computed `finalBullState` value.
+- Verifier-only correction; no production queue, worker, parser, resolver, promotion, or lifecycle behavior changes.
+- The completed replay invariants remain unchanged: concurrent stale re-enqueue requests must reuse the original completed ProcessingRun without worker re-execution or persisted-result mutation.
+
