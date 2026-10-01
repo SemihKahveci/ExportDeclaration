@@ -2366,3 +2366,17 @@ The concurrent production-corpus verifier now emits one generic lifecycle diagno
 For each field it records the normalized value, persisted candidate envelope, evidence provenance, field-resolution status/method/value, selected candidate, and available persisted promotion/review metadata. This is measurement-only verifier instrumentation: it does not mutate production data, weaken fixed ground truth, add supplier-specific parsing rules, invoke `processIdpJob()` directly, or write normalized declaration values.
 
 This checkpoint is intended to distinguish extraction/candidate loss from resolution/authority/promotion loss when concurrent model workloads produce a different normalized result. Production behavior must only be changed after the persisted lifecycle evidence identifies the common failing boundary.
+
+### Product E2E 1.5.28 — Concurrent failure isolation + retry recovery
+1.5.28 extends the real BullMQ concurrency boundary with a mixed terminal-outcome checkpoint. Two independent company/declaration uploads are enqueued together through the production queue service: one valid DIGITAL synthetic control document and one deliberately missing-file upload that fails deterministically during ANALYZE before Vision/LLM work can begin. No production failure hook or supplier-specific behavior is introduced.
+
+The verifier requires the healthy job to complete on attempt 1 while the failing peer independently traverses the configured BullMQ retry/backoff policy and reaches durable `FAILED` only after the configured attempts are exhausted. It also requires the healthy job to make progress before the failing peer becomes terminal, the queue to drain to one `completed` and one `failed` BullMQ state, logical-document ownership to remain scoped to the healthy company/declaration/run, no cross-tenant resolution/document leakage, and the failed declaration to receive no partial normalized-data promotion.
+
+Acceptance: backend/frontend typecheck plus `verifyProductE2E1528ConcurrentFailureIsolationRecovery.ts`. Success is `product-e2e-1.5.28.concurrent-failure-isolation-recovery.passed` with `healthyCompletedWhileFailureRetried=true`, healthy `attempt=1`, failing attempts equal to `IDP_JOB_ATTEMPTS`, `partialNormalizedPromotionObserved=false`, and `crossTenantLeakageObserved=false`. This checkpoint intentionally avoids Qwen/Vision cost; Product E2E 1.5.27 already proves real configured Vision under concurrent successful production-corpus load.
+
+
+#### Product E2E 1.5.28.1 — Semantic empty-normalized assertion
+
+The 1.5.28 failure-isolation run demonstrated the intended production behavior: the healthy peer completed on attempt 1 while the deterministic missing-file peer independently exhausted all configured BullMQ retries and reached terminal `FAILED`. The verifier then failed only because it treated the canonical empty normalized shape `{ goodsLines: [] }` as partial promotion.
+
+The verifier now checks the semantic invariant instead of requiring byte-for-byte `{}`: an empty `goodsLines` collection and other absent/null/empty values are non-promoted state, while any populated normalized scalar, object, or goods line remains a failure. Production worker, retry, parser, resolver, authority, and normalized-write behavior are unchanged.
