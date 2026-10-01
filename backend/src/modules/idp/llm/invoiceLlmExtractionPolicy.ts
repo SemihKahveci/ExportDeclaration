@@ -24,9 +24,12 @@ export interface InvoiceExtractionRouteInput {
 }
 
 /**
- * LLM is intentionally a peer extraction path, not a last-resort decorator.
- * The policy is categorical so upstream quality scoring can evolve without
- * silently changing this authority contract.
+ * 1.6.5 architecture lock: when a local vision-capable LLM and page images are
+ * available, semantic invoice understanding is LLM/VLM-primary regardless of
+ * whether native/OCR text quality is high. Native text and OCR remain evidence
+ * and corroboration channels; they do not become the semantic authority merely
+ * because text extraction succeeded. Deterministic-only remains an explicit
+ * degraded/fallback route when the configured LLM path is unavailable.
  */
 export function chooseInvoiceExtractionRoute(input: InvoiceExtractionRouteInput): InvoiceExtractionRouteValue {
   const { llmEnabled, visionLlmAvailable, pageImagesAvailable, nativeTextQuality, ocrQuality } = input;
@@ -36,17 +39,12 @@ export function chooseInvoiceExtractionRoute(input: InvoiceExtractionRouteInput)
       : InvoiceExtractionRoute.REVIEW_REQUIRED;
   }
 
-  if (nativeTextQuality === InvoiceEvidenceQuality.HIGH) return InvoiceExtractionRoute.HYBRID_TEXT;
+  if (visionLlmAvailable && pageImagesAvailable) return InvoiceExtractionRoute.LLM_VISION_PRIMARY;
 
-  if (visionLlmAvailable && pageImagesAvailable &&
-      (ocrQuality === InvoiceEvidenceQuality.LOW || ocrQuality === InvoiceEvidenceQuality.UNAVAILABLE)) {
-    return InvoiceExtractionRoute.LLM_VISION_PRIMARY;
-  }
+  if (nativeTextQuality === InvoiceEvidenceQuality.HIGH) return InvoiceExtractionRoute.HYBRID_TEXT;
 
   if (nativeTextQuality !== InvoiceEvidenceQuality.UNAVAILABLE || ocrQuality !== InvoiceEvidenceQuality.UNAVAILABLE) {
     return InvoiceExtractionRoute.HYBRID_PARALLEL;
   }
-
-  if (visionLlmAvailable && pageImagesAvailable) return InvoiceExtractionRoute.LLM_VISION_PRIMARY;
   return InvoiceExtractionRoute.REVIEW_REQUIRED;
 }

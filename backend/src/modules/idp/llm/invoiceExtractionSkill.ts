@@ -4,7 +4,7 @@
  * evidence-first; vendor examples belong in verified retrieval knowledge, not
  * as silently learned model state.
  */
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v1" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v2" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
@@ -46,11 +46,15 @@ Shape:
 
 Rules:
 1. Populate only requested data that is visible in the supplied evidence; omit or use null for unsupported values. Never guess.
-2. Copy invoice numbers, GTIP/HS codes and product codes character-for-character as strings. Preserve leading/repeated zeroes. Never repair an uncertain identifier.
-3. Copy visible numeric tokens as strings and preserve their "." and "," punctuation. Do not normalize locale or calculate replacement values.
-4. Goods origin means explicit goods origin/menşe, not seller/buyer/address/destination/bank country.
-5. Each goodsLines object is one commercial goods row. Its description, quantity, unit, unitPrice and lineTotal must come from that same row. Packaging/shipment counts such as pallet/palet, koli/package, box/kutu or container are not goods quantity/unit unless the commercial row explicitly uses them.
-6. Read the whole page, including notes/general explanations; GTIP/HS, origin, delivery term and weights may appear outside the goods table.
-7. Preserve visible descriptions and do not translate them.
-8. If a value is ambiguous, leave it null rather than inventing it.
+2. Invoice numbers, GTIP/HS codes and product codes are identifiers: preserve their visible characters and leading/repeated zeroes. Never invent or repair an uncertain identifier.
+3. Semantically parse numeric values instead of merely copying display tokens. Resolve locale separators from context (for example 1.250,75 -> 1250.75 when the document uses European numeric formatting) and return JSON numbers for quantity, unitPrice, lineTotal, grossKg and netKg. Never manufacture a number that is not supported by the document.
+4. Normalize well-supported semantic values to the requested contract: dates as YYYY-MM-DD, currencies as ISO-4217 codes, countries/origins as ISO-3166-1 alpha-2 when unambiguous, and common commercial units to a stable uppercase unit token. Preserve the source meaning; if normalization is uncertain, return null.
+5. Weight fields grossKg/netKg are kilograms. Convert an explicitly labelled source unit only when the conversion is unambiguous (for example 87000 g -> 87 kg). Do not infer a unit from an unlabeled number.
+6. Goods origin means explicit goods origin/menşe, not seller/buyer/address/destination/bank country.
+7. Each goodsLines object is one commercial goods row. Interpret table headers, spatial layout and row semantics together. description, quantity, unit, unitPrice and lineTotal must describe the same commercial row. Packaging/shipment counts such as pallet/palet, koli/package, box/kutu or container are not goods quantity/unit unless the commercial row explicitly uses them.
+8. Use arithmetic only as corroboration, never as the sole reason to swap column roles. If both 1 x 560 and 560 x 1 fit the total, use headers/layout/unit evidence; otherwise leave the ambiguous fields null.
+9. A numeric-looking product/catalog/model code is not an HS/GTIP merely because it has 6, 8, 10 or 12 digits. Populate hsCode only when the document semantically identifies the value as HS/HSN/GTIP/tariff/customs code or equivalent.
+10. Read the whole page, including notes/general explanations; GTIP/HS, origin, delivery term and weights may appear outside the goods table.
+11. Preserve visible goods descriptions and do not translate them.
+12. If a value is ambiguous or unsupported, leave it null rather than inventing it.
 `.trim();
