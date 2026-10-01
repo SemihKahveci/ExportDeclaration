@@ -1,4 +1,5 @@
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
+import type { InvoiceLlmExtractionArtifact } from "../domain/invoiceLlmExtraction.types.js";
 
 export interface PersistedInvoiceVisionPageCheckpoint {
   status: "COMPLETED" | "FAILED";
@@ -6,6 +7,7 @@ export interface PersistedInvoiceVisionPageCheckpoint {
   decision?: string;
   candidateCount?: number;
   candidates?: FieldCandidateEnvelope;
+  extractionArtifact?: InvoiceLlmExtractionArtifact;
   error?: string;
 }
 

@@ -2461,3 +2461,32 @@ The deterministic Python invoice parser and generic invoice heuristics are **cut
 1.6.5 intentionally does not grant the model a direct normalized-data write path and does not yet remove the deterministic parser from worker execution. The next implementation checkpoint moves model extraction to a first-class persisted artifact with raw/parsed response, model/prompt identity and evidence provenance, then changes worker authority/cutover behavior behind deterministic acceptance gates.
 
 Acceptance: backend typecheck plus `backend/scripts/idp/verifyProductE2E165LlmFirstArchitectureContract.ts`. This gate is model-free and locks the architecture before the worker refactor.
+
+### Product E2E 1.6.6 — First-class model extraction artifact
+
+The LLM-first cutover requires observability before authority changes. Each successful invoice Vision page inference now carries a persisted extraction artifact through the existing `visionCandidateCheckpoint` lifecycle. The artifact records provider/model identity, `invoice-extraction-v2` skill version, document/evidence mode, requested fields, source page numbers, the exact model message content before provider adaptation, and the provider-validated semantic response before candidate projection/resolution. Rendered page-image bytes/base64 are intentionally not persisted in this artifact.
+
+This checkpoint is observability-only: it does not change candidate authority, resolver behavior, promotion, review semantics, or normalized-data writes. It makes later frozen-corpus comparisons able to distinguish model understanding from candidate projection/resolution loss without re-prompting the model with ground truth.
+
+Verifier:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E166FirstClassModelExtractionArtifact.ts
+```
+
+Expected event: `product-e2e-1.6.6.first-class-model-extraction-artifact.passed`.
+
+### Product E2E 1.6.7 — LLM-first worker cutover
+
+The architecture lock now changes the production candidate-source boundary. When configured page Vision is available, Qwen/VLM semantic extraction is primary for every field it actually extracts. Deterministic Native/OCR/Python candidates no longer compete with a VLM candidate for the same field; they remain a degraded field-level fallback only when the VLM emitted no candidate. The existing Foundation 6 resolver/validator still owns promotion and review, so the model still cannot write `normalizedData` directly.
+
+OCR remains an evidence/corroboration subsystem. An OCR enrichment failure no longer kills an invoice job when the configured page-Vision path is available: the worker records `idp.ocr.degraded_to_vision` and continues from the canonical document/page images. If Vision is unavailable, OCR failure remains fatal rather than silently pretending that a safe extraction path exists.
+
+This checkpoint intentionally does **not** delete the legacy Python invoice parser. Physical deletion remains gated on frozen unseen-corpus and known-corpus regression evidence after the LLM-first path is exercised end-to-end. No supplier-specific rule is introduced.
+
+Verification:
+
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E167LlmFirstWorkerCutover.ts`
+
+Expected event: `product-e2e-1.6.7.llm-first-worker-cutover.passed`.

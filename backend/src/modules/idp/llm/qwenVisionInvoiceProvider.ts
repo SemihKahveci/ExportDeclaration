@@ -9,7 +9,7 @@ import {
   type InvoiceLlmExtractionResponse,
   type InvoiceLlmPageImage
 } from "../domain/invoiceLlmExtraction.types.js";
-import { INVOICE_EXTRACTION_SYSTEM_PROMPT } from "./invoiceExtractionSkill.js";
+import { INVOICE_EXTRACTION_SKILL_VERSION, INVOICE_EXTRACTION_SYSTEM_PROMPT } from "./invoiceExtractionSkill.js";
 
 function stripFence(value: string): string {
   return value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -312,14 +312,32 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
         const thinkingBytes = Buffer.byteLength(payload.message?.thinking ?? "", "utf8");
         throw new Error(`Qwen vision response content boş (transport=ollama-native, done_reason=${payload.done_reason ?? "unknown"}, thinkingBytes=${thinkingBytes}).`);
       }
+      const parsedResponse = parseResponse(content, request, pageImages, {
+        done: payload.done,
+        doneReason: payload.done_reason,
+        evalCount: payload.eval_count
+      });
       return {
-        ...parseResponse(content, request, pageImages, {
-          done: payload.done,
-          doneReason: payload.done_reason,
-          evalCount: payload.eval_count
-        }),
+        ...parsedResponse,
         model: env.llmVisionModel,
-        provider: this.name
+        provider: this.name,
+        extractionArtifact: {
+          version: "1",
+          provider: this.name,
+          model: env.llmVisionModel,
+          skillVersion: INVOICE_EXTRACTION_SKILL_VERSION,
+          documentId: request.documentId,
+          evidenceMode: request.evidenceMode,
+          requestedFields: [...request.requestedFields],
+          pageNumbers: pageImages.map((image) => image.pageNumber),
+          rawModelResponse: content,
+          parsedSemanticResponse: {
+            version: parsedResponse.version,
+            decision: parsedResponse.decision,
+            fields: parsedResponse.fields,
+            issues: parsedResponse.issues
+          }
+        }
       };
     } finally {
       clearTimeout(timeout);

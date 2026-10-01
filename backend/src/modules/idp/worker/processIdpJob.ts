@@ -1,3 +1,4 @@
+import { env } from "../../../config/env.js";
 import { ProcessingRunModel } from "../domain/processingRun.model.js";
 import { ProcessingStage, ProcessingStatus } from "../domain/idp.types.js";
 import { UploadedDocumentModel } from "../../documents/document.model.js";
@@ -124,24 +125,33 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
 
     if (canonicalDocument) {
 
-      canonicalDocument = await stage(
-        "OCR_ENRICH",
-        ProcessingStage.EXTRACT_CONTENT,
-        () =>
-          enrichCanonicalDocumentWithOcr(
-            file.filePath!,
-            canonicalDocument!,
-            async (checkpointDocument, completedPages) => {
-              await persistCanonicalDocument(run, checkpointDocument);
-              log("idp.ocr.checkpoint.persisted", {
-                jobId: processingRunId,
-                completedPages,
-                ocrPageCount: checkpointDocument.analysis.ocrPageCount,
-                ocrWordCount: checkpointDocument.analysis.ocrWordCount
-              });
-            }
-          )
-      );
+      try {
+        canonicalDocument = await stage(
+          "OCR_ENRICH",
+          ProcessingStage.EXTRACT_CONTENT,
+          () =>
+            enrichCanonicalDocumentWithOcr(
+              file.filePath!,
+              canonicalDocument!,
+              async (checkpointDocument, completedPages) => {
+                await persistCanonicalDocument(run, checkpointDocument);
+                log("idp.ocr.checkpoint.persisted", {
+                  jobId: processingRunId,
+                  completedPages,
+                  ocrPageCount: checkpointDocument.analysis.ocrPageCount,
+                  ocrWordCount: checkpointDocument.analysis.ocrWordCount
+                });
+              }
+            )
+        );
+      } catch (error) {
+        const visionCanContinue = env.llmEnabled && env.llmVisionEnabled && Boolean(env.llmVisionModel.trim()) && Boolean(file.filePath);
+        if (!visionCanContinue) throw error;
+        log("idp.ocr.degraded_to_vision", {
+          jobId: processingRunId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
 
       // Persist once more for the zero-target and final-state cases.
       await persistCanonicalDocument(run, canonicalDocument);

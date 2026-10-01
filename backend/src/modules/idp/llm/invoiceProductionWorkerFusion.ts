@@ -11,6 +11,7 @@ import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecuti
 import { renderInvoicePagesForVision } from "./renderInvoicePagesForVision.js";
 import {
   mergeInvoiceCandidateSources,
+  mergeInvoicePrimaryWithFallback,
   planInvoiceProductionExtraction
 } from "./invoiceProductionExtractionOrchestrator.js";
 import { executeInvoiceVisionByPage } from "./invoiceProductionVisionExecution.js";
@@ -75,12 +76,13 @@ function fieldCandidatesOf(data: Record<string, unknown> | undefined): FieldCand
 }
 
 /**
- * Production worker bridge: deterministic Native/OCR candidates remain intact,
- * bounded page Vision adds peer candidates, and only the fused envelope is
- * returned for the existing persistWorkerCandidateExtraction/F6 boundary.
+ * Production worker bridge. Under the 1.6.7 LLM-first route, bounded page
+ * Vision is the primary semantic candidate source. Deterministic Native/OCR
+ * candidates are retained only as field-level fallback when Vision emitted no
+ * candidate for that field. The existing F6 resolver remains the validation/
+ * promotion authority and this function never writes normalizedData.
  *
- * Vision page failures are audit data, not a reason to discard deterministic
- * extraction. This function never writes normalizedData.
+ * Vision page failures are audit data and permit degraded deterministic fallback.
  */
 export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
   pdfPath: string;
@@ -131,7 +133,8 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         .map((page) => [page.pageNumber, {
           candidates: page.candidates!,
           decision: page.decision!,
-          candidateCount: page.candidateCount!
+          candidateCount: page.candidateCount!,
+          extractionArtifact: page.extractionArtifact
         }])
     );
 
@@ -156,18 +159,21 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
           decision: page.decision,
           candidateCount: page.candidateCount,
           candidates: page.candidates,
+          extractionArtifact: page.extractionArtifact,
           error: page.error
         };
         await params.persistVisionCheckpoint?.(persistedCheckpoint);
       }
     });
 
-    const fusedCandidates = mergeInvoiceCandidateSources(
+    const deterministicFallback = mergeInvoiceCandidateSources(
       fieldCandidatesOf(result.data),
       canonicalCommercialTermsCandidatesOf(result.data),
-      canonicalHeaderPartyCandidatesOf(result.data),
-      execution.candidates
+      canonicalHeaderPartyCandidatesOf(result.data)
     );
+    const fusedCandidates = plan.route === "LLM_VISION_PRIMARY"
+      ? mergeInvoicePrimaryWithFallback(execution.candidates, deterministicFallback)
+      : mergeInvoiceCandidateSources(deterministicFallback, execution.candidates);
 
     result.data = {
       ...result.data,

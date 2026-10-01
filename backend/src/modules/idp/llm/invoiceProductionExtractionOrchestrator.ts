@@ -183,6 +183,28 @@ export function projectVisionResponseToFieldCandidates(params: {
   return { version: "1", fields };
 }
 
+
+/**
+ * 1.6.7 LLM-first cutover merge. A semantic VLM candidate is authoritative at
+ * the candidate-source boundary for fields it actually extracted. Native/OCR/
+ * deterministic candidates remain a degraded fallback only for fields the VLM
+ * did not extract. Selection/validation still happens in the existing F6
+ * resolver; this function never writes normalizedData.
+ */
+export function mergeInvoicePrimaryWithFallback(
+  primary: FieldCandidateEnvelope,
+  ...fallbacks: FieldCandidateEnvelope[]
+): FieldCandidateEnvelope {
+  const fallback = mergeInvoiceCandidateSources(...fallbacks);
+  const fields: Record<string, FieldCandidate[]> = {};
+  const allFields = new Set([...Object.keys(fallback.fields), ...Object.keys(primary.fields)]);
+  for (const field of allFields) {
+    const primaryCandidates = primary.fields[field] ?? [];
+    fields[field] = primaryCandidates.length > 0 ? [...primaryCandidates] : [...(fallback.fields[field] ?? [])];
+  }
+  return { version: "1", fields };
+}
+
 /** Candidate fusion never selects a winner. It only preserves peer candidates
  * for the existing F6 resolver/authority path.
  */

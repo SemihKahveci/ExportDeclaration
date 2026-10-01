@@ -37,6 +37,26 @@ export interface InvoiceLlmExtractionRequest {
   verifiedKnowledge?: Array<{ label: string; content: string }>;
 }
 
+export interface InvoiceLlmExtractionArtifact {
+  version: "1";
+  provider: string;
+  model: string;
+  skillVersion: string;
+  documentId: string;
+  evidenceMode: InvoiceLlmEvidenceModeValue;
+  requestedFields: string[];
+  pageNumbers: number[];
+  /** Exact model message content before provider adaptation. Image bytes are intentionally excluded. */
+  rawModelResponse: string;
+  /** Provider-validated semantic response before candidate projection/resolution. */
+  parsedSemanticResponse: {
+    version: "1";
+    decision: InvoiceLlmExtractionDecisionValue;
+    fields: InvoiceLlmExtractedField[];
+    issues: Array<{ code: string; message: string }>;
+  };
+}
+
 export interface InvoiceLlmExtractionResponse {
   version: "1";
   decision: InvoiceLlmExtractionDecisionValue;
@@ -44,6 +64,7 @@ export interface InvoiceLlmExtractionResponse {
   issues: Array<{ code: string; message: string }>;
   model: string;
   provider: string;
+  extractionArtifact?: InvoiceLlmExtractionArtifact;
 }
 
 

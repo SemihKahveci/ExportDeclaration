@@ -2,6 +2,7 @@ import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 import {
   InvoiceLlmEvidenceMode,
+  type InvoiceLlmExtractionArtifact,
   type InvoiceLlmExtractionProvider,
   type InvoiceLlmExtractionRequest,
   type InvoiceLlmPageImage
@@ -19,6 +20,7 @@ export interface InvoiceVisionCheckpoint {
   pageNumber: number;
   decision: string;
   candidateCount: number;
+  extractionArtifact?: InvoiceLlmExtractionArtifact;
 }
 
 export interface InvoiceProductionVisionExecution {
@@ -42,13 +44,14 @@ export async function executeInvoiceVisionByPage(params: {
   provider: InvoiceLlmExtractionProvider;
   renderPage: InvoiceVisionPageRenderer;
   request: Omit<InvoiceLlmExtractionRequest, "documentId" | "evidenceMode">;
-  completedPages?: Record<number, { candidates: FieldCandidateEnvelope; decision: string; candidateCount: number }>;
+  completedPages?: Record<number, { candidates: FieldCandidateEnvelope; decision: string; candidateCount: number; extractionArtifact?: InvoiceLlmExtractionArtifact }>;
   onPageCheckpoint?: (checkpoint: {
     pageNumber: number;
     status: "COMPLETED" | "FAILED";
     decision?: string;
     candidateCount?: number;
     candidates?: FieldCandidateEnvelope;
+    extractionArtifact?: InvoiceLlmExtractionArtifact;
     error?: string;
   }) => Promise<void>;
 }): Promise<InvoiceProductionVisionExecution> {
@@ -63,7 +66,7 @@ export async function executeInvoiceVisionByPage(params: {
     const persisted = params.completedPages?.[pageNumber];
     if (persisted) {
       sources.push(persisted.candidates);
-      checkpoints.push({ pageNumber, decision: persisted.decision, candidateCount: persisted.candidateCount });
+      checkpoints.push({ pageNumber, decision: persisted.decision, candidateCount: persisted.candidateCount, extractionArtifact: persisted.extractionArtifact });
       const persistedGoodsCount = Object.keys(persisted.candidates.fields)
         .map((field) => /^goodsLines\.(\d+)\./.exec(field)?.[1])
         .filter((value): value is string => Boolean(value))
@@ -99,13 +102,14 @@ export async function executeInvoiceVisionByPage(params: {
         .reduce((max, field) => Math.max(max, (field.value as unknown[]).length), 0);
       goodsLineOffset += pageGoodsCount;
       const candidateCount = Object.values(projected.fields).reduce((sum, candidates) => sum + candidates.length, 0);
-      checkpoints.push({ pageNumber, decision: response.decision, candidateCount });
+      checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact });
       await params.onPageCheckpoint?.({
         pageNumber,
         status: "COMPLETED",
         decision: response.decision,
         candidateCount,
-        candidates: projected
+        candidates: projected,
+        extractionArtifact: response.extractionArtifact
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
