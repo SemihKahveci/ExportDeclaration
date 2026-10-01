@@ -2413,3 +2413,11 @@ With this closeout, further 1.5.x queue checkpoints should be opened only for a 
 The bootstrap manifest intentionally contains zero customer cases. New invoices must be inspected by a human and their expected values plus source hash committed before that case is ever executed through the production IDP pipeline. Expected values must never be copied from or edited to match pipeline output. The 1.6.0 verifier validates this immutable manifest contract without requiring customer PDFs, invoking the IDP worker, or spending Vision/LLM inference. This preserves the existing four-invoice corpus as regression evidence while creating a clean holdout boundary for genuine generalization measurement.
 
 Acceptance: backend typecheck plus `backend/scripts/idp/verifyProductE2E160GeneralizationCorpusContract.ts`. A bootstrap PASS reports `groundTruthFrozenBeforeExecutionRequired=true`, `exactSourceHashRequired=true`, support for DIGITAL/SCANNED/MIXED and multi-line goods ground truth, and no IDP/Vision/LLM execution.
+
+### Product E2E 1.6.1 — unseen holdout freeze intake
+
+1.6.1 adds a model-free intake boundary for future unseen invoices. `freezeProductE2EGeneralizationCase.ts` accepts an exact PDF plus independently human-authored ground-truth JSON, computes the PDF SHA-256 before any IDP execution, canonicalizes the frozen case artifact, and creates that artifact with exclusive-create semantics. An existing frozen artifact cannot be silently overwritten or updated after pipeline output is observed.
+
+The intake schema supports DIGITAL/SCANNED/MIXED mode, multiple human-verified goods lines, and explicit `expectedReviewFields`. The deterministic verifier uses only a synthetic PDF-shaped fixture; it does not reuse the known four-invoice regression corpus as unseen evidence, invoke the production IDP worker, or spend Vision/LLM inference. Real holdout PDFs remain external/customer data and are added only after human ground truth has been frozen.
+
+Acceptance: backend typecheck plus `backend/scripts/idp/verifyProductE2E161GeneralizationFreezeIntake.ts`. PASS requires exact pre-execution SHA-256 capture, immutable frozen artifact creation, multi-line/review-field preservation, and zero IDP/Vision/LLM execution.
