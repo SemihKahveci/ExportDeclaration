@@ -6,7 +6,7 @@ import type { SegmentClassification } from "../domain/segmentClassification.type
 import { ClassifiedDocumentType } from "../domain/segmentClassification.types.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 import { QwenVisionInvoiceProvider } from "./qwenVisionInvoiceProvider.js";
-import type { InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
+import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
 import { renderInvoicePagesForVision } from "./renderInvoicePagesForVision.js";
 import {
@@ -92,10 +92,13 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
   candidateEnvelope: CandidateExtractionEnvelope;
   visionCheckpoint?: unknown;
   persistVisionCheckpoint?: (checkpoint: PersistedInvoiceVisionCheckpoint) => Promise<void>;
+  persistModelExtractionArtifact?: (artifact: InvoiceLlmExtractionArtifact) => Promise<void>;
   /** Injectable seams for deterministic recovery verification; production callers omit these. */
   visionProvider?: InvoiceLlmExtractionProvider;
   renderVisionPage?: InvoiceVisionPageRenderer;
   visionModelIdentity?: string;
+  /** Uploaded-file authority may rescue an UNKNOWN segment as an invoice. */
+  forceInvoiceExecution?: boolean;
 }): Promise<CandidateExtractionEnvelope> {
   const plan = planInvoiceProductionExtraction({
     canonicalDocument: params.canonicalDocument,
@@ -123,7 +126,20 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
   for (const result of params.candidateEnvelope.segments) {
     const classification = classificationBySegment.get(result.segmentId);
     const segment = segmentById.get(result.segmentId);
-    if (!classification || !segment || classification.documentType !== ClassifiedDocumentType.INVOICE || !result.data) continue;
+    if (!classification || !segment) continue;
+    // Uploaded-file document type is the worker's authoritative routing input.
+    // Once the worker has entered the INVOICE path, a segment classifier miss
+    // must not suppress the semantic-primary model call. 1.6.8.2 rescued only
+    // UNKNOWN; the real holdout showed that a confident *wrong* non-INVOICE
+    // classification can otherwise still complete deterministically with no
+    // Qwen artifact. Non-INVOICE worker callers do not set forceInvoiceExecution.
+    const invoiceSegment = classification.documentType === ClassifiedDocumentType.INVOICE
+      || params.forceInvoiceExecution === true;
+    if (!invoiceSegment) continue;
+
+    // Vision is the semantic primary path, so it must not depend on a
+    // deterministic extractor having populated data first.
+    if (!result.data) result.data = {};
 
     const segmentCheckpoint = persistedCheckpoint.segments[result.segmentId] ?? { pages: {} };
     persistedCheckpoint.segments[result.segmentId] = segmentCheckpoint;
@@ -163,8 +179,24 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
           error: page.error
         };
         await params.persistVisionCheckpoint?.(persistedCheckpoint);
+        if (page.status === "COMPLETED" && page.extractionArtifact) {
+          await params.persistModelExtractionArtifact?.(page.extractionArtifact);
+        }
       }
     });
+
+    // 1.6.8.4: LLM-first means the semantic primary path cannot silently
+    // degrade to deterministic-only extraction when every Qwen page failed.
+    // Partial page success is still recoverable/checkpointed, but zero successful
+    // model artifacts is a hard runtime failure so the worker exposes the real
+    // render/provider/network error instead of incorrectly completing the run.
+    const successfulModelArtifacts = execution.checkpoints.filter((checkpoint) => Boolean(checkpoint.extractionArtifact));
+    if (successfulModelArtifacts.length === 0) {
+      const failureSummary = execution.failedPages.length > 0
+        ? execution.failedPages.map((page) => `page ${page.pageNumber}: ${page.error}`).join(" | ")
+        : "Qwen returned no persisted extraction artifact";
+      throw new Error(`LLM_VISION_PRIMARY_REQUIRED: ${failureSummary}`);
+    }
 
     const deterministicFallback = mergeInvoiceCandidateSources(
       fieldCandidatesOf(result.data),

@@ -19,6 +19,7 @@ export interface ProcessingRunDoc extends mongoose.Document {
   candidates?: unknown;
   declarationCandidates?: unknown;
   visionCandidateCheckpoint?: unknown;
+  modelExtractionArtifacts?: unknown;
   resolvedResult?: unknown;
   validationResult?: unknown;
   finalResult?: unknown;
@@ -47,6 +48,7 @@ const ProcessingRunSchema = new Schema({
   candidates: Schema.Types.Mixed,
   declarationCandidates: Schema.Types.Mixed,
   visionCandidateCheckpoint: Schema.Types.Mixed,
+  modelExtractionArtifacts: Schema.Types.Mixed,
   resolvedResult: Schema.Types.Mixed,
   validationResult: Schema.Types.Mixed,
   finalResult: Schema.Types.Mixed,

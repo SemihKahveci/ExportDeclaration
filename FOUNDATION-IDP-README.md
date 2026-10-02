@@ -2490,3 +2490,52 @@ Verification:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E167LlmFirstWorkerCutover.ts`
 
 Expected event: `product-e2e-1.6.7.llm-first-worker-cutover.passed`.
+
+### 1.6.8 — LLM-first real holdout stage accuracy
+
+After the 1.6.7 worker cutover, the first real measurement is intentionally limited to the frozen representative holdout subset (`volta-vxa-0035`, `ningbo-wyl-2026060501`, `mekar-ear-0068`). It executes the normal production queue/worker with the configured Vision provider and reads the persisted first-class extraction artifacts introduced in 1.6.6.
+
+The verifier measures two separate boundaries against the already-frozen human ground truth: the provider-validated Qwen semantic response before candidate projection/resolution, and the final declaration normalized data after resolver/authority. This makes model extraction accuracy distinguishable from downstream candidate/resolution/promotion loss. No second ground-truth-aware model call is made, no customer-specific rule is introduced, and the verifier does not write normalized data.
+
+This checkpoint is measurement-only. Its result decides the next production change: prompt/schema/provider adaptation when the semantic response is wrong or missing, versus candidate projection/resolver/authority changes when the semantic response is correct but final output is lost. OCR degradation to Vision is exercised by the scanned MEKAR case rather than special-casing that supplier.
+
+### Product E2E 1.6.8.1 — production model-artifact wiring repair
+
+The first 1.6.8 real holdout run correctly failed before scoring because a completed production VXA run exposed no persisted Qwen extraction artifact to the stage-accuracy verifier. The 1.6.6 isolated artifact contract had proved the provider artifact shape, but it had not established a dedicated ProcessingRun persistence boundary for the real worker call-site.
+
+1.6.8.1 repairs that observability gap without changing extraction authority. Every successful production page-Vision inference is now upserted into `ProcessingRun.modelExtractionArtifacts` at the actual Qwen extraction/checkpoint boundary. The artifact contains the raw model message and provider-validated semantic response but never page-image bytes. The page-scoped `documentId` is the idempotency key, so a retry replaces the artifact for that page instead of accumulating duplicate responses. `visionCandidateCheckpoint` remains for resumable candidate execution; the dedicated field is the first-class model-observability record. The 1.6.8 verifier prefers this field and retains checkpoint reading only for compatibility with pre-repair runs.
+
+This repair does not change Qwen-first candidate authority, resolver behavior, promotion/review rules, supplier handling, or normalized-data writes. After the deterministic wiring verifier passes, rerun the unchanged real 1.6.8 holdout measurement; absence of a first-class artifact on a new run remains a hard failure.
+
+Verification:
+
+`npm run typecheck`
+
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1681ProductionModelArtifactWiring.ts`
+
+Then rerun `backend/scripts/idp/verifyProductE2E168LlmFirstRealHoldoutStageAccuracy.ts`.
+
+### 1.6.8.2 — Primary Execution Cutover
+
+The real-worker 1.6.8 measurement exposed a second cutover gap: Vision fusion still required the segment classifier to say `INVOICE` and required deterministic extraction to have already populated `result.data`. That made the semantic-primary path dependent on the legacy path and could produce a completed invoice without any Qwen artifact.
+
+This checkpoint removes that dependency for an uploaded file already authoritatively typed as `INVOICE`:
+
+- Qwen/VLM execution no longer requires deterministic invoice data to exist first.
+- An `UNKNOWN` segment classification can be rescued by uploaded-file invoice authority; an explicitly different classified document type is still not coerced into an invoice.
+- Qwen/VLM remains mandatory whenever the configured Vision route is available.
+- First-class model artifact persistence remains mandatory at the real page-extraction boundary.
+- Deterministic extraction remains missing-field/degraded fallback only; it does not regain semantic-primary authority.
+- No supplier-specific rule and no direct normalized-data write is introduced.
+
+The verifier `verifyProductE2E1682PrimaryExecutionCutover.ts` requires the container's real LLM/Vision configuration and proves that an UNKNOWN invoice segment with no deterministic data still invokes the injected Qwen provider, persists the model artifact, and produces the primary invoice candidate.
+
+### Product E2E 1.6.8.6 — Row-matched stage diagnostic
+- Status: diagnostic checkpoint; no production extraction behavior change.
+- Corrects the interpretation of 1.6.8.5: holdout `expected.goodsLines` is a representative subset, not a positional prefix of the invoice. Therefore raw `goodsLines[0..N]` index comparisons cannot prove F6 row loss on invoices with additional lines.
+- Re-runs the real production queue and emits the same artifact/candidate/resolution visibility with an explicit row-matching guardrail before any production fix is attempted.
+- Supplier-specific rules: false. Direct normalized write: false. Ground-truth-aware second model call: false.
+
+### 1.6.8.7 — Vision Page Execution Determinism Diagnostic
+
+Measurement-only checkpoint for the real scanned Mekar holdout. The verifier executes the normal production queue once and reports the persisted `visionCandidateCheckpoint` page-by-page before test cleanup: status, decision, candidate count, artifact presence/field count, and exact page error. This distinguishes model/provider/page failures from downstream projection/resolution loss without supplier-specific rules or direct normalized writes. Production extraction behavior is unchanged.

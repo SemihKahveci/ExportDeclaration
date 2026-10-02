@@ -21,6 +21,7 @@ import { shouldDeferValidationReviewToDeclarationAuthority } from "../validator/
 import { materializeLogicalDocuments } from "../domain/logicalDocumentMaterializer.js";
 import { tryOrchestrateDeclarationAfterProcessing } from "../domain/declarationFieldLifecycle.service.js";
 import { persistWorkerCandidateExtraction } from "../domain/workerCandidatePersistence.js";
+import { upsertModelExtractionArtifact } from "../domain/modelExtractionArtifactPersistence.js";
 import { tryOrchestrateDeclarationIntelligenceAfterProcessing } from "../domain/declarationIntelligenceLifecycle.service.js";
 import { tryOrchestrateDeclarationLlmAssistAfterProcessing } from "../llm/declarationLlmAssistLifecycle.service.js";
 import { tryAssessDeclarationExceptionsAfterProcessing } from "../domain/declarationExceptionLifecycle.service.js";
@@ -230,10 +231,16 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
           segments: segments!,
           classifications: classifications!,
           candidateEnvelope,
+          forceInvoiceExecution: true,
           visionCheckpoint: run.visionCandidateCheckpoint,
           persistVisionCheckpoint: async (checkpoint) => {
             run.visionCandidateCheckpoint = checkpoint;
             run.markModified("visionCandidateCheckpoint");
+            await run.save();
+          },
+          persistModelExtractionArtifact: async (artifact) => {
+            run.modelExtractionArtifacts = upsertModelExtractionArtifact(run.modelExtractionArtifacts, artifact);
+            run.markModified("modelExtractionArtifacts");
             await run.save();
           }
         })
