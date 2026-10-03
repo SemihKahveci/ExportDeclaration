@@ -73,6 +73,36 @@ export function canonicalizeVisionInvoiceNumber(value: unknown): unknown {
 }
 
 
+function normalizeEvidenceDate(raw: string): string | undefined {
+  const token = raw.trim();
+  let match = token.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+  if (match) return `${match[1]}-${match[2]!.padStart(2, "0")}-${match[3]!.padStart(2, "0")}`;
+  match = token.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);
+  if (match) return `${match[3]}-${match[2]!.padStart(2, "0")}-${match[1]!.padStart(2, "0")}`;
+  return undefined;
+}
+
+function normalizeEvidenceCurrency(raw: string): string | undefined {
+  const token = raw.trim().toUpperCase();
+  if (token === "TL") return "TRY";
+  if (/^[A-Z]{3}$/.test(token)) return token;
+  return undefined;
+}
+
+export function criticalScalarEvidenceSupportsValue(
+  parsed: NaturalInvoice,
+  field: "invoiceDate" | "currency",
+  value: unknown
+): boolean {
+  const evidence = parsed.criticalScalarEvidence?.[field];
+  if (!evidence || typeof evidence !== "object") return false;
+  const label = typeof evidence.label === "string" ? evidence.label.trim() : "";
+  const rawValue = typeof evidence.rawValue === "string" ? evidence.rawValue.trim() : "";
+  if (!label || !rawValue || typeof value !== "string") return false;
+  if (field === "invoiceDate") return normalizeEvidenceDate(rawValue) === value.trim();
+  return normalizeEvidenceCurrency(rawValue) === value.trim().toUpperCase();
+}
+
 export function criticalScalarEvidenceQuote(parsed: NaturalInvoice, field: "invoiceDate" | "currency"): string | undefined {
   const evidence = parsed.criticalScalarEvidence?.[field];
   if (!evidence || typeof evidence !== "object") return undefined;
@@ -82,7 +112,7 @@ export function criticalScalarEvidenceQuote(parsed: NaturalInvoice, field: "invo
   return `${label}: ${rawValue}`;
 }
 
-function adaptNaturalInvoiceResponse(
+export function adaptNaturalInvoiceResponse(
   parsed: NaturalInvoice,
   request: InvoiceLlmExtractionRequest,
   pageImages: InvoiceLlmPageImage[]
@@ -104,7 +134,7 @@ function adaptNaturalInvoiceResponse(
       value = naturalScalar(parsed[requestedField as keyof NaturalInvoice]);
       if (requestedField === "invoiceNumber") value = canonicalizeVisionInvoiceNumber(value);
       if (value === null || value === undefined) continue;
-      if ((requestedField === "invoiceDate" || requestedField === "currency") && !criticalScalarEvidenceQuote(parsed, requestedField)) continue;
+      if ((requestedField === "invoiceDate" || requestedField === "currency") && (!criticalScalarEvidenceQuote(parsed, requestedField) || !criticalScalarEvidenceSupportsValue(parsed, requestedField, value))) continue;
     }
 
     const quote = requestedField === "invoiceDate" || requestedField === "currency"

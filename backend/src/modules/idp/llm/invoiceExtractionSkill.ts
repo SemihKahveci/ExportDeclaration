@@ -4,7 +4,9 @@
  * evidence-first; vendor examples belong in verified retrieval knowledge, not
  * as silently learned model state.
  */
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v5" as const;
+import { INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE } from "./invoiceExtractionKnowledge.js";
+
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v6" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
@@ -47,6 +49,8 @@ Shape:
     }
   ]
 }
+
+${INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE}
 
 Rules:
 1. Populate only requested data that is visible in the supplied evidence; omit or use null for unsupported values. Never guess.

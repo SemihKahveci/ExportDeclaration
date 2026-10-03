@@ -2603,3 +2603,19 @@ The first real v4 rerun showed that role semantics alone cannot protect critical
 - Follow-up authority/corroboration can compare the persisted Qwen evidence against independent native/OCR evidence without changing the Qwen-first architecture.
 
 Verification: `npm run typecheck` and `backend/scripts/idp/verifyProductE2E16815CriticalScalarEvidenceCapture.ts`. The verifier performs no Qwen inference.
+
+### 1.6.8.16 — Versioned invoice knowledge + critical-scalar self-grounding
+
+- Added `invoiceExtractionKnowledge.ts` as the single runtime source for verified, supplier-independent invoice extraction knowledge consumed by Qwen.
+- Knowledge is versioned separately from the extraction skill and is promoted only through code review/tests; the model cannot mutate it autonomously.
+- Existing verified semantics are centralized: invoice-date role, page-order non-authority, visible critical-scalar evidence, TL/TRY normalization, semantic goods-row association, HS/GTIP identifier caution, and fail-closed ambiguity.
+- `invoiceDate` and `currency` candidates now require their normalized Qwen value to agree with Qwen's own raw visible evidence before entering the candidate pipeline.
+- Example general guard: raw `22.09.2026` supports `2026-09-22` but not `2022-09-22`; raw `TL` supports `TRY` but not `EUR`.
+- OCR/native extraction remains corroboration/fallback rather than primary authority. No supplier names, invoice-specific values, page-1 shortcut, ground-truth authority, or direct normalized write is introduced.
+
+### 1.6.8.17 — Grounding enforcement boundary
+
+- Critical-scalar grounding is enforced at the Qwen natural-response adapter before invoiceDate/currency can become internal extraction candidates.
+- Accepted invoiceDate/currency candidates must carry visible raw evidence whose deterministic normalization agrees with the model value.
+- Missing, contradictory or ambiguous critical-scalar evidence is blocked before declaration candidate projection; unrelated scalar/goods extraction is unchanged.
+- This is a production-boundary contract only: Qwen remains primary, OCR is not promoted to primary authority, no supplier-specific or ground-truth-aware production rule is introduced.
