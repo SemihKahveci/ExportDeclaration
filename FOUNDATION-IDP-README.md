@@ -2561,3 +2561,12 @@ Guardrails remain unchanged: Qwen/VLM is primary, deterministic extraction is fa
 - Reports the actual artifact row index, candidate field paths, F6 resolution field paths, and independently matched final row.
 - Measurement-only: no production extraction/resolution/promotion behavior changes.
 - The previous 1.6.8.7 raw-index `lossBoundary` output must not be used as proof of goods-row loss.
+
+### 1.6.8.11 — Semantic Accuracy Scorer
+
+- Measurement-only follow-up to the actual row-matched 1.6.8.10 diagnostic; production extraction/resolution/promotion is unchanged.
+- Scores representative goods against their physically matched final rows instead of ground-truth array indices.
+- Separates `EXACT`, `SEMANTIC_EQUIVALENT`, `WRONG`, and `MISSING` outcomes.
+- Canonical measurement equivalence includes case-normalized units, TRY/TL currency aliases, US/ABD country aliases, ISO date-prefix equivalence, and numeric tolerance.
+- Raw per-page scalar candidates are still reported so semantic equivalence cannot hide resolver conflicts such as TRY vs TL or differing invoice dates.
+- Ground truth remains measurement-only; there is no second ground-truth-aware model call, supplier-specific extraction rule, or direct normalized write.
