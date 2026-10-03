@@ -73,6 +73,10 @@ export const env = {
   // must never make the product believe PAGE_IMAGE extraction is available.
   llmVisionEnabled: bool(process.env.LLM_VISION_ENABLED, false),
   llmVisionModel: process.env.LLM_VISION_MODEL ?? "",
+  // Vision inference can be materially slower than text-only LLM calls. Keep
+  // its budget explicit so PAGE_IMAGE work is not silently governed by the
+  // generic text timeout.
+  llmVisionTimeoutMs: num(process.env.LLM_VISION_TIMEOUT_MS, num(process.env.LLM_TIMEOUT_MS, 120000)),
   llmVisionMaxPages: Math.max(1, Math.floor(num(process.env.LLM_VISION_MAX_PAGES, 12))),
   llmVisionMaxImageBytes: Math.max(256 * 1024, Math.floor(num(process.env.LLM_VISION_MAX_IMAGE_BYTES, 8 * 1024 * 1024))),
   

@@ -259,7 +259,9 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), env.llmTimeoutMs);
+    const startedAt = Date.now();
+    const timeoutMs = env.llmVisionTimeoutMs;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const userText = JSON.stringify({
         version: request.version,
@@ -339,6 +341,17 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
           }
         }
       };
+    } catch (error) {
+      const elapsedMs = Date.now() - startedAt;
+      const name = error instanceof Error ? error.name.toLowerCase() : "";
+      const message = error instanceof Error ? error.message : String(error);
+      const normalized = message.toLowerCase();
+      const aborted = name === "aborterror" || normalized.includes("aborted") || normalized.includes("canceled") || normalized.includes("cancelled");
+      if (aborted) {
+        const pages = pageImages.map((image) => image.pageNumber).join(",") || "none";
+        throw new Error(`Qwen vision timeout/abort (model=${env.llmVisionModel}, pages=${pages}, timeoutMs=${timeoutMs}, elapsedMs=${elapsedMs}): ${message}`);
+      }
+      throw error;
     } finally {
       clearTimeout(timeout);
     }

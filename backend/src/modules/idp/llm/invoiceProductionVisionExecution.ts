@@ -62,6 +62,17 @@ export async function executeInvoiceVisionByPage(params: {
 
   let goodsLineOffset = 0;
 
+  const isRetryableAbort = (error: unknown): boolean => {
+    if (!(error instanceof Error)) return false;
+    const name = error.name.toLowerCase();
+    const message = error.message.toLowerCase();
+    return name === "aborterror"
+      || message.includes("operation was aborted")
+      || message.includes("operation was canceled")
+      || message.includes("operation was cancelled")
+      || message.includes("aborted");
+  };
+
   for (const pageNumber of params.pageNumbers) {
     const persisted = params.completedPages?.[pageNumber];
     if (persisted) {
@@ -80,42 +91,59 @@ export async function executeInvoiceVisionByPage(params: {
       continue;
     }
 
-    try {
-      const image = await params.renderPage(pageNumber);
-      if (image.pageNumber !== pageNumber) throw new Error(`Rendered page mismatch (${image.pageNumber}/${pageNumber}).`);
-
-      const response = await params.provider.extractInvoice({
-        ...params.request,
-        documentId: `${params.segmentId}:page:${pageNumber}`,
-        evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
-      }, [image]);
-
-      const projected = projectVisionResponseToFieldCandidates({
-        response,
-        segmentId: params.segmentId,
-        pageNumber,
-        goodsLineOffset
-      });
-      sources.push(projected);
-      const pageGoodsCount = response.fields
-        .filter((field) => field.field.startsWith("goodsLines[].") && Array.isArray(field.value))
-        .reduce((max, field) => Math.max(max, (field.value as unknown[]).length), 0);
-      goodsLineOffset += pageGoodsCount;
-      const candidateCount = Object.values(projected.fields).reduce((sum, candidates) => sum + candidates.length, 0);
-      checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact });
-      await params.onPageCheckpoint?.({
-        pageNumber,
-        status: "COMPLETED",
-        decision: response.decision,
-        candidateCount,
-        candidates: projected,
-        extractionArtifact: response.extractionArtifact
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+    const image = await params.renderPage(pageNumber);
+    if (image.pageNumber !== pageNumber) {
+      const message = `Rendered page mismatch (${image.pageNumber}/${pageNumber}).`;
       failedPages.push({ pageNumber, error: message });
       await params.onPageCheckpoint?.({ pageNumber, status: "FAILED", error: message });
+      continue;
     }
+
+    let response: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
+    let terminalError: unknown;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        response = await params.provider.extractInvoice({
+          ...params.request,
+          documentId: `${params.segmentId}:page:${pageNumber}`,
+          evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+        }, [image]);
+        terminalError = undefined;
+        break;
+      } catch (error) {
+        terminalError = error;
+        if (attempt >= 2 || !isRetryableAbort(error)) break;
+      }
+    }
+
+    if (!response) {
+      const message = terminalError instanceof Error ? terminalError.message : String(terminalError);
+      failedPages.push({ pageNumber, error: message });
+      await params.onPageCheckpoint?.({ pageNumber, status: "FAILED", error: message });
+      continue;
+    }
+
+    const projected = projectVisionResponseToFieldCandidates({
+      response,
+      segmentId: params.segmentId,
+      pageNumber,
+      goodsLineOffset
+    });
+    sources.push(projected);
+    const pageGoodsCount = response.fields
+      .filter((field) => field.field.startsWith("goodsLines[].") && Array.isArray(field.value))
+      .reduce((max, field) => Math.max(max, (field.value as unknown[]).length), 0);
+    goodsLineOffset += pageGoodsCount;
+    const candidateCount = Object.values(projected.fields).reduce((sum, candidates) => sum + candidates.length, 0);
+    checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact });
+    await params.onPageCheckpoint?.({
+      pageNumber,
+      status: "COMPLETED",
+      decision: response.decision,
+      candidateCount,
+      candidates: projected,
+      extractionArtifact: response.extractionArtifact
+    });
   }
 
   return {

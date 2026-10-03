@@ -2539,3 +2539,25 @@ The verifier `verifyProductE2E1682PrimaryExecutionCutover.ts` requires the conta
 ### 1.6.8.7 — Vision Page Execution Determinism Diagnostic
 
 Measurement-only checkpoint for the real scanned Mekar holdout. The verifier executes the normal production queue once and reports the persisted `visionCandidateCheckpoint` page-by-page before test cleanup: status, decision, candidate count, artifact presence/field count, and exact page error. This distinguishes model/provider/page failures from downstream projection/resolution loss without supplier-specific rules or direct normalized writes. Production extraction behavior is unchanged.
+
+### 1.6.8.8 — Vision Page Abort Recovery
+
+- Added a bounded page-level recovery for transient Qwen Vision aborts/timeouts at the production page execution boundary.
+- A page whose inference fails with an abort-class error is retried exactly once; successful pages are not repeated.
+- Non-abort model/HTTP/contract failures remain fail-closed and are not retried.
+- Persisted completed-page resume behavior remains authoritative, with no supplier-specific rules and no direct normalized-data write path.
+- Regression verifier: `backend/scripts/idp/verifyProductE2E1688VisionPageAbortRecovery.ts`.
+
+### 1.6.8.9 — Vision Timeout Budget & Abort Observability
+
+Real Mekar holdout proved that the bounded abort retry from 1.6.8.8 is structurally correct but insufficient when heavy PAGE_IMAGE inference itself exceeds the generic LLM timeout. Pages 1 and 2 both exhausted their attempts while the lightweight page 3 completed.
+
+This checkpoint separates the vision inference budget from the generic text-LLM budget with `LLM_VISION_TIMEOUT_MS`. Development defaults the vision budget to 1,800,000 ms (30 minutes) while production remains explicitly configurable. Qwen Vision abort errors now preserve model, page number(s), configured timeout and elapsed duration so a timeout can be distinguished from contract/HTTP/model failures. The existing one-retry abort recovery remains bounded; successful persisted pages are not repeated. This is an accuracy/reliability unblock, not the final throughput solution for the target invoice volume.
+
+Guardrails remain unchanged: Qwen/VLM is primary, deterministic extraction is fallback-only, Foundation 6 remains authoritative, no supplier-specific rules are introduced, and there is no direct normalized-data write path.
+
+### 1.6.8.10 — Actual row-matched stage diagnostic
+- Replaces raw representative-ground-truth index interpretation with weighted semantic row matching.
+- Reports the actual artifact row index, candidate field paths, F6 resolution field paths, and independently matched final row.
+- Measurement-only: no production extraction/resolution/promotion behavior changes.
+- The previous 1.6.8.7 raw-index `lossBoundary` output must not be used as proof of goods-row loss.
