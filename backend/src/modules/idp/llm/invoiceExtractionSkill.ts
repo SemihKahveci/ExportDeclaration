@@ -4,7 +4,7 @@
  * evidence-first; vendor examples belong in verified retrieval knowledge, not
  * as silently learned model state.
  */
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v3" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v4" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
@@ -58,4 +58,6 @@ Rules:
 11. Preserve visible goods descriptions and do not translate them.
 12. If a value is ambiguous or unsupported, leave it null rather than inventing it.
 13. invoiceDate means the invoice/document issue date only. Use a date only when the page evidence identifies that semantic role (for example invoice date, issue date, fatura tarihi or düzenleme tarihi). Do not use order, delivery, shipment, due, payment, print, dispatch or other role-specific dates as invoiceDate. A bare or role-ambiguous date on a continuation/secondary page is not enough evidence: return invoiceDate as null for that page.
+14. Page position is provenance, not authority. Never prefer a date merely because it appears on page 1, the first page supplied, or earlier in reading order. An explicitly identified invoice/document issue date may be extracted from any page.
+15. When a page contains multiple dates, assign invoiceDate only from the date whose visible label/context identifies the invoice/document issue-date role. If that role cannot be distinguished from the other dates, return invoiceDate as null rather than choosing the first, nearest or only convenient date.
 `.trim();

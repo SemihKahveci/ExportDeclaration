@@ -2588,3 +2588,13 @@ Guardrails remain unchanged: Qwen/VLM is primary, deterministic extraction is fa
 - No page-number preference, supplier rule, invoice-number pattern or ground-truth authority is introduced.
 - If multiple pages still provide conflicting explicit invoice/issue dates, Foundation 6 remains authoritative and keeps the field unresolved/review-required.
 - Verification: `backend/scripts/idp/verifyProductE2E16813InvoiceDateRoleSemantics.ts`.
+
+### 1.6.8.14 — Invoice-date generalization guard matrix
+
+- Qwen/VLM remains the primary invoice extraction engine; this checkpoint does not add supplier-specific OCR/parser rules.
+- Invoice-date extraction skill is versioned to `invoice-extraction-v4`.
+- Page order is explicitly non-authoritative: page 1 / first-seen date cannot win merely because of position.
+- A clearly labelled invoice/document issue date may be extracted from any page.
+- Order, delivery, shipment, due, payment, print and dispatch dates remain non-invoice roles.
+- Multiple or continuation-page dates without an unambiguous invoice-date role fail closed (`invoiceDate: null`).
+- The verifier is a fast contract/generalization guard; it performs no Qwen inference and uses no ground-truth value as production authority.
