@@ -2619,3 +2619,17 @@ Verification: `npm run typecheck` and `backend/scripts/idp/verifyProductE2E16815
 - Accepted invoiceDate/currency candidates must carry visible raw evidence whose deterministic normalization agrees with the model value.
 - Missing, contradictory or ambiguous critical-scalar evidence is blocked before declaration candidate projection; unrelated scalar/goods extraction is unchanged.
 - This is a production-boundary contract only: Qwen remains primary, OCR is not promoted to primary authority, no supplier-specific or ground-truth-aware production rule is introduced.
+
+### 1.6.8.18 — Real Qwen grounded corpus validation
+- Added one-run production-path validation for the versioned invoice knowledge + grounded critical-scalar extraction stack.
+- The verifier executes the real Qwen/VLM worker once per selected frozen holdout and reports persisted skill version, raw critical-scalar response/evidence, provider-accepted critical scalars, final scalar semantic accuracy, and row-matched goods integrity.
+- Ground truth remains measurement-only; it is never passed to Qwen or used as production authority.
+- Default case is the heavy scanned `mekar-ear-0068` holdout so one expensive inference run yields all relevant evidence instead of chaining older diagnostics.
+- Qwen remains primary; OCR/native evidence remains fallback/corroboration only. No supplier-specific rules, autonomous knowledge mutation, or direct normalized writes are introduced.
+
+### 1.6.8.19 — Field-local critical-scalar isolation
+
+- Qwen extraction skill advanced to `invoice-extraction-v7`; verified knowledge remains `invoice-knowledge-v1`.
+- Missing or contradicted `invoiceDate` / `currency` evidence is field-local: those critical scalars fail closed without suppressing independently supported goods lines, weights, origin, delivery term or identifiers.
+- The real-Qwen scorer now compares persisted ISO datetime representations of `invoiceDate` by calendar-date semantics, avoiding a false `WRONG` classification for the same date.
+- No supplier-specific authority, OCR-primary fallback, ground-truth production authority or direct normalized write was introduced.

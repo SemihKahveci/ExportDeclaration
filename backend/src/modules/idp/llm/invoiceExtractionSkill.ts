@@ -6,7 +6,7 @@
  */
 import { INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE } from "./invoiceExtractionKnowledge.js";
 
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v6" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v7" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
@@ -71,4 +71,5 @@ Rules:
 16. For a non-null invoiceDate, criticalScalarEvidence.invoiceDate.label and rawValue must reproduce the visible label/context and the visible raw date token that support that exact value. Do not invent, paraphrase, repair or normalize these evidence strings. If you cannot provide both from the page, return invoiceDate as null and both evidence members as null.
 17. For a non-null currency, criticalScalarEvidence.currency.label and rawValue must reproduce visible page text that identifies the invoice monetary currency and its raw token/code. Do not infer currency only from locale, seller/buyer country or a currency symbol whose meaning is ambiguous. If the currency cannot be grounded in visible text, return currency as null and both evidence members as null.
 18. criticalScalarEvidence is provenance, not an additional extraction field. Keep it limited to invoiceDate and currency; goods-line extraction behavior is unchanged.
+19. Critical-scalar uncertainty is field-local. If invoiceDate or currency is null or lacks valid visible evidence, continue extracting every other independently supported field on the page, including goodsLines, grossKg, netKg, origin, deliveryTerm and identifiers. Never null, suppress or downgrade unrelated supported fields merely because invoiceDate or currency is unsupported.
 `.trim();
