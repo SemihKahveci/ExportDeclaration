@@ -2578,3 +2578,13 @@ Guardrails remain unchanged: Qwen/VLM is primary, deterministic extraction is fa
 - Conflicting invoice dates remain fail-closed / `REVIEW_REQUIRED`; this checkpoint does not add page-, supplier-, invoice-number-, or ground-truth-specific date authority.
 - The contract verifier proves canonical currency consensus and preserves unresolved genuinely conflicting dates.
 - No supplier-specific rule, second ground-truth-aware model call, prompt specialization, or direct normalized-data write was introduced.
+
+### 1.6.8.13 — Invoice-date role semantics
+
+- Invoice extraction skill bumped to `invoice-extraction-v3`.
+- `invoiceDate` is now explicitly the invoice/document issue date, not any visible date token.
+- Order, delivery, shipment, due, payment, print and dispatch dates are excluded from invoice-date authority.
+- A bare/role-ambiguous date on a continuation or secondary page fails closed to `null` instead of becoming a competing invoice-date candidate.
+- No page-number preference, supplier rule, invoice-number pattern or ground-truth authority is introduced.
+- If multiple pages still provide conflicting explicit invoice/issue dates, Foundation 6 remains authoritative and keeps the field unresolved/review-required.
+- Verification: `backend/scripts/idp/verifyProductE2E16813InvoiceDateRoleSemantics.ts`.
