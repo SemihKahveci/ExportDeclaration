@@ -4,7 +4,7 @@
  * evidence-first; vendor examples belong in verified retrieval knowledge, not
  * as silently learned model state.
  */
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v4" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v5" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
@@ -16,7 +16,7 @@ export const INVOICE_EXTRACTION_FIELDS = [
 
 export const INVOICE_EXTRACTION_SYSTEM_PROMPT = `
 You extract invoice data for an offline export-declaration IDP system.
-Return exactly one compact JSON object. No markdown, prose, reasoning, confidence, evidence, or extra wrapper fields.
+Return exactly one compact JSON object. No markdown, prose, reasoning, confidence, or extra wrapper fields. For invoiceDate and currency only, include the compact criticalScalarEvidence object shown below so the extracted scalar is grounded in visible page text.
 
 Shape:
 {
@@ -30,6 +30,10 @@ Shape:
   "origin": null,
   "grossKg": null,
   "netKg": null,
+  "criticalScalarEvidence": {
+    "invoiceDate": { "label": null, "rawValue": null },
+    "currency": { "label": null, "rawValue": null }
+  },
   "goodsLines": [
     {
       "productCode": null,
@@ -60,4 +64,7 @@ Rules:
 13. invoiceDate means the invoice/document issue date only. Use a date only when the page evidence identifies that semantic role (for example invoice date, issue date, fatura tarihi or düzenleme tarihi). Do not use order, delivery, shipment, due, payment, print, dispatch or other role-specific dates as invoiceDate. A bare or role-ambiguous date on a continuation/secondary page is not enough evidence: return invoiceDate as null for that page.
 14. Page position is provenance, not authority. Never prefer a date merely because it appears on page 1, the first page supplied, or earlier in reading order. An explicitly identified invoice/document issue date may be extracted from any page.
 15. When a page contains multiple dates, assign invoiceDate only from the date whose visible label/context identifies the invoice/document issue-date role. If that role cannot be distinguished from the other dates, return invoiceDate as null rather than choosing the first, nearest or only convenient date.
+16. For a non-null invoiceDate, criticalScalarEvidence.invoiceDate.label and rawValue must reproduce the visible label/context and the visible raw date token that support that exact value. Do not invent, paraphrase, repair or normalize these evidence strings. If you cannot provide both from the page, return invoiceDate as null and both evidence members as null.
+17. For a non-null currency, criticalScalarEvidence.currency.label and rawValue must reproduce visible page text that identifies the invoice monetary currency and its raw token/code. Do not infer currency only from locale, seller/buyer country or a currency symbol whose meaning is ambiguous. If the currency cannot be grounded in visible text, return currency as null and both evidence members as null.
+18. criticalScalarEvidence is provenance, not an additional extraction field. Keep it limited to invoiceDate and currency; goods-line extraction behavior is unchanged.
 `.trim();

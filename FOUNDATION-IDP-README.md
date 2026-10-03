@@ -2582,19 +2582,24 @@ Guardrails remain unchanged: Qwen/VLM is primary, deterministic extraction is fa
 ### 1.6.8.13 — Invoice-date role semantics
 
 - Invoice extraction skill bumped to `invoice-extraction-v3`.
-- `invoiceDate` is now explicitly the invoice/document issue date, not any visible date token.
-- Order, delivery, shipment, due, payment, print and dispatch dates are excluded from invoice-date authority.
-- A bare/role-ambiguous date on a continuation or secondary page fails closed to `null` instead of becoming a competing invoice-date candidate.
-- No page-number preference, supplier rule, invoice-number pattern or ground-truth authority is introduced.
-- If multiple pages still provide conflicting explicit invoice/issue dates, Foundation 6 remains authoritative and keeps the field unresolved/review-required.
-- Verification: `backend/scripts/idp/verifyProductE2E16813InvoiceDateRoleSemantics.ts`.
+- `invoiceDate` is the invoice/document issue date only; order/delivery/shipment/due/payment/print/dispatch dates are excluded.
+- Ambiguous continuation-page dates fail closed; no page/supplier/ground-truth authority is introduced.
 
 ### 1.6.8.14 — Invoice-date generalization guard matrix
 
-- Qwen/VLM remains the primary invoice extraction engine; this checkpoint does not add supplier-specific OCR/parser rules.
-- Invoice-date extraction skill is versioned to `invoice-extraction-v4`.
-- Page order is explicitly non-authoritative: page 1 / first-seen date cannot win merely because of position.
-- A clearly labelled invoice/document issue date may be extracted from any page.
-- Order, delivery, shipment, due, payment, print and dispatch dates remain non-invoice roles.
-- Multiple or continuation-page dates without an unambiguous invoice-date role fail closed (`invoiceDate: null`).
-- The verifier is a fast contract/generalization guard; it performs no Qwen inference and uses no ground-truth value as production authority.
+- Invoice extraction skill bumped to `invoice-extraction-v4`.
+- Page order is non-authoritative; explicit invoice-date role may appear on any page.
+- Ambiguous multiple dates fail closed and supplier-specific rules remain prohibited.
+
+### 1.6.8.15 — Critical scalar evidence capture
+
+The first real v4 rerun showed that role semantics alone cannot protect critical scalars from visual misread/hallucination: a page-level Qwen result can still return a wrong year or currency token while remaining structurally valid. This checkpoint keeps Qwen/VLM primary and adds auditable grounding rather than restoring OCR/parser authority.
+
+- Invoice extraction skill is versioned to `invoice-extraction-v5`.
+- Non-null `invoiceDate` and `currency` now require compact `criticalScalarEvidence` containing the visible label/context and raw visible value token.
+- The evidence strings must be copied from the page, not normalized, repaired, paraphrased or inferred.
+- The provider carries this grounding into ordinary `PAGE_IMAGE` candidate evidence text. If a critical scalar is returned without both evidence strings, that scalar fails closed at the provider adaptation boundary instead of becoming an ungrounded primary candidate.
+- This checkpoint captures/guards evidence only; it does not make OCR/native the primary extractor, add supplier-specific rules, use ground truth as authority, or write normalized data directly.
+- Follow-up authority/corroboration can compare the persisted Qwen evidence against independent native/OCR evidence without changing the Qwen-first architecture.
+
+Verification: `npm run typecheck` and `backend/scripts/idp/verifyProductE2E16815CriticalScalarEvidenceCapture.ts`. The verifier performs no Qwen inference.

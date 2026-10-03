@@ -27,6 +27,11 @@ type NaturalGoodsLine = {
   origin?: unknown;
 };
 
+type NaturalCriticalScalarEvidence = {
+  label?: unknown;
+  rawValue?: unknown;
+};
+
 type NaturalInvoice = {
   invoiceNumber?: unknown;
   invoiceDate?: unknown;
@@ -38,6 +43,10 @@ type NaturalInvoice = {
   origin?: unknown;
   grossKg?: unknown;
   netKg?: unknown;
+  criticalScalarEvidence?: {
+    invoiceDate?: NaturalCriticalScalarEvidence;
+    currency?: NaturalCriticalScalarEvidence;
+  };
   goodsLines?: unknown;
 };
 
@@ -63,6 +72,16 @@ export function canonicalizeVisionInvoiceNumber(value: unknown): unknown {
   return `${match[1]}${match[2]}0${match[3]}`;
 }
 
+
+export function criticalScalarEvidenceQuote(parsed: NaturalInvoice, field: "invoiceDate" | "currency"): string | undefined {
+  const evidence = parsed.criticalScalarEvidence?.[field];
+  if (!evidence || typeof evidence !== "object") return undefined;
+  const label = typeof evidence.label === "string" ? evidence.label.trim() : "";
+  const rawValue = typeof evidence.rawValue === "string" ? evidence.rawValue.trim() : "";
+  if (!label || !rawValue) return undefined;
+  return `${label}: ${rawValue}`;
+}
+
 function adaptNaturalInvoiceResponse(
   parsed: NaturalInvoice,
   request: InvoiceLlmExtractionRequest,
@@ -85,10 +104,14 @@ function adaptNaturalInvoiceResponse(
       value = naturalScalar(parsed[requestedField as keyof NaturalInvoice]);
       if (requestedField === "invoiceNumber") value = canonicalizeVisionInvoiceNumber(value);
       if (value === null || value === undefined) continue;
+      if ((requestedField === "invoiceDate" || requestedField === "currency") && !criticalScalarEvidenceQuote(parsed, requestedField)) continue;
     }
 
+    const quote = requestedField === "invoiceDate" || requestedField === "currency"
+      ? criticalScalarEvidenceQuote(parsed, requestedField)
+      : undefined;
     const evidence = pageNumber
-      ? [{ pageNumber, source: "PAGE_IMAGE" as const }]
+      ? [{ pageNumber, source: "PAGE_IMAGE" as const, ...(quote ? { quote } : {}) }]
       : [];
     fields.push({
       field: requestedField,
