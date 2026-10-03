@@ -2570,3 +2570,11 @@ Guardrails remain unchanged: Qwen/VLM is primary, deterministic extraction is fa
 - Canonical measurement equivalence includes case-normalized units, TRY/TL currency aliases, US/ABD country aliases, ISO date-prefix equivalence, and numeric tolerance.
 - Raw per-page scalar candidates are still reported so semantic equivalence cannot hide resolver conflicts such as TRY vs TL or differing invoice dates.
 - Ground truth remains measurement-only; there is no second ground-truth-aware model call, supplier-specific extraction rule, or direct normalized write.
+
+### 1.6.8.12 — Multi-page scalar canonical authority
+
+- Added declaration-boundary invoice-currency canonicalization so equivalent display spellings (`TL` and ISO `TRY`, plus case-only ISO-code differences) form Foundation 6 consensus without changing source evidence.
+- Ambiguous currency symbols are not guessed or mapped.
+- Conflicting invoice dates remain fail-closed / `REVIEW_REQUIRED`; this checkpoint does not add page-, supplier-, invoice-number-, or ground-truth-specific date authority.
+- The contract verifier proves canonical currency consensus and preserves unresolved genuinely conflicting dates.
+- No supplier-specific rule, second ground-truth-aware model call, prompt specialization, or direct normalized-data write was introduced.

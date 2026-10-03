@@ -52,6 +52,17 @@ export function canonicalGoodsUnit(value: unknown): unknown {
  * dot followed by exactly three digits is a grouping separator, while comma is
  * decimal. Ambiguous unitless strings are deliberately left untouched.
  */
+export function canonicalInvoiceCurrency(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const compact = value.trim().toUpperCase();
+  if (!compact) return value;
+  // `TL` is the common Turkish display abbreviation for ISO 4217 `TRY`.
+  // Canonicalize at the declaration-candidate boundary so equivalent model/OCR
+  // spellings form consensus while the original evidence remains auditable.
+  if (compact === "TL") return "TRY";
+  return /^[A-Z]{3}$/.test(compact) ? compact : value;
+}
+
 export function canonicalKilogramWeight(value: unknown): unknown {
   if (typeof value === "number") return Number.isFinite(value) ? value : value;
   if (typeof value !== "string") return value;
@@ -82,6 +93,7 @@ export function canonicalKilogramWeight(value: unknown): unknown {
 
 function canonicalDeclarationCandidateValue(field: string, value: unknown): unknown {
   if (/^goodsLines\.\d+\.unit$/.test(field)) return canonicalGoodsUnit(value);
+  if (field === "currency") return canonicalInvoiceCurrency(value);
   if (field === "grossWeight" || field === "netWeight") return canonicalKilogramWeight(value);
   return value;
 }
