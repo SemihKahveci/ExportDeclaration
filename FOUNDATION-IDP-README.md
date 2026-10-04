@@ -2633,3 +2633,17 @@ Verification: `npm run typecheck` and `backend/scripts/idp/verifyProductE2E16815
 - Missing or contradicted `invoiceDate` / `currency` evidence is field-local: those critical scalars fail closed without suppressing independently supported goods lines, weights, origin, delivery term or identifiers.
 - The real-Qwen scorer now compares persisted ISO datetime representations of `invoiceDate` by calendar-date semantics, avoiding a false `WRONG` classification for the same date.
 - No supplier-specific authority, OCR-primary fallback, ground-truth production authority or direct normalized write was introduced.
+
+### 1.6.8.20 — Real Qwen field-local recovery validation
+
+- Re-runs the real Mekar scanned holdout after `invoice-extraction-v7` field-local critical-scalar isolation.
+- Measures recovery of the full 42-row goods corpus and independently supported page-2 scalars while critical scalar grounding remains fail-closed.
+- Invoice-date scoring uses calendar-date semantics, so persisted ISO datetime formatting does not create a false mismatch.
+- Ground truth remains measurement-only; Qwen remains primary and no supplier-specific production authority is introduced.
+
+### 1.6.8.21 — Focused Qwen non-critical recovery
+
+- A page-level Qwen response that is `REVIEW_REQUIRED` with zero extracted fields gets one bounded recovery inference on the same page image.
+- The recovery request excludes evidence-gated `invoiceDate` and `currency` and asks Qwen only for the remaining requested fields, preventing critical-scalar fail-closed behavior from starving goods/weight/origin extraction.
+- Non-empty Qwen responses are never retried by this recovery path, so the normal production path keeps its existing inference cost.
+- If recovery fails or is still empty, the original fail-closed response is retained. OCR/deterministic extraction does not become primary.

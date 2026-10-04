@@ -123,6 +123,32 @@ export async function executeInvoiceVisionByPage(params: {
       continue;
     }
 
+    // 1.6.8.21: a completely empty semantic response can happen when the
+    // model correctly fails closed on critical scalars but prematurely stops
+    // before extracting unrelated page content. Recover with one focused Qwen
+    // pass that excludes only the evidence-gated critical scalars. This is not
+    // OCR/deterministic authority: the same page image and Qwen provider remain
+    // the primary evidence source. Normal non-empty responses pay no retry cost.
+    if (response.decision === "REVIEW_REQUIRED" && response.fields.length === 0) {
+      const recoveryRequestedFields = params.request.requestedFields.filter(
+        (field) => field !== "invoiceDate" && field !== "currency"
+      );
+      if (recoveryRequestedFields.length > 0) {
+        try {
+          const recovery = await params.provider.extractInvoice({
+            ...params.request,
+            requestedFields: recoveryRequestedFields,
+            documentId: `${params.segmentId}:page:${pageNumber}:non-critical-recovery`,
+            evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+          }, [image]);
+          if (recovery.fields.length > 0) response = recovery;
+        } catch {
+          // The original fail-closed response remains authoritative when the
+          // focused recovery call itself fails. Page-level execution continues.
+        }
+      }
+    }
+
     const projected = projectVisionResponseToFieldCandidates({
       response,
       segmentId: params.segmentId,
