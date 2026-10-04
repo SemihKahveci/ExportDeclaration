@@ -138,6 +138,7 @@ export async function executeInvoiceVisionByPage(params: {
           const recovery = await params.provider.extractInvoice({
             ...params.request,
             requestedFields: recoveryRequestedFields,
+            focusInstruction: "This is a focused non-critical recovery pass. Inspect the entire page for every requested field independently. Do not stop after extracting goods lines. Also inspect headers, footers, totals and summary areas for requested scalar fields such as gross/net weight, origin and delivery terms. Return null/omit only when a requested value is not visibly supported.",
             documentId: `${params.segmentId}:page:${pageNumber}:non-critical-recovery`,
             evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
           }, [image]);

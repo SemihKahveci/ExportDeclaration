@@ -35,6 +35,8 @@ export interface InvoiceLlmExtractionRequest {
   ocrText?: string;
   pageImageIds?: string[];
   verifiedKnowledge?: Array<{ label: string; content: string }>;
+  /** Optional bounded focus for a production retry/recovery pass. */
+  focusInstruction?: string;
 }
 
 export interface InvoiceLlmExtractionArtifact {

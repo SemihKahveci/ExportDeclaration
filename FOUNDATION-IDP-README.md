@@ -2641,9 +2641,8 @@ Verification: `npm run typecheck` and `backend/scripts/idp/verifyProductE2E16815
 - Invoice-date scoring uses calendar-date semantics, so persisted ISO datetime formatting does not create a false mismatch.
 - Ground truth remains measurement-only; Qwen remains primary and no supplier-specific production authority is introduced.
 
-### 1.6.8.21 — Focused Qwen non-critical recovery
+### 1.6.8.23 — Weight/origin stage diagnostic
 
-- A page-level Qwen response that is `REVIEW_REQUIRED` with zero extracted fields gets one bounded recovery inference on the same page image.
-- The recovery request excludes evidence-gated `invoiceDate` and `currency` and asks Qwen only for the remaining requested fields, preventing critical-scalar fail-closed behavior from starving goods/weight/origin extraction.
-- Non-empty Qwen responses are never retried by this recovery path, so the normal production path keeps its existing inference cost.
-- If recovery fails or is still empty, the original fail-closed response is retained. OCR/deterministic extraction does not become primary.
+- Diagnostic-only real-Qwen run for the remaining `grossWeight`, `netWeight` and `originCountry` gap.
+- Reports these values across Qwen artifacts, worker candidates, declaration candidates, worker resolution, Foundation 6 resolution and final normalized data before cleanup.
+- No production extraction behavior, knowledge authority, supplier rule or normalized-data write is changed.

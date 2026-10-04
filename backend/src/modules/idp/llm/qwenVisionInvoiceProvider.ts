@@ -321,7 +321,10 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
         documentId: request.documentId,
         evidenceMode: request.evidenceMode,
         requestedFields: request.requestedFields,
-        instruction: "Return the simple invoice JSON shape and populate only data corresponding to requestedFields.",
+        instruction: [
+          "Return the simple invoice JSON shape and populate only data corresponding to requestedFields.",
+          request.focusInstruction?.trim() || null
+        ].filter(Boolean).join(" "),
         nativeText: request.nativeText,
         ocrText: request.ocrText,
         verifiedKnowledge: request.verifiedKnowledge,
