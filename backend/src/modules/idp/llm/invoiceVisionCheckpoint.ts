@@ -8,6 +8,15 @@ export interface PersistedInvoiceVisionPageCheckpoint {
   candidateCount?: number;
   candidates?: FieldCandidateEnvelope;
   extractionArtifact?: InvoiceLlmExtractionArtifact;
+  recoveryDiagnostic?: {
+    focusedRecoveryAttempted: boolean;
+    focusedRecoveryUsed: boolean;
+    scalarRecoveryRequestedFields: string[];
+    scalarRecoveryAttempted: boolean;
+    scalarRecoveryDecision?: string;
+    scalarRecoveryReturnedFields: string[];
+    scalarRecoveryError?: string;
+  };
   error?: string;
 }
 

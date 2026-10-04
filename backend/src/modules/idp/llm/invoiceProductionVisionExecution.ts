@@ -21,6 +21,16 @@ export interface InvoiceVisionCheckpoint {
   decision: string;
   candidateCount: number;
   extractionArtifact?: InvoiceLlmExtractionArtifact;
+  extractionArtifacts?: InvoiceLlmExtractionArtifact[];
+  recoveryDiagnostic?: {
+    focusedRecoveryAttempted: boolean;
+    focusedRecoveryUsed: boolean;
+    scalarRecoveryRequestedFields: string[];
+    scalarRecoveryAttempted: boolean;
+    scalarRecoveryDecision?: string;
+    scalarRecoveryReturnedFields: string[];
+    scalarRecoveryError?: string;
+  };
 }
 
 export interface InvoiceProductionVisionExecution {
@@ -52,6 +62,8 @@ export async function executeInvoiceVisionByPage(params: {
     candidateCount?: number;
     candidates?: FieldCandidateEnvelope;
     extractionArtifact?: InvoiceLlmExtractionArtifact;
+    extractionArtifacts?: InvoiceLlmExtractionArtifact[];
+    recoveryDiagnostic?: InvoiceVisionCheckpoint["recoveryDiagnostic"];
     error?: string;
   }) => Promise<void>;
 }): Promise<InvoiceProductionVisionExecution> {
@@ -123,6 +135,15 @@ export async function executeInvoiceVisionByPage(params: {
       continue;
     }
 
+    let focusedRecoveryUsed = false;
+    let focusedRecoveryAttempted = false;
+    let scalarRecoveryRequestedFields: string[] = [];
+    let scalarRecoveryAttempted = false;
+    let scalarRecoveryDecision: string | undefined;
+    let scalarRecoveryReturnedFields: string[] = [];
+    let scalarRecoveryError: string | undefined;
+    const pageArtifacts: InvoiceLlmExtractionArtifact[] = [];
+
     // 1.6.8.21: a completely empty semantic response can happen when the
     // model correctly fails closed on critical scalars but prematurely stops
     // before extracting unrelated page content. Recover with one focused Qwen
@@ -134,6 +155,7 @@ export async function executeInvoiceVisionByPage(params: {
         (field) => field !== "invoiceDate" && field !== "currency"
       );
       if (recoveryRequestedFields.length > 0) {
+        focusedRecoveryAttempted = true;
         try {
           const recovery = await params.provider.extractInvoice({
             ...params.request,
@@ -142,10 +164,55 @@ export async function executeInvoiceVisionByPage(params: {
             documentId: `${params.segmentId}:page:${pageNumber}:non-critical-recovery`,
             evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
           }, [image]);
-          if (recovery.fields.length > 0) response = recovery;
+          if (recovery.fields.length > 0) {
+            response = recovery;
+            focusedRecoveryUsed = true;
+          }
         } catch {
           // The original fail-closed response remains authoritative when the
           // focused recovery call itself fails. Page-level execution continues.
+        }
+      }
+    }
+
+    if (response.extractionArtifact) pageArtifacts.push(response.extractionArtifact);
+
+    // 1.6.8.24: when the bounded empty-page recovery succeeds primarily on a
+    // goods-heavy table, ask Qwen once more only for still-missing non-critical
+    // scalar fields. This keeps semantic extraction with Qwen while separating
+    // the small header/footer/summary task from large goods JSON generation.
+    // It is intentionally limited to pages that actually needed the focused
+    // recovery; normal non-empty pages incur no additional inference.
+    let scalarResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
+    if (focusedRecoveryUsed) {
+      const returnedFields = new Set(response.fields.map((field) => field.field));
+      const scalarRequestedFields = params.request.requestedFields.filter(
+        (field) => field !== "invoiceDate"
+          && field !== "currency"
+          && !field.startsWith("goodsLines[].")
+          && !returnedFields.has(field)
+      );
+      scalarRecoveryRequestedFields = [...scalarRequestedFields];
+      if (scalarRequestedFields.length > 0) {
+        scalarRecoveryAttempted = true;
+        try {
+          const scalarRecovery = await params.provider.extractInvoice({
+            ...params.request,
+            requestedFields: scalarRequestedFields,
+            focusInstruction: "This is a scalar-only recovery pass. Ignore goods/table rows. Inspect the entire page, especially headers, footers, totals and summary areas, and extract only the requested scalar fields when visibly supported. Do not infer or calculate missing values; return null/omit unsupported fields.",
+            documentId: `${params.segmentId}:page:${pageNumber}:non-critical-scalar-recovery`,
+            evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+          }, [image]);
+          scalarRecoveryDecision = scalarRecovery.decision;
+          scalarRecoveryReturnedFields = scalarRecovery.fields.map((field) => field.field);
+          if (scalarRecovery.fields.length > 0) {
+            scalarResponse = scalarRecovery;
+            if (scalarRecovery.extractionArtifact) pageArtifacts.push(scalarRecovery.extractionArtifact);
+          }
+        } catch (error) {
+          scalarRecoveryError = error instanceof Error ? error.message : String(error);
+          // Preserve the successful goods/non-critical recovery if this narrow
+          // scalar pass fails. Missing scalars remain fail-closed.
         }
       }
     }
@@ -156,20 +223,35 @@ export async function executeInvoiceVisionByPage(params: {
       pageNumber,
       goodsLineOffset
     });
-    sources.push(projected);
+    const scalarProjected = scalarResponse ? projectVisionResponseToFieldCandidates({
+      response: scalarResponse,
+      segmentId: params.segmentId,
+      pageNumber,
+      goodsLineOffset
+    }) : undefined;
+    const pageProjected = scalarProjected
+      ? mergeInvoiceCandidateSources(projected, scalarProjected)
+      : projected;
+    sources.push(pageProjected);
     const pageGoodsCount = response.fields
       .filter((field) => field.field.startsWith("goodsLines[].") && Array.isArray(field.value))
       .reduce((max, field) => Math.max(max, (field.value as unknown[]).length), 0);
     goodsLineOffset += pageGoodsCount;
-    const candidateCount = Object.values(projected.fields).reduce((sum, candidates) => sum + candidates.length, 0);
-    checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact });
+    const candidateCount = Object.values(pageProjected.fields).reduce((sum, candidates) => sum + candidates.length, 0);
+    const recoveryDiagnostic: InvoiceVisionCheckpoint["recoveryDiagnostic"] = {
+      focusedRecoveryAttempted, focusedRecoveryUsed, scalarRecoveryRequestedFields,
+      scalarRecoveryAttempted, scalarRecoveryDecision, scalarRecoveryReturnedFields, scalarRecoveryError
+    };
+    checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact, extractionArtifacts: pageArtifacts, recoveryDiagnostic });
     await params.onPageCheckpoint?.({
       pageNumber,
       status: "COMPLETED",
       decision: response.decision,
       candidateCount,
-      candidates: projected,
-      extractionArtifact: response.extractionArtifact
+      candidates: pageProjected,
+      extractionArtifact: response.extractionArtifact,
+      extractionArtifacts: pageArtifacts,
+      recoveryDiagnostic
     });
   }
 

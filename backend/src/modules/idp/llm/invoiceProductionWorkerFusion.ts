@@ -176,11 +176,17 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
           candidateCount: page.candidateCount,
           candidates: page.candidates,
           extractionArtifact: page.extractionArtifact,
+          recoveryDiagnostic: page.recoveryDiagnostic,
           error: page.error
         };
         await params.persistVisionCheckpoint?.(persistedCheckpoint);
-        if (page.status === "COMPLETED" && page.extractionArtifact) {
-          await params.persistModelExtractionArtifact?.(page.extractionArtifact);
+        if (page.status === "COMPLETED") {
+          const artifacts = page.extractionArtifacts?.length
+            ? page.extractionArtifacts
+            : page.extractionArtifact ? [page.extractionArtifact] : [];
+          for (const artifact of artifacts) {
+            await params.persistModelExtractionArtifact?.(artifact);
+          }
         }
       }
     });
