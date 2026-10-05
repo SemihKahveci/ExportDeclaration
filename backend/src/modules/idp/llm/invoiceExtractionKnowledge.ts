@@ -4,7 +4,7 @@
  * contract/generalization tests. Never add supplier names, invoice-specific
  * values, ground-truth answers or page-position shortcuts.
  */
-export const INVOICE_EXTRACTION_KNOWLEDGE_VERSION = "invoice-knowledge-v1" as const;
+export const INVOICE_EXTRACTION_KNOWLEDGE_VERSION = "invoice-knowledge-v2" as const;
 
 export const INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE = `
 Verified general invoice knowledge:
@@ -15,4 +15,8 @@ Verified general invoice knowledge:
 - A goods row is a semantic commercial row. Description, quantity, unit, unit price and line total belong together even when columns are separated or appear in an unusual order.
 - Product/catalog/model identifiers are not HS/GTIP codes merely because they are numeric-looking.
 - Ambiguous or unsupported values stay null; do not repair them from supplier identity, expected answers or document-specific memory.
+- Document-level scalar facts may appear in headers, footers, totals, shipping/summary blocks, or compact table/summary rows; do not assume they are outside tables or on a particular page.
+- grossKg means explicitly supported gross/brut shipment weight and netKg means explicitly supported net shipment weight. Accept semantic label variants such as Gross Weight/Brüt Ağırlık/Brüt Kg and Net Weight/Net Ağırlık/Net Kg when the visible context makes the role and unit unambiguous; do not derive either weight from goods quantities or arithmetic.
+- origin means explicit goods country of origin/menşe/origin. Accept semantically equivalent labels such as Country of Origin, Origin, Menşe or Menşei when visibly tied to the goods/shipment; do not substitute seller, buyer, address, destination, dispatch or bank country.
+- During a narrow scalar recovery request, inspect the whole supplied page for each requested scalar independently, including scalar cells embedded in or adjacent to tables. Ignore goods-row extraction as an output task, but do not ignore a table/summary region that visibly contains a requested document-level scalar.
 `.trim();

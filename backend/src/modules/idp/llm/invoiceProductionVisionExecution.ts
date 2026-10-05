@@ -11,6 +11,7 @@ import {
   mergeInvoiceCandidateSources,
   projectVisionResponseToFieldCandidates
 } from "./invoiceProductionExtractionOrchestrator.js";
+import { INVOICE_SCALAR_RECOVERY_FOCUS_INSTRUCTION } from "./invoiceExtractionSkill.js";
 
 export interface InvoiceVisionPageRenderer {
   (pageNumber: number): Promise<InvoiceLlmPageImage>;
@@ -30,6 +31,10 @@ export interface InvoiceVisionCheckpoint {
     scalarRecoveryDecision?: string;
     scalarRecoveryReturnedFields: string[];
     scalarRecoveryError?: string;
+    originRecoveryAttempted: boolean;
+    originRecoveryDecision?: string;
+    originRecoveryReturned: boolean;
+    originRecoveryError?: string;
   };
 }
 
@@ -142,7 +147,18 @@ export async function executeInvoiceVisionByPage(params: {
     let scalarRecoveryDecision: string | undefined;
     let scalarRecoveryReturnedFields: string[] = [];
     let scalarRecoveryError: string | undefined;
+    let originRecoveryAttempted = false;
+    let originRecoveryDecision: string | undefined;
+    let originRecoveryReturned = false;
+    let originRecoveryError: string | undefined;
     const pageArtifacts: InvoiceLlmExtractionArtifact[] = [];
+    // 1.6.8.30: persist every recovery model execution, including fail-closed
+    // zero-field responses, so real-Qwen failures remain diagnosable.
+    const pushArtifact = (artifact: InvoiceLlmExtractionArtifact | undefined): void => {
+      if (!artifact) return;
+      if (pageArtifacts.some((item) => item.documentId === artifact.documentId)) return;
+      pageArtifacts.push(artifact);
+    };
 
     // 1.6.8.21: a completely empty semantic response can happen when the
     // model correctly fails closed on critical scalars but prematurely stops
@@ -164,6 +180,7 @@ export async function executeInvoiceVisionByPage(params: {
             documentId: `${params.segmentId}:page:${pageNumber}:non-critical-recovery`,
             evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
           }, [image]);
+          pushArtifact(recovery.extractionArtifact);
           if (recovery.fields.length > 0) {
             response = recovery;
             focusedRecoveryUsed = true;
@@ -175,16 +192,17 @@ export async function executeInvoiceVisionByPage(params: {
       }
     }
 
-    if (response.extractionArtifact) pageArtifacts.push(response.extractionArtifact);
+    pushArtifact(response.extractionArtifact);
 
-    // 1.6.8.24: when the bounded empty-page recovery succeeds primarily on a
-    // goods-heavy table, ask Qwen once more only for still-missing non-critical
-    // scalar fields. This keeps semantic extraction with Qwen while separating
-    // the small header/footer/summary task from large goods JSON generation.
-    // It is intentionally limited to pages that actually needed the focused
-    // recovery; normal non-empty pages incur no additional inference.
+    // 1.6.8.26: any usable Qwen page response may still omit independent
+    // non-critical scalar fields while successfully extracting other content
+    // (especially large goods tables). Ask Qwen at most once more, on the same
+    // page image, only for requested scalar fields that are still missing.
+    // Existing fields are never re-requested or overwritten; goods fields and
+    // evidence-gated critical scalars remain excluded. Empty/fail-closed page
+    // responses do not trigger this pass.
     let scalarResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
-    if (focusedRecoveryUsed) {
+    if (response.fields.length > 0) {
       const returnedFields = new Set(response.fields.map((field) => field.field));
       const scalarRequestedFields = params.request.requestedFields.filter(
         (field) => field !== "invoiceDate"
@@ -199,21 +217,69 @@ export async function executeInvoiceVisionByPage(params: {
           const scalarRecovery = await params.provider.extractInvoice({
             ...params.request,
             requestedFields: scalarRequestedFields,
-            focusInstruction: "This is a scalar-only recovery pass. Ignore goods/table rows. Inspect the entire page, especially headers, footers, totals and summary areas, and extract only the requested scalar fields when visibly supported. Do not infer or calculate missing values; return null/omit unsupported fields.",
+            focusInstruction: INVOICE_SCALAR_RECOVERY_FOCUS_INSTRUCTION,
             documentId: `${params.segmentId}:page:${pageNumber}:non-critical-scalar-recovery`,
             evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
           }, [image]);
           scalarRecoveryDecision = scalarRecovery.decision;
           scalarRecoveryReturnedFields = scalarRecovery.fields.map((field) => field.field);
+          pushArtifact(scalarRecovery.extractionArtifact);
           if (scalarRecovery.fields.length > 0) {
             scalarResponse = scalarRecovery;
-            if (scalarRecovery.extractionArtifact) pageArtifacts.push(scalarRecovery.extractionArtifact);
           }
         } catch (error) {
           scalarRecoveryError = error instanceof Error ? error.message : String(error);
           // Preserve the successful goods/non-critical recovery if this narrow
           // scalar pass fails. Missing scalars remain fail-closed.
         }
+      }
+    }
+
+    // 1.6.8.29: origin is semantically distinct from the other shipment
+    // scalars and may be represented by a localized country name or an
+    // established language-specific country abbreviation. If the normal and
+    // general scalar passes still omit origin, perform one final bounded
+    // origin-only Qwen pass on the same page image. Keeping this recovery
+    // isolated prevents origin normalization guidance from perturbing goods,
+    // weights, dates, currency, or other already-correct fields.
+    let originResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
+    const canonicalPage = params.canonicalDocument.pages.find((page) => page.pageNumber === pageNumber);
+    const originRecoveryOcrText = canonicalPage?.ocrText?.trim() || "";
+    const originRecoveryNativeText = canonicalPage?.nativeText?.trim() || "";
+    const responseHasOrigin = response.fields.some((field) => field.field === "origin");
+    const scalarHasOrigin = scalarResponse?.fields.some((field) => field.field === "origin") ?? false;
+    const originWasRequested = params.request.requestedFields.includes("origin");
+    if (originWasRequested && response.fields.length > 0 && !responseHasOrigin && !scalarHasOrigin) {
+      originRecoveryAttempted = true;
+      try {
+        const originRecovery = await params.provider.extractInvoice({
+          ...params.request,
+          requestedFields: ["origin"],
+          focusInstruction: [
+            "This is an origin-only evidence recovery pass.",
+            "Inspect the entire supplied page only for explicit goods/shipment country of origin (origin/menşe/menşei or semantically equivalent visible context).",
+            "The page-local OCR/native text supplied with this request is assistive reading context for small or dense print; use it only to locate a possible origin token and verify that meaning against the same supplied page image.",
+            "A visibly supported country name or an established language-specific country abbreviation may support origin when its country meaning is unambiguous.",
+            "Normalize an unambiguous country meaning to ISO-3166-1 alpha-2.",
+            "Do not use seller, buyer, address, destination, dispatch, bank country, supplier identity, expected answers, or prior documents as origin evidence.",
+            "If explicit origin evidence is absent or the country meaning is ambiguous, return origin as null/omit it. Never guess."
+          ].join(" "),
+          nativeText: originRecoveryNativeText,
+          ocrText: originRecoveryOcrText,
+          documentId: `${params.segmentId}:page:${pageNumber}:origin-evidence-recovery`,
+          evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+        }, [image]);
+        originRecoveryDecision = originRecovery.decision;
+        pushArtifact(originRecovery.extractionArtifact);
+        const originField = originRecovery.fields.find((field) => field.field === "origin");
+        if (originField) {
+          originResponse = { ...originRecovery, fields: [originField] };
+          originRecoveryReturned = true;
+        }
+      } catch (error) {
+        originRecoveryError = error instanceof Error ? error.message : String(error);
+        // Existing successful extraction remains authoritative. Missing origin
+        // stays fail-closed if the isolated recovery cannot establish it.
       }
     }
 
@@ -229,9 +295,17 @@ export async function executeInvoiceVisionByPage(params: {
       pageNumber,
       goodsLineOffset
     }) : undefined;
-    const pageProjected = scalarProjected
-      ? mergeInvoiceCandidateSources(projected, scalarProjected)
-      : projected;
+    const originProjected = originResponse ? projectVisionResponseToFieldCandidates({
+      response: originResponse,
+      segmentId: params.segmentId,
+      pageNumber,
+      goodsLineOffset
+    }) : undefined;
+    const pageProjected = mergeInvoiceCandidateSources(
+      projected,
+      ...(scalarProjected ? [scalarProjected] : []),
+      ...(originProjected ? [originProjected] : [])
+    );
     sources.push(pageProjected);
     const pageGoodsCount = response.fields
       .filter((field) => field.field.startsWith("goodsLines[].") && Array.isArray(field.value))
@@ -240,7 +314,8 @@ export async function executeInvoiceVisionByPage(params: {
     const candidateCount = Object.values(pageProjected.fields).reduce((sum, candidates) => sum + candidates.length, 0);
     const recoveryDiagnostic: InvoiceVisionCheckpoint["recoveryDiagnostic"] = {
       focusedRecoveryAttempted, focusedRecoveryUsed, scalarRecoveryRequestedFields,
-      scalarRecoveryAttempted, scalarRecoveryDecision, scalarRecoveryReturnedFields, scalarRecoveryError
+      scalarRecoveryAttempted, scalarRecoveryDecision, scalarRecoveryReturnedFields, scalarRecoveryError,
+      originRecoveryAttempted, originRecoveryDecision, originRecoveryReturned, originRecoveryError
     };
     checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact, extractionArtifacts: pageArtifacts, recoveryDiagnostic });
     await params.onPageCheckpoint?.({

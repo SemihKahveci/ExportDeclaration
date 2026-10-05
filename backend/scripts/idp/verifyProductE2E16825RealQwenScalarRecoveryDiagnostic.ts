@@ -41,12 +41,30 @@ async function main(){
   const persistedVisionCheckpoint:any=run?.visionCandidateCheckpoint ?? {};
   const recoveryExecutionTelemetry=Object.entries(persistedVisionCheckpoint?.segments ?? {}).flatMap(([segmentId,segment]:any)=>Object.entries(segment?.pages ?? {}).map(([pageKey,page]:any)=>({segmentId,pageNumber:Number(page?.pageNumber ?? pageKey),status:page?.status ?? null,decision:page?.decision ?? null,candidateCount:page?.candidateCount ?? 0,recoveryDiagnostic:page?.recoveryDiagnostic ?? null}))).sort((a:any,b:any)=>a.pageNumber-b.pageNumber);
 const artifacts=normalizeModelExtractionArtifacts(run?.modelExtractionArtifacts);assert(artifacts.length>0,`${tc.id}: no first-class Qwen extraction artifact`);assert(artifacts.every(a=>a.skillVersion===INVOICE_EXTRACTION_SKILL_VERSION),`${tc.id}: stale extraction skill in persisted artifact`);
-  const pages=artifacts.map(a=>({pageNumbers:a.pageNumbers,skillVersion:a.skillVersion,decision:a.parsedSemanticResponse.decision,acceptedCriticalScalars:a.parsedSemanticResponse.fields.filter(f=>["invoiceDate","currency"].includes(f.field)).map(f=>({field:f.field,value:f.value,evidence:f.evidence})),rawCriticalScalarResponse:rawCritical(a.rawModelResponse)}));
+  const recoveryArtifacts=artifacts.filter(a=>String(a.documentId??"").includes("recovery"));
+  const baseArtifacts=artifacts.filter(a=>!String(a.documentId??"").includes("-recovery"));
+  const effectiveGoodsArtifacts=[...baseArtifacts];
+  for(const recovery of recoveryArtifacts.filter(a=>String(a.documentId??"").includes(":non-critical-recovery"))){
+    const page=recovery.pageNumbers?.[0];
+    if(page && recovery.parsedSemanticResponse.fields.some(f=>f.field.startsWith("goodsLines[]."))){
+      const baseIndex=effectiveGoodsArtifacts.findIndex(a=>a.pageNumbers?.length===1 && a.pageNumbers[0]===page);
+      if(baseIndex>=0) effectiveGoodsArtifacts.splice(baseIndex,1,recovery);
+      else effectiveGoodsArtifacts.push(recovery);
+    }
+  }
+  const recoveryArtifactTrace=recoveryArtifacts.map(a=>({
+    documentId:a.documentId,
+    requestedFields:a.requestedFields,
+    decision:a.parsedSemanticResponse.decision,
+    returnedFields:a.parsedSemanticResponse.fields.map(f=>({field:f.field,value:f.value,evidence:f.evidence})),
+    rawModelResponse:String(a.rawModelResponse??"").slice(0,2000)
+  }));
+  const pages=baseArtifacts.map(a=>({pageNumbers:a.pageNumbers,skillVersion:a.skillVersion,decision:a.parsedSemanticResponse.decision,acceptedCriticalScalars:a.parsedSemanticResponse.fields.filter(f=>["invoiceDate","currency"].includes(f.field)).map(f=>({field:f.field,value:f.value,evidence:f.evidence})),rawCriticalScalarResponse:rawCritical(a.rawModelResponse)}));
   const scalarFields=Object.entries(tc.expected??{}).filter(([k,v])=>k!=="goodsLines"&&v!==undefined).map(([field,expected])=>{const actual=finalScalar(declaration?.normalizedData??{},field);return{field,expected,actual:actual??null,status:actual==null?"MISSING":equivalent(field,actual,expected)?(String(actual)===String(expected)?"EXACT":"SEMANTIC_EQUIVALENT"):"WRONG"};});
-  const artifactRows=semanticRows(artifacts),finalRows=Array.isArray(declaration?.normalizedData?.goodsLines)?declaration.normalizedData.goodsLines:[];const representativeGoods=(tc.expected?.goodsLines??[]).map((e:any,i:number)=>({expectedIndex:i,artifact:matchRow(e,artifactRows),final:matchRow(e,finalRows)}));
+  const artifactRows=semanticRows(effectiveGoodsArtifacts),finalRows=Array.isArray(declaration?.normalizedData?.goodsLines)?declaration.normalizedData.goodsLines:[];const representativeGoods=(tc.expected?.goodsLines??[]).map((e:any,i:number)=>({expectedIndex:i,artifact:matchRow(e,artifactRows),final:matchRow(e,finalRows)}));
   const counts=scalarFields.reduce((a:any,x:any)=>(a[x.status]=(a[x.status]??0)+1,a),{});
   const recoverySummary={invoiceDateSemanticallyCorrect:equivalent("invoiceDate",finalScalar(declaration?.normalizedData??{},"invoiceDate"),tc.expected?.invoiceDate),currencyCorrect:equivalent("currency",finalScalar(declaration?.normalizedData??{},"currency"),tc.expected?.currency),grossWeightCorrect:equivalent("grossWeight",finalScalar(declaration?.normalizedData??{},"grossWeight"),tc.expected?.grossWeight),netWeightCorrect:equivalent("netWeight",finalScalar(declaration?.normalizedData??{},"netWeight"),tc.expected?.netWeight),originCountrySemanticallyCorrect:equivalent("originCountry",finalScalar(declaration?.normalizedData??{},"originCountry"),tc.expected?.originCountry),artifactRowCount:artifactRows.length,finalRowCount:finalRows.length,expectedFullGoodsRowCount:42,fullGoodsCorpusRecovered:artifactRows.length===42&&finalRows.length===42};
-  console.log(JSON.stringify({event:"product-e2e-1.6.8.25.real-qwen-scalar-recovery.diagnosed",id:tc.id,workerOutcome:terminal.status,recoveryExecutionTelemetry,knowledgeVersion:INVOICE_EXTRACTION_KNOWLEDGE_VERSION,skillVersion:INVOICE_EXTRACTION_SKILL_VERSION,firstClassArtifactCount:artifacts.length,pages,scalarAccuracy:{counts,total:scalarFields.length,fields:scalarFields},goodsIntegrity:{artifactRowCount:artifactRows.length,finalRowCount:finalRows.length,representativeGoods},recoverySummary,guardrails:{realProductionQwenCall:true,groundTruthUsedForMeasurementOnly:true,qwenPrimary:true,ocrPrimary:false,supplierSpecificRules:false,autonomousKnowledgeMutation:false,directNormalizedWrite:false}},null,2));
+  console.log(JSON.stringify({event:"product-e2e-1.6.8.25.real-qwen-scalar-recovery.diagnosed",id:tc.id,workerOutcome:terminal.status,recoveryExecutionTelemetry,knowledgeVersion:INVOICE_EXTRACTION_KNOWLEDGE_VERSION,skillVersion:INVOICE_EXTRACTION_SKILL_VERSION,firstClassArtifactCount:artifacts.length,recoveryArtifactTrace,pages,scalarAccuracy:{counts,total:scalarFields.length,fields:scalarFields},goodsIntegrity:{artifactRowCount:artifactRows.length,finalRowCount:finalRows.length,representativeGoods},recoverySummary,guardrails:{realProductionQwenCall:true,groundTruthUsedForMeasurementOnly:true,qwenPrimary:true,ocrPrimary:false,supplierSpecificRules:false,autonomousKnowledgeMutation:false,directNormalizedWrite:false}},null,2));
  }finally{if(runId){const job=await getIdpQueue().getJob(runId);if(job)try{await job.remove();}catch{}}await DeclarationFieldResolutionRunModel.deleteMany({declarationId});await LogicalDocumentModel.deleteMany({declarationId});if(runId)await ProcessingRunModel.deleteMany({_id:runId});if(uploadedId)await UploadedFileModel.deleteMany({_id:uploadedId});await DeclarationModel.deleteMany({_id:declarationId});}}
  }finally{await closeIdpQueue();await mongoose.disconnect();}}
 main().catch(async e=>{console.error(e);try{await closeIdpQueue();}catch{}try{await mongoose.disconnect();}catch{}process.exitCode=1;});

@@ -6,7 +6,7 @@
  */
 import { INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE } from "./invoiceExtractionKnowledge.js";
 
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v7" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v8" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
@@ -15,6 +15,16 @@ export const INVOICE_EXTRACTION_FIELDS = [
   "goodsLines[].quantity", "goodsLines[].unit", "goodsLines[].unitPrice",
   "goodsLines[].lineTotal", "goodsLines[].origin"
 ] as const;
+
+
+export const INVOICE_SCALAR_RECOVERY_FOCUS_INSTRUCTION = `
+This is a narrow document-scalar evidence recovery pass. Extract only the requested non-goods scalar fields.
+For each requested field, scan the entire supplied page independently, including headers, footers, totals, shipping/summary blocks, and scalar cells inside or adjacent to tables.
+Do not extract goods rows, but do not ignore a table or summary region merely because it is tabular when that region visibly contains a requested document-level scalar.
+Treat grossKg as explicitly labelled gross/brut shipment weight, netKg as explicitly labelled net shipment weight, and origin as explicit goods country of origin/menşe. Use visible semantic labels/context rather than page position.
+Do not infer a missing scalar from goods quantities, arithmetic, seller/buyer/address country, destination, supplier identity, expected answers, or prior documents.
+If a requested scalar is not visibly supported on this page, leave it null/omit it. Never manufacture a value.
+`.trim();
 
 export const INVOICE_EXTRACTION_SYSTEM_PROMPT = `
 You extract invoice data for an offline export-declaration IDP system.

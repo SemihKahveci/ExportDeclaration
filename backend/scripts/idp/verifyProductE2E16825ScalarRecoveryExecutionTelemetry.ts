@@ -67,7 +67,11 @@ async function main() {
   const normalCalls:any[]=[];
   const normalProvider:any={name:"contract-qwen",async extractInvoice(request:any,pageImages:any[]){
     normalCalls.push({request,pageImages});
-    return {version:"1",decision:InvoiceLlmExtractionDecision.PARTIAL,fields:[{field:"grossKg",value:10,confidence:1,evidence:[{pageNumber:2,source:"PAGE_IMAGE"}]}],issues:[],model:"qwen",provider:"contract-qwen"};
+    return {version:"1",decision:InvoiceLlmExtractionDecision.PARTIAL,fields:[
+      {field:"grossKg",value:10,confidence:1,evidence:[{pageNumber:2,source:"PAGE_IMAGE"}]},
+      {field:"netKg",value:9,confidence:1,evidence:[{pageNumber:2,source:"PAGE_IMAGE"}]},
+      {field:"origin",value:"TR",confidence:1,evidence:[{pageNumber:2,source:"PAGE_IMAGE"}]}
+    ],issues:[],model:"qwen",provider:"contract-qwen"};
   }};
   await executeInvoiceVisionByPage({canonicalDocument:{pages:[{pageNumber:2}]} as any,segmentId:"normal",pageNumbers:[2],provider:normalProvider,renderPage:async()=>({pageNumber:2,mimeType:"image/png",bytes:Buffer.from("x")}),request:{version:"1",requestedFields:["grossKg","netKg","origin"],nativeText:"",ocrText:"",verifiedKnowledge:[]}});
   assert.equal(normalCalls.length,1);
@@ -81,7 +85,7 @@ async function main() {
     goodsAndScalarCandidatesMerged:true,
     scalarRecoveryArtifactPersistable:true,
     scalarRecoveryExecutionTelemetryPersistable:true,
-    normalNonEmptyResponsesDoNotRetry:true,
+    fullySatisfiedNonEmptyResponsesDoNotRetry:true,
     qwenPrimary:true,ocrPrimary:false,deterministicPrimary:false,supplierSpecificRules:false,groundTruthAuthorityUsed:false,directNormalizedWrite:false
   },null,2));
 }
