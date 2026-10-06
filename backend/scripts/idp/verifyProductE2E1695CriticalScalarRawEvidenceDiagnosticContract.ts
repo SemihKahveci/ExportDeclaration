@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+const p="backend/scripts/idp/verifyProductE2E1695CriticalScalarRawEvidenceDiagnostic.ts";
+const s=fs.readFileSync(p,"utf8");
+assert.match(s,/modelExtractionArtifacts/);
+assert.match(s,/critical-scalar-evidence-recovery/);
+assert.match(s,/rawModelResponse/);
+assert.match(s,/parsedSemanticResponse/);
+assert.match(s,/productionExtractionChanged:false/);
+assert.match(s,/orchestrationAgentIntroduced:false/);
+assert.doesNotMatch(s,/normalizedData\s*[.=]/);
+console.log(JSON.stringify({event:"product-e2e-1.6.9.5.critical-scalar-raw-evidence.contract.passed",measurementOnly:true,productionExtractionChanged:false,orchestrationAgentIntroduced:false}));

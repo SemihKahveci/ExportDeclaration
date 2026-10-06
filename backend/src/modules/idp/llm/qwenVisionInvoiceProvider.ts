@@ -73,20 +73,79 @@ export function canonicalizeVisionInvoiceNumber(value: unknown): unknown {
 }
 
 
-function normalizeEvidenceDate(raw: string): string | undefined {
-  const token = raw.trim();
+const MONTH_NUMBER_BY_TOKEN: Readonly<Record<string, string>> = {
+  JAN: "01", JANUARY: "01",
+  FEB: "02", FEBRUARY: "02",
+  MAR: "03", MARCH: "03",
+  APR: "04", APRIL: "04",
+  MAY: "05",
+  JUN: "06", JUNE: "06",
+  JUL: "07", JULY: "07",
+  AUG: "08", AUGUST: "08",
+  SEP: "09", SEPT: "09", SEPTEMBER: "09",
+  OCT: "10", OCTOBER: "10",
+  NOV: "11", NOVEMBER: "11",
+  DEC: "12", DECEMBER: "12"
+};
+
+function fourDigitEvidenceYear(raw: string): string | undefined {
+  if (/^20\d{2}$/.test(raw)) return raw;
+  if (/^\d{2}$/.test(raw)) return `20${raw}`;
+  return undefined;
+}
+
+export function normalizeCriticalScalarEvidenceDate(raw: string): string | undefined {
+  const token = raw
+    .trim()
+    .replace(/,/g, " ")
+    .replace(/(\d{1,2})(?:st|nd|rd|th)\b/gi, "$1")
+    .replace(/\s+/g, " ");
   let match = token.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
   if (match) return `${match[1]}-${match[2]!.padStart(2, "0")}-${match[3]!.padStart(2, "0")}`;
   match = token.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);
   if (match) return `${match[3]}-${match[2]!.padStart(2, "0")}-${match[1]!.padStart(2, "0")}`;
+
+  // Common invoice evidence also uses textual month names, ordinal days and
+  // two-digit years (for example 16-Sep-26 or June 05th, 2026). Normalize
+  // only structurally unambiguous day/month-name/year shapes; this does not
+  // infer whether an arbitrary date is the invoice issue date.
+  match = token.match(/\b(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s](\d{2}|20\d{2})\b/);
+  if (match) {
+    const month = MONTH_NUMBER_BY_TOKEN[match[2]!.toUpperCase()];
+    const year = fourDigitEvidenceYear(match[3]!);
+    if (month && year) return `${year}-${month}-${match[1]!.padStart(2, "0")}`;
+  }
+  match = token.match(/\b([A-Za-z]{3,9})[-\s](\d{1,2})[-\s](\d{2}|20\d{2})\b/);
+  if (match) {
+    const month = MONTH_NUMBER_BY_TOKEN[match[1]!.toUpperCase()];
+    const year = fourDigitEvidenceYear(match[3]!);
+    if (month && year) return `${year}-${month}-${match[2]!.padStart(2, "0")}`;
+  }
   return undefined;
 }
 
-function normalizeEvidenceCurrency(raw: string): string | undefined {
-  const token = raw.trim().toUpperCase();
-  if (token === "TL") return "TRY";
+export function normalizeCriticalScalarEvidenceCurrency(raw: string): string | undefined {
+  const token = raw.trim().toUpperCase().replace(/\s+/g, " ");
+  if (token === "TL" || token === "₺") return "TRY";
+  if (token === "€") return "EUR";
+  if (token === "£") return "GBP";
   if (/^[A-Z]{3}$/.test(token)) return token;
-  return undefined;
+
+  // Explicit currency words are unambiguous monetary evidence. This remains
+  // a general vocabulary mapping, not a supplier/layout rule. Bare $/¥ stay
+  // unsupported because they can denote more than one currency.
+  const named: Array<[RegExp, string]> = [
+    [/\bEUROS?\b/, "EUR"],
+    [/\bUS\s+DOLLARS?\b|\bU\.?S\.?\s*DOLLARS?\b/, "USD"],
+    [/\bPOUNDS?\s+STERLING\b/, "GBP"],
+    [/\bTURKISH\s+LIRAS?\b|\bTURK\s+LIRASI\b/, "TRY"]
+  ];
+  for (const [pattern, code] of named) if (pattern.test(token)) return code;
+
+  // Accept an explicit ISO code inside visible evidence such as "Total EUR"
+  // or "Unit Price(USD)". Multiple different codes are ambiguous.
+  const codes = [...new Set(token.match(/\b[A-Z]{3}\b/g) ?? [])];
+  return codes.length === 1 ? codes[0] : undefined;
 }
 
 export function criticalScalarEvidenceSupportsValue(
@@ -99,8 +158,20 @@ export function criticalScalarEvidenceSupportsValue(
   const label = typeof evidence.label === "string" ? evidence.label.trim() : "";
   const rawValue = typeof evidence.rawValue === "string" ? evidence.rawValue.trim() : "";
   if (!label || !rawValue || typeof value !== "string") return false;
-  if (field === "invoiceDate") return normalizeEvidenceDate(rawValue) === value.trim();
-  return normalizeEvidenceCurrency(rawValue) === value.trim().toUpperCase();
+
+  // Compare semantic normal forms on BOTH sides. Qwen is allowed to return the
+  // visible invoice spelling (14.08.2026, June 05th 2026, EURO...) while the
+  // evidence quote can use the same or another equivalent visible spelling.
+  // Previously only evidence was normalized, causing valid grounded values to
+  // fail the provider gate before candidate projection.
+  if (field === "invoiceDate") {
+    const evidenceDate = normalizeCriticalScalarEvidenceDate(rawValue);
+    const valueDate = normalizeCriticalScalarEvidenceDate(value);
+    return Boolean(evidenceDate && valueDate && evidenceDate === valueDate);
+  }
+  const evidenceCurrency = normalizeCriticalScalarEvidenceCurrency(rawValue);
+  const valueCurrency = normalizeCriticalScalarEvidenceCurrency(value);
+  return Boolean(evidenceCurrency && valueCurrency && evidenceCurrency === valueCurrency);
 }
 
 export function criticalScalarEvidenceQuote(parsed: NaturalInvoice, field: "invoiceDate" | "currency"): string | undefined {

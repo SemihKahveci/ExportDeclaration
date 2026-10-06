@@ -2681,3 +2681,147 @@ text is never projected directly as an origin candidate.
 The real diagnostic also treats a focused recovery containing goods as the
 effective goods artifact for that page, fixing the 1.6.8.30 diagnostic-only
 19/42 undercount.
+
+
+### 1.6.9.0 — Unseen Invoice Generalization Gate
+
+Mekar is frozen as the solved 1.6.8.x development/control invoice. The default
+1.6.9.0 gate excludes Mekar and executes the five previously frozen holdouts
+through the real production queue and configured Qwen/VLM provider. Exact source
+hashes and pre-existing ground truth remain measurement-only.
+
+The gate reports full-invoice pass rate, field-level extraction accuracy,
+fail-closed expectations, and failure classes (`SCALAR`, `GOODS_TABLE`,
+`FAIL_CLOSED_AUTHORITY`, etc.). A failed invoice does not authorize an immediate
+invoice-specific patch: failures must first be grouped into a reusable failure
+class. This is the decision boundary for the next general IDP improvement and
+for whether hybrid agentic recovery orchestration is justified.
+
+### 1.6.9.1 — Generalization Failure Matrix & Semantic Equivalence Baseline
+
+1.6.9.0 showed that the raw exact scorer mixed true extraction failures with semantically equivalent values. 1.6.9.1 is measurement-only: production extraction, candidate projection, Foundation 6 resolution/promotion, and normalized writes are unchanged.
+
+- Scalar measurement distinguishes `EXACT`, `SEMANTIC_EQUIVALENT`, `MISSING`, and `MISMATCH`.
+- Country comparison uses general ISO-3166 semantic aliases for the frozen corpus (for example country names/standard abbreviations versus alpha-2), not supplier/layout rules.
+- Delivery-term comparison recognizes the standard Incoterms token inside surrounding commercial text (for example an Incoterm plus place/payment suffix); this affects scoring only.
+- Failure taxonomy is split into `SCALAR_IDENTITY`, `SCALAR_DATE`, `SCALAR_CURRENCY`, `SCALAR_INCOTERM`, `SCALAR_ORIGIN`, `SCALAR_WEIGHT`, `GOODS_DESCRIPTION`, `GOODS_NUMERIC`, `GOODS_CODE`, `GOODS_UNIT`, `GOODS_OTHER`, and `FAIL_CLOSED_AUTHORITY`.
+- The default gate still excludes the solved Mekar development control and re-verifies frozen source hashes before execution.
+- Policy remains class-first: do not tune an individual invoice from this measurement. The cleaned matrix decides the next general production checkpoint and later whether agentic recovery orchestration is justified.
+
+### 1.6.9.2 — Evidence-Gated Critical Scalar Recovery
+
+The 1.6.9.1 unseen semantic failure matrix removed measurement-only country/Incoterm false negatives and exposed a repeated production class: `invoiceDate` was missing on three unseen invoices and `currency` was missing on two. These fields were intentionally excluded from the existing non-critical scalar recovery because they require visible critical-scalar evidence.
+
+1.6.9.2 adds one bounded Qwen recovery call per page only when `invoiceDate` and/or `currency` remain missing after a usable primary response. The recovery:
+
+- is supplier/layout/value agnostic;
+- requests only the missing critical scalar(s);
+- supplies page-local native/OCR text only as assistive reading context;
+- keeps the same page image as semantic evidence authority;
+- remains subject to the existing provider-side `criticalScalarEvidence` validation;
+- never guesses when visible evidence cannot support the value;
+- produces ordinary candidates and still passes through Foundation 6 resolution/validation/promotion;
+- does not directly write `normalizedData` and does not change goods extraction.
+
+This checkpoint is deliberately **not** agent orchestration. It addresses the highest-frequency clean failure class before deciding whether dynamic tool routing is justified by the remaining unseen-corpus failures.
+
+### 1.6.9.3 — Critical Scalar Recovery Stage Attribution
+
+1.6.9.2 did not reduce the repeated unseen-corpus `SCALAR_DATE` / `SCALAR_CURRENCY` failures, and repeated real runs also exposed model variance. Before changing extraction semantics again, this checkpoint adds a measurement-only stage-attribution diagnostic for the bounded critical-scalar recovery path.
+
+The default diagnostic reruns only the four frozen holdouts that have a date and/or currency recovery question (`volta-vxa-0035`, `pml-p0087`, `dermeternal-2026-0001`, `ningbo-wyl-2026060501`). It re-verifies each frozen source SHA-256, enters through the real BullMQ production queue, and inspects persisted `visionCandidateCheckpoint.recoveryDiagnostic`, page candidates, ProcessingRun/declaration candidates, Foundation 6 candidate envelopes/resolution, and the final promoted declaration value.
+
+For each target field it reports the recovery request/attempt/decision/returned/error telemetry per page and attributes a missing final value to the earliest observable boundary: `RECOVERY_TRIGGER`, `PROVIDER_EVIDENCE_GATE`, `PAGE_CANDIDATE_PROJECTION`, `DECLARATION_PROJECTION`, `RESOLUTION_INPUT`, or `RESOLUTION_OR_PROMOTION`. `FINAL_PRESENT` means the value survived the full path. A returned critical scalar is already evidence-gated by the configured Qwen provider; this diagnostic does not invent or relax evidence.
+
+This checkpoint changes no production extraction semantics, adds no supplier/invoice rules, performs no direct normalized write, and does not introduce an orchestration agent. Its purpose is to identify the actual loss boundary before the next general production fix.
+
+Run:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1693CriticalScalarRecoveryStageAttributionContract.ts
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1693CriticalScalarRecoveryStageAttribution.ts
+```
+
+### 1.6.9.4 — Critical Scalar Evidence Normalization
+
+The 1.6.9.3 real stage-attribution run localized all six missing date/currency observations to `PROVIDER_EVIDENCE_GATE`: recovery was requested and attempted, but no critical scalar survived the provider evidence validator. No candidate was therefore available to Foundation 6. This checkpoint fixes that shared provider boundary rather than adding invoice-specific extraction rules or an orchestration agent.
+
+Provider-side critical evidence normalization now accepts additional common, structurally unambiguous representations while preserving the same evidence requirement and page-image authority:
+
+- invoice-date evidence supports numeric dates plus textual English month forms such as `16-Sep-26`, `16 Sep 2026`, and `Sep 16, 2026`; a two-digit year is expanded only in the existing 20xx invoice horizon;
+- currency evidence supports explicit ISO codes in compact visible evidence text and unambiguous symbols `€ -> EUR`, `£ -> GBP`, and `₺/TL -> TRY`;
+- ambiguous bare `$` and `¥` remain unsupported and fail closed because they do not uniquely identify a currency;
+- the visible evidence label and raw value are still mandatory, Qwen still supplies the semantic value, and the provider still requires normalized evidence to equal that value;
+- no OCR/native text is promoted directly, no supplier/layout/invoice identifiers are introduced, and Foundation 6 remains the only resolution/promotion authority.
+
+This is a general evidence-parser correction at the boundary proven by 1.6.9.3. It does not introduce multi-agent/orchestration behavior.
+
+Run:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1694CriticalScalarEvidenceNormalizationContract.ts
+docker compose -f compose.dev.yaml up -d --force-recreate idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1693CriticalScalarRecoveryStageAttribution.ts
+```
+
+
+### 1.6.9.5 — Critical Scalar Raw Evidence Diagnostic
+
+- Measurement-only checkpoint; production extraction semantics are unchanged.
+- Reads the persisted Qwen extraction artifact for the bounded `critical-scalar-evidence-recovery` call before test cleanup.
+- Reports both `rawModelResponse` and `parsedSemanticResponse` so a `PROVIDER_EVIDENCE_GATE` attribution can be separated into: model omitted scalar/evidence, model returned malformed/unsupported evidence, or provider rejected otherwise-grounded evidence.
+- Default diagnostic corpus is limited to the still-failing PML, Dermeternal and Ningbo cases; frozen source hashes remain authoritative.
+- No supplier/invoice-specific production rule, no direct `normalizedData` write and no orchestration/multi-agent runtime is introduced.
+
+
+### 1.6.9.6 — Semantic Critical-Scalar Evidence Gate
+
+The 1.6.9.5 raw-evidence diagnostic split the remaining critical-scalar failures into two distinct classes. Some recoveries produced no value/evidence at all; those are model-recovery misses and are not fixed by relaxing provider authority. Other recoveries returned an explicit scalar and explicit visible evidence, but the provider rejected them because evidence normalization was applied only to the evidence side while the model value remained in its visible invoice spelling.
+
+1.6.9.6 fixes only that general provider-boundary defect:
+
+- date evidence and the returned date are both converted to the same semantic date normal form before comparison;
+- common ordinal textual dates such as `June 05th, 2026` are accepted as a date representation without inferring the field role;
+- explicit currency words such as `EURO` are normalized to their ISO code when unambiguous;
+- ambiguous bare currency symbols such as `$` and `¥` remain unsupported/fail-closed;
+- a value still requires a non-empty evidence label and raw value, and mismatching semantic values are rejected;
+- no OCR/native value is promoted directly, no supplier/layout rule is added, and Foundation 6 remains authoritative.
+
+This checkpoint deliberately does **not** attempt to solve a recovery where Qwen returned `null` for both the scalar and its evidence. That is a separate model-recovery class and must be handled after the provider gate is proven correct. No orchestration/multi-agent runtime is introduced.
+
+Run:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1696CriticalScalarSemanticEvidenceContract.ts
+docker compose -f compose.dev.yaml up -d --force-recreate idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1693CriticalScalarRecoveryStageAttribution.ts
+```
+
+### 1.6.9.7 — Critical Scalar Promotion Canonicalization
+
+The 1.6.9.6 real attribution run moved the remaining critical scalar failure boundary downstream: Volta, PML and Dermeternal reached `FINAL_PRESENT`, while Ningbo produced persisted `USD` and `June 05Th, 2026` candidates and a `RESOLVED/CONSENSUS` resolution but neither value reached final normalized data. This isolates the remaining failure to resolution/promotion rather than Qwen extraction or provider evidence acceptance.
+
+This checkpoint makes the Foundation 6 promotion boundary canonicalize only structurally unambiguous critical scalar representations before schema persistence. `header.invoiceDate` now accepts numeric day-first/year-first forms plus textual-month forms such as `16-Sep-26`, `14.08.2026`, and `June 05Th, 2026`, validating the actual UTC calendar date before promotion. Ambiguous short numeric dates such as `03/04/26` remain unsupported. `header.currency` canonicalizes explicit, unambiguous currency words/symbols such as `EURO`/`€` to `EUR`, while ambiguous bare `$` and `¥` remain untouched and therefore fail closed under the existing schema/authority boundary.
+
+No invoice/supplier/layout identifier is used. Qwen remains the extraction authority, Foundation 6 remains the only resolution/promotion authority, no direct normalized-data write is introduced, and no orchestration/multi-agent layer is introduced.
+
+
+### 1.6.9.8 — 12-digit GTIP fail-closed authority
+
+The post-1.6.9.7 unseen semantic matrix reached 75/81 extraction checks (92.6%). Critical date/currency remained closed. The repeated safety failure was HS/GTIP authority: incomplete 6/8-digit classifications could reach normalized goods lines through ordinary consensus even where the frozen corpus explicitly required review.
+
+This checkpoint tightens the Foundation 6 resolver generically for export-declaration `goodsLines.<n>.hsCode`: only an evidence-backed 12-digit GTIP may remain `RESOLVED`. A shorter/longer classification is retained in the candidate/audit envelope but the field becomes `REVIEW_REQUIRED` with reason `GTIP_REQUIRES_12_DIGITS`, so promotion cannot write it to `normalizedData`. No supplier, invoice, expected GTIP, or corpus value is encoded in production logic. This does not invent missing GTIP digits and does not introduce orchestration/multi-agent behavior.
+
+Validation:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1698GtipFailClosedAuthorityContract.ts
+docker compose -f compose.dev.yaml up -d --force-recreate idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts
+```
+
+Expected safety effect: PML/Dermeternal incomplete HS classifications remain review-required instead of being promoted. Volta's 11-digit-vs-12-digit extraction mismatch is intentionally not guessed/fixed by this checkpoint; it remains a separate `GOODS_CODE` extraction issue.

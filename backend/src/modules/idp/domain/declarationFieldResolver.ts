@@ -53,7 +53,7 @@ export function resolveDeclarationFields(
       throw new Error(`Candidate authority selection ${explicitSelection.candidateId} is missing from field ${field}.`);
     }
 
-    const resolution = explicitlySelectedCandidate
+    let resolution = explicitlySelectedCandidate
       ? {
           field,
           status: "RESOLVED" as const,
@@ -65,6 +65,26 @@ export function resolveDeclarationFields(
           conflictCandidateIds: candidates.filter((candidate) => candidate.candidateId !== explicitlySelectedCandidate.candidateId).map((candidate) => candidate.candidateId)
         }
       : resolveCrossDocumentField(field, candidates, ruleByField.get(field));
+
+    // Export-declaration GTIP authority is deliberately fail-closed at 12 digits.
+    // A shorter HS heading/subheading may be useful evidence, but it is not a
+    // complete Turkish GTIP and must never become normalizedData merely because
+    // multiple extractors agree on the same truncated/classification value.
+    if (/^goodsLines\.\d+\.hsCode$/.test(field) && resolution.status === "RESOLVED") {
+      const digits = String(resolution.value ?? "").replace(/\D/g, "");
+      if (!/^\d{12}$/.test(digits)) {
+        resolution = {
+          field,
+          status: "REVIEW_REQUIRED" as const,
+          method: "CONFLICT_REVIEW" as const,
+          candidateIds: candidates.map((candidate) => candidate.candidateId),
+          conflict: new Set(candidates.map((candidate) => JSON.stringify(candidate.value))).size > 1,
+          conflictCandidateIds: candidates.map((candidate) => candidate.candidateId),
+          reason: "GTIP_REQUIRES_12_DIGITS"
+        };
+      }
+    }
+
     const selectedCandidate = resolution.selectedCandidateId
       ? candidates.find((candidate) => candidate.candidateId === resolution.selectedCandidateId)
       : undefined;

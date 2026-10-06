@@ -16,6 +16,15 @@ export interface PersistedInvoiceVisionPageCheckpoint {
     scalarRecoveryDecision?: string;
     scalarRecoveryReturnedFields: string[];
     scalarRecoveryError?: string;
+    criticalScalarRecoveryRequestedFields?: string[];
+    criticalScalarRecoveryAttempted?: boolean;
+    criticalScalarRecoveryDecision?: string;
+    criticalScalarRecoveryReturnedFields?: string[];
+    criticalScalarRecoveryError?: string;
+    originRecoveryAttempted?: boolean;
+    originRecoveryDecision?: string;
+    originRecoveryReturned?: boolean;
+    originRecoveryError?: string;
   };
   error?: string;
 }

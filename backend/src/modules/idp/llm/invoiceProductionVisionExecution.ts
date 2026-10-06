@@ -31,6 +31,11 @@ export interface InvoiceVisionCheckpoint {
     scalarRecoveryDecision?: string;
     scalarRecoveryReturnedFields: string[];
     scalarRecoveryError?: string;
+    criticalScalarRecoveryRequestedFields: string[];
+    criticalScalarRecoveryAttempted: boolean;
+    criticalScalarRecoveryDecision?: string;
+    criticalScalarRecoveryReturnedFields: string[];
+    criticalScalarRecoveryError?: string;
     originRecoveryAttempted: boolean;
     originRecoveryDecision?: string;
     originRecoveryReturned: boolean;
@@ -147,6 +152,11 @@ export async function executeInvoiceVisionByPage(params: {
     let scalarRecoveryDecision: string | undefined;
     let scalarRecoveryReturnedFields: string[] = [];
     let scalarRecoveryError: string | undefined;
+    let criticalScalarRecoveryRequestedFields: string[] = [];
+    let criticalScalarRecoveryAttempted = false;
+    let criticalScalarRecoveryDecision: string | undefined;
+    let criticalScalarRecoveryReturnedFields: string[] = [];
+    let criticalScalarRecoveryError: string | undefined;
     let originRecoveryAttempted = false;
     let originRecoveryDecision: string | undefined;
     let originRecoveryReturned = false;
@@ -235,6 +245,50 @@ export async function executeInvoiceVisionByPage(params: {
       }
     }
 
+    // 1.6.9.2: invoiceDate and currency are evidence-gated critical scalars.
+    // The normal non-critical recovery deliberately excludes them, which left
+    // a repeated generalization gap on otherwise successful digital invoices.
+    // Perform one bounded critical-scalar recovery call only for the critical
+    // fields still missing from the current page response. Page-local native/OCR
+    // text is assistive reading context only; qwen must still return the compact
+    // criticalScalarEvidence required by the provider, and the same page image
+    // remains the semantic evidence authority.
+    let criticalScalarResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
+    const criticalCanonicalPage = params.canonicalDocument.pages.find((page) => page.pageNumber === pageNumber);
+    const criticalReturnedFields = new Set(response.fields.map((field) => field.field));
+    const criticalRequestedFields = (["invoiceDate", "currency"] as const).filter(
+      (field) => params.request.requestedFields.includes(field) && !criticalReturnedFields.has(field)
+    );
+    criticalScalarRecoveryRequestedFields = [...criticalRequestedFields];
+    if (response.fields.length > 0 && criticalRequestedFields.length > 0) {
+      criticalScalarRecoveryAttempted = true;
+      try {
+        const criticalRecovery = await params.provider.extractInvoice({
+          ...params.request,
+          requestedFields: [...criticalRequestedFields],
+          focusInstruction: [
+            "This is a critical-scalar evidence recovery pass for only the requested invoiceDate/currency fields.",
+            "Inspect the entire supplied page, especially invoice header, metadata, totals, monetary columns and summary text.",
+            "The page-local native/OCR text is assistive reading context for locating small or dense visible text; verify the value against the same supplied page image.",
+            "For invoiceDate, extract only the actual invoice issue/date field, not due date, delivery date, order date, reference date or a date embedded into another identifier.",
+            "For currency, extract only the invoice monetary currency explicitly supported by visible code/name/context; never infer it from country or locale.",
+            "Return the required criticalScalarEvidence label/rawValue exactly from visible page text. If that evidence cannot support the value, return null/omit the field. Never guess."
+          ].join(" "),
+          nativeText: criticalCanonicalPage?.nativeText?.trim() || "",
+          ocrText: criticalCanonicalPage?.ocrText?.trim() || "",
+          documentId: `${params.segmentId}:page:${pageNumber}:critical-scalar-evidence-recovery`,
+          evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+        }, [image]);
+        criticalScalarRecoveryDecision = criticalRecovery.decision;
+        criticalScalarRecoveryReturnedFields = criticalRecovery.fields.map((field) => field.field);
+        pushArtifact(criticalRecovery.extractionArtifact);
+        if (criticalRecovery.fields.length > 0) criticalScalarResponse = criticalRecovery;
+      } catch (error) {
+        criticalScalarRecoveryError = error instanceof Error ? error.message : String(error);
+        // Missing critical scalars remain fail-closed when grounded recovery fails.
+      }
+    }
+
     // 1.6.8.29: origin is semantically distinct from the other shipment
     // scalars and may be represented by a localized country name or an
     // established language-specific country abbreviation. If the normal and
@@ -295,6 +349,12 @@ export async function executeInvoiceVisionByPage(params: {
       pageNumber,
       goodsLineOffset
     }) : undefined;
+    const criticalScalarProjected = criticalScalarResponse ? projectVisionResponseToFieldCandidates({
+      response: criticalScalarResponse,
+      segmentId: params.segmentId,
+      pageNumber,
+      goodsLineOffset
+    }) : undefined;
     const originProjected = originResponse ? projectVisionResponseToFieldCandidates({
       response: originResponse,
       segmentId: params.segmentId,
@@ -304,6 +364,7 @@ export async function executeInvoiceVisionByPage(params: {
     const pageProjected = mergeInvoiceCandidateSources(
       projected,
       ...(scalarProjected ? [scalarProjected] : []),
+      ...(criticalScalarProjected ? [criticalScalarProjected] : []),
       ...(originProjected ? [originProjected] : [])
     );
     sources.push(pageProjected);
@@ -315,6 +376,8 @@ export async function executeInvoiceVisionByPage(params: {
     const recoveryDiagnostic: InvoiceVisionCheckpoint["recoveryDiagnostic"] = {
       focusedRecoveryAttempted, focusedRecoveryUsed, scalarRecoveryRequestedFields,
       scalarRecoveryAttempted, scalarRecoveryDecision, scalarRecoveryReturnedFields, scalarRecoveryError,
+      criticalScalarRecoveryRequestedFields, criticalScalarRecoveryAttempted, criticalScalarRecoveryDecision,
+      criticalScalarRecoveryReturnedFields, criticalScalarRecoveryError,
       originRecoveryAttempted, originRecoveryDecision, originRecoveryReturned, originRecoveryError
     };
     checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact, extractionArtifacts: pageArtifacts, recoveryDiagnostic });

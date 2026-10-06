@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+
+const root=process.cwd();
+const source=fs.readFileSync(path.join(root,"backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts"),"utf8");
+assert.match(source,/SEMANTIC_EQUIVALENT/);
+assert.match(source,/canonCountry/);
+assert.match(source,/canonIncoterm/);
+assert.match(source,/SCALAR_IDENTITY/);
+assert.match(source,/SCALAR_DATE/);
+assert.match(source,/SCALAR_CURRENCY/);
+assert.match(source,/SCALAR_INCOTERM/);
+assert.match(source,/SCALAR_ORIGIN/);
+assert.match(source,/SCALAR_WEIGHT/);
+assert.match(source,/GOODS_DESCRIPTION/);
+assert.match(source,/GOODS_NUMERIC/);
+assert.match(source,/GOODS_CODE/);
+assert.match(source,/FAIL_CLOSED_AUTHORITY/);
+assert.match(source,/productionExtractionChanged:false/);
+assert.doesNotMatch(source,/supplier\s*===|seller\s*===|mekar.*=>/i);
+console.log(JSON.stringify({event:"product-e2e-1.6.9.1.semantic-failure-matrix-contract.passed",semanticEquivalenceMeasurementOnly:true,standardCountryCanonicalization:true,standardIncotermCanonicalization:true,fineGrainedFailureTaxonomy:true,productionExtractionChanged:false,supplierSpecificRules:false},null,2));

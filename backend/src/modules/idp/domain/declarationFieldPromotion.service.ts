@@ -67,49 +67,82 @@ function setPromotionValue(target: MutableObject, path: string, value: unknown):
   setByPath(target, path, value);
 }
 
-export function canonicalPromotionValue(targetPath: string, value: unknown): unknown {
-  if (targetPath !== "header.invoiceDate" || typeof value !== "string") return value;
+const PROMOTION_MONTH_BY_TOKEN: Readonly<Record<string, number>> = {
+  JAN: 1, JANUARY: 1, FEB: 2, FEBRUARY: 2, MAR: 3, MARCH: 3,
+  APR: 4, APRIL: 4, MAY: 5, JUN: 6, JUNE: 6, JUL: 7, JULY: 7,
+  AUG: 8, AUGUST: 8, SEP: 9, SEPT: 9, SEPTEMBER: 9, OCT: 10,
+  OCTOBER: 10, NOV: 11, NOVEMBER: 11, DEC: 12, DECEMBER: 12
+};
 
-  const raw = value.trim();
-  // Invoice sources commonly append a clock time to the calendar date. The
-  // declaration schema stores invoiceDate as a Date, so accept a narrow
-  // date-first form with an optional HH:mm[:ss] suffix. The time is deliberately
-  // discarded: it must not change the invoice's calendar date or create a
-  // timezone-dependent value. Unsupported/invalid strings remain unchanged and
-  // therefore continue to fail closed at schema validation.
-  const match = /^(\d{1,4})[.\/-](\d{1,2})[.\/-](\d{1,4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
-  if (!match) return value;
-
-  if (match[4] !== undefined) {
-    const hour = Number(match[4]);
-    const minute = Number(match[5]);
-    const second = match[6] === undefined ? 0 : Number(match[6]);
-    if (hour > 23 || minute > 59 || second > 59) return value;
-  }
-
-  let year: number;
-  let month: number;
-  let day: number;
-  if (match[1]!.length === 4) {
-    year = Number(match[1]);
-    month = Number(match[2]);
-    day = Number(match[3]);
-  } else if (match[3]!.length === 4) {
-    day = Number(match[1]);
-    month = Number(match[2]);
-    year = Number(match[3]);
-  } else {
-    return value;
-  }
-
+function validUtcDate(year: number, month: number, day: number): Date | undefined {
+  if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) return undefined;
   const date = new Date(Date.UTC(year, month - 1, day));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  ) return value;
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? date
+    : undefined;
+}
 
-  return date;
+function canonicalInvoiceDateForPromotion(value: string): Date | string {
+  const raw = value.trim();
+  const token = raw
+    .replace(/,/g, " ")
+    .replace(/(\d{1,2})(?:st|nd|rd|th)\b/gi, "$1")
+    .replace(/\s+/g, " ");
+
+  // Numeric forms stay intentionally narrow: YYYY-MM-DD or DD-MM-YYYY,
+  // optionally followed by a clock time. Ambiguous MM/DD/YYYY is never inferred.
+  let match = /^(\d{1,4})[.\/-](\d{1,2})[.\/-](\d{1,4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(token);
+  if (match) {
+    if (match[4] !== undefined) {
+      const hour = Number(match[4]);
+      const minute = Number(match[5]);
+      const second = match[6] === undefined ? 0 : Number(match[6]);
+      if (hour > 23 || minute > 59 || second > 59) return value;
+    }
+    const yearFirst = match[1]!.length === 4;
+    const yearLast = match[3]!.length === 4;
+    if (yearFirst || yearLast) {
+      const year = Number(yearFirst ? match[1] : match[3]);
+      const month = Number(match[2]);
+      const day = Number(yearFirst ? match[3] : match[1]);
+      return validUtcDate(year, month, day) ?? value;
+    }
+  }
+
+  // Textual month forms are structurally unambiguous and common on invoices:
+  // 16-Sep-26, 16 Sep 2026, June 05th, 2026. Two-digit years are accepted only
+  // in the 20xx range used by the declaration domain.
+  match = /^(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s](\d{2}|20\d{2})$/.exec(token);
+  if (match) {
+    const month = PROMOTION_MONTH_BY_TOKEN[match[2]!.toUpperCase()];
+    const year = Number(match[3]!.length === 2 ? `20${match[3]}` : match[3]);
+    if (month) return validUtcDate(year, month, Number(match[1])) ?? value;
+  }
+  match = /^([A-Za-z]{3,9})[-\s](\d{1,2})[-\s](\d{2}|20\d{2})$/.exec(token);
+  if (match) {
+    const month = PROMOTION_MONTH_BY_TOKEN[match[1]!.toUpperCase()];
+    const year = Number(match[3]!.length === 2 ? `20${match[3]}` : match[3]);
+    if (month) return validUtcDate(year, month, Number(match[2])) ?? value;
+  }
+  return value;
+}
+
+function canonicalCurrencyForPromotion(value: string): string {
+  const token = value.trim().toUpperCase().replace(/\s+/g, " ");
+  if (/^[A-Z]{3}$/.test(token)) return token;
+  if (token === "EURO" || token === "EUROS" || token === "€") return "EUR";
+  if (token === "TL" || token === "₺" || token === "TURKISH LIRA" || token === "TURKISH LIRAS") return "TRY";
+  if (token === "POUND STERLING" || token === "POUNDS STERLING" || token === "£") return "GBP";
+  if (token === "US DOLLAR" || token === "US DOLLARS") return "USD";
+  // Bare $ and ¥ remain deliberately untouched because they are ambiguous.
+  return value;
+}
+
+export function canonicalPromotionValue(targetPath: string, value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  if (targetPath === "header.invoiceDate") return canonicalInvoiceDateForPromotion(value);
+  if (targetPath === "header.currency") return canonicalCurrencyForPromotion(value);
+  return value;
 }
 
 function clonePromotionValue(value: unknown): unknown {
