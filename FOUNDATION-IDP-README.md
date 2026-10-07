@@ -2885,3 +2885,92 @@ The unseen-corpus Eryem diagnostic proved that table-column evidence recovery co
 - Colliding unlabeled weight candidates are suppressed. If the focused pass cannot return labelled evidence, the field remains unresolved/absent rather than promoting the goods quantity as shipment weight.
 - PAGE_IMAGE remains semantic authority; page-local native/OCR text is assistive context only.
 - Foundation 6 remains the only resolver/validation/promotion authority. No supplier/invoice hardcodes and no direct `normalizedData` writes are introduced.
+
+### 1.6.9.13 — Label-Anchored Shipment Weight Evidence Recovery
+
+The Eryem-only evidence diagnostic after 1.6.9.12 showed that role-collision suppression is working: the evidence-backed goods quantity remains `25000`, while colliding unlabeled gross/net candidates no longer reach Foundation 6. The focused shipment-weight pass still failed to recover the actual labelled shipment weight from a dense notes area, so this checkpoint improves *where Qwen looks* without allowing OCR/native text to become extraction authority.
+
+- Before the bounded shipment-weight Qwen call, page-local native/OCR text is scanned only for lines carrying generic gross/brüt/net weight labels.
+- A small deduplicated window around those labels is added to the recovery instruction as an assistive navigation hint. No numeric value from that text is projected directly into candidates.
+- Qwen must still verify the exact label and raw value against the same supplied page image and return `shipmentWeightEvidence.grossKg/netKg`.
+- The provider's existing semantic evidence gate remains authoritative: gross requires Gross/Brüt evidence, net requires Net evidence, and the numeric value is parsed only from the returned evidence token.
+- `Miktar/Quantity/Qty`, packaging counts, goods quantities and arithmetic still cannot authorize shipment weights.
+- If image-backed labelled evidence cannot be returned, the field remains absent/fail-closed rather than restoring the colliding quantity.
+- Foundation 6 remains the only resolver/validation/promotion authority. No supplier/invoice-specific rule, known answer, orchestration agent, or direct `normalizedData` write is introduced.
+
+Contract:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E16913LabelAnchoredShipmentWeightEvidenceRecoveryContract.ts
+```
+
+After the contract passes, rerun the Eryem-only 1.6.9.9 evidence diagnostic. The desired signal is an image-backed gross-weight recovery with a Gross/Brüt label and raw token, while the already-correct goods quantity remains unchanged. Only then rerun the full semantic failure matrix.
+
+### 1.6.9.14 — Labelled shipment-weight text fallback
+
+The 1.6.9.13 label-anchored Qwen pass remained fail-closed on the unseen corpus when the model still confused a goods quantity with shipment gross weight. This checkpoint adds a bounded deterministic fallback without changing Foundation 6 authority.
+
+- The fallback is eligible only after the existing shipment-weight role-collision gate has triggered and the dedicated Qwen shipment-weight recovery produced no evidence-gated candidate for that role.
+- Native text is preferred; OCR text is secondary. The emitted candidate retains `NATIVE_TEXT` or `OCR` evidence and the exact matched quote.
+- Gross requires an explicit `Gross`/`Brüt` weight-shaped expression; net requires explicit `Net`. The expression must include `KG`/weight semantics, preventing goods `Miktar/Quantity` and commercial phrases such as `Toplam Brüt Tutar` from becoming shipment-weight authority.
+- The fallback does not calculate weights, does not use goods quantity as weight, contains no supplier/invoice constants, and never writes `normalizedData` directly.
+- Qwen remains the primary extractor/recovery path. The deterministic candidate is only a fail-closed fallback and still enters the ordinary Foundation 6 candidate → resolution → validation → promotion path.
+
+### 1.6.9.15 — Canonical-layout labelled shipment-weight evidence fallback
+
+The 1.6.9.14 fallback remained fail-closed on the Eryem unseen case because the explicit `BRÜT KG` note was not recoverable from the page-level native/OCR text strings even though canonical layout evidence may preserve it as lines or positioned words.
+
+- The bounded shipment-weight fallback now searches all canonical evidence surfaces in order: page native text, page OCR text, canonical lines, then same-row windows reconstructed from positioned canonical words.
+- The authority rule is unchanged: a candidate still requires an explicit `Gross`/`Brüt`/`Net` weight-shaped expression with KG/weight semantics. Nearby arbitrary numbers, goods quantities, packaging counts and commercial `Brüt Tutar` totals do not qualify.
+- Canonical-word reconstruction is evidence recovery, not inference: values are never calculated or copied from goods quantity. The matched quote and `NATIVE_TEXT`/`OCR` source are retained on the ordinary Foundation 6 candidate.
+- Qwen remains primary. This fallback is eligible only after shipment-weight role collision and after the dedicated evidence-gated Qwen recovery has no valid candidate for that role.
+- Recovery diagnostics expose which fallback fields and source types were actually emitted. No supplier/invoice constants, direct `normalizedData` writes or orchestration-agent behavior are introduced.
+
+### 1.6.9.16 — Canonical Weight Row Geometry
+
+- Fixes the canonical-word row reconstruction used only by the bounded labelled shipment-weight fallback introduced in 1.6.9.15.
+- The previous implementation mixed normalized canonical bbox coordinates with physical page height, which could collapse an entire PDF page into one synthetic row and destroy local `Gross/Brüt/Net + KG` adjacency.
+- Normalized canonical coordinates now use the same small y-band convention already used by the generic shipment candidate discovery layer; non-normalized coordinates retain the physical-page fallback.
+- Qwen remains primary. Deterministic canonical text is consulted only after a goods-quantity/shipment-weight role collision and an evidence-gated Qwen recovery fails to return that role.
+- An explicit labelled shipment-weight expression is still required. Goods quantities, package counts, arithmetic and commercial totals are not shipment-weight authority.
+- Foundation 6 remains the only resolution/promotion authority; there are no supplier-specific rules or direct normalized-data writes.
+
+### 1.6.9.17 — Shipment Weight Evidence Source Diagnostic
+
+The 1.6.9.16 Eryem run remained fail-closed: the focused Qwen shipment-weight pass still returned the goods quantity as raw gross weight, while no labelled deterministic fallback candidate reached Foundation 6. Earlier observations also showed that the correct shipment-weight number can exist elsewhere in extraction output, so this checkpoint deliberately diagnoses **provenance and role association**, not whether a known number can be found.
+
+- Measurement-only: production extraction, candidate projection, Foundation 6 resolution and promotion are unchanged.
+- Re-runs selected frozen generalization cases through the real worker and reads the persisted canonical document plus persisted vision checkpoint.
+- Reports gross/brüt/net anchor-bearing native-text lines, OCR lines, canonical lines, positioned canonical word windows and the exact row geometry/tolerance used by the 1.6.9.16 fallback.
+- Reports the persisted recovery diagnostic and page candidate field names so we can distinguish: value visible in source, label/value geometry broken, matcher rejection, and candidate/projection loss.
+- It intentionally contains no expected shipment-weight value and does not search for a known answer. Success is evidence provenance such as an explicit Gross/Brüt/Net label connected to its visible numeric token.
+- No supplier/invoice-specific extraction rule, direct `normalizedData` write or orchestration-agent behavior is introduced.
+
+Run after rebuilding the current 1.6.9.16 worker:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E16917ShipmentWeightEvidenceSourceDiagnostic.ts
+```
+
+### 1.6.9.18 — Shipment Weight Fallback Projection Boundary
+
+The 1.6.9.17 source diagnostic proved that the canonical evidence path is healthy: an explicit labelled gross-weight row is present in native positioned text, the bounded text fallback emits `grossKg`, and the persisted vision checkpoint records that fallback field. The loss occurs after evidence recovery because the fallback manually constructed a candidate envelope with the **vision-schema** field name (`grossKg` / `netKg`) instead of the **declaration-schema** field name (`grossWeight` / `netWeight`). Unlike Qwen responses, this manually constructed envelope does not pass through `projectVisionResponseToFieldCandidates`, so the normal vision-to-declaration rename was never applied.
+
+- The bounded labelled fallback now emits `grossWeight` / `netWeight` directly into its `FieldCandidateEnvelope`, matching the declaration candidate schema consumed by Foundation 6.
+- The evidence rule is unchanged: the fallback remains eligible only after a shipment-weight/goods-quantity role collision, after dedicated evidence-gated Qwen recovery has no candidate for that role, and after an explicit Gross/Brüt/Net + weight/KG expression is matched from canonical evidence.
+- The recovered numeric value, quote and `NATIVE_TEXT` / `OCR` provenance are unchanged; no known answer, supplier identity, invoice number or arithmetic is used.
+- Qwen remains primary and Foundation 6 remains the only resolution/validation/promotion authority. No direct `normalizedData` write or orchestration agent is introduced.
+
+Contract:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E16918ShipmentWeightFallbackProjectionContract.ts
+```
+
+After the contract passes, rerun the Eryem-only 1.6.9.9 evidence diagnostic. The expected architectural signal is that the evidence-backed fallback appears as declaration field `grossWeight` in the run/Foundation 6 candidate path while the goods quantity remains independently resolved. Then run the full unseen semantic matrix before any further tuning.

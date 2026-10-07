@@ -52,6 +52,8 @@ export interface InvoiceVisionCheckpoint {
     shipmentWeightRecoveryDecision?: string;
     shipmentWeightRecoveryReturnedFields: string[];
     shipmentWeightRecoveryError?: string;
+    shipmentWeightTextFallbackReturnedFields: string[];
+    shipmentWeightTextFallbackSources: string[];
   };
 }
 
@@ -95,6 +97,120 @@ export async function executeInvoiceVisionByPage(params: {
   const failedPages: Array<{ pageNumber: number; error: string }> = [];
 
   let goodsLineOffset = 0;
+
+  const parseLabelledWeightNumber = (raw: string): number | undefined => {
+    const token = raw.trim().replace(/\s+/g, "");
+    if (!/^\d[\d.,]*$/.test(token)) return undefined;
+    const comma = token.lastIndexOf(",");
+    const dot = token.lastIndexOf(".");
+    let normalized = token;
+    if (comma >= 0 && dot >= 0) {
+      const decimalIndex = Math.max(comma, dot);
+      const decimalDigits = token.length - decimalIndex - 1;
+      if (decimalDigits === 1 || decimalDigits === 2) {
+        normalized = token.slice(0, decimalIndex).replace(/[.,]/g, "") + "." + token.slice(decimalIndex + 1);
+      } else {
+        normalized = token.replace(/[.,]/g, "");
+      }
+    } else if (comma >= 0 || dot >= 0) {
+      const separator = comma >= 0 ? "," : ".";
+      const index = token.lastIndexOf(separator);
+      const digits = token.length - index - 1;
+      normalized = digits === 3 ? token.replace(/[.,]/g, "") : token.replace(separator, ".");
+    }
+    const value = Number(normalized);
+    return Number.isFinite(value) && value >= 0 ? value : undefined;
+  };
+
+  const labelledShipmentWeightFallback = (text: string | undefined, role: "grossKg" | "netKg"): { value: number; quote: string } | undefined => {
+    if (!text?.trim()) return undefined;
+    const label = role === "grossKg" ? "(?:brüt|brut|gross)" : "(?:net)";
+    // Require a weight-shaped label/value expression. This deliberately does
+    // not match commercial phrases such as "Toplam Brüt Tutar" because an
+    // unrelated word may not occur between the role label and numeric token.
+    const patterns = [
+      new RegExp(`\\b${label}\\s+(?:weight|ağırlık|agirlik)\\s*[:=\\-]?\\s*([0-9][0-9.,]*)\\s*(?:kg|kgs|kilogram|kilograms)?\\b`, "i"),
+      new RegExp(`\\b${label}\\s+(?:kg|kgs|kilogram|kilograms)\\s*[:=\\-]?\\s*([0-9][0-9.,]*)\\b`, "i"),
+      new RegExp(`\\b${label}\\s*[:=\\-]?\\s*([0-9][0-9.,]*)\\s*(?:kg|kgs|kilogram|kilograms)\\b`, "i")
+    ];
+    for (const pattern of patterns) {
+      const match = pattern.exec(text);
+      if (!match?.[1]) continue;
+      const value = parseLabelledWeightNumber(match[1]);
+      if (value === undefined) continue;
+      return { value, quote: match[0].replace(/\s+/g, " ").trim() };
+    }
+    return undefined;
+  };
+
+  const canonicalPageWeightEvidenceTexts = (page: CanonicalDocument["pages"][number] | undefined): Array<{ text: string; source: "NATIVE_TEXT" | "OCR" }> => {
+    if (!page) return [];
+    const texts: Array<{ text: string; source: "NATIVE_TEXT" | "OCR" }> = [];
+    const seen = new Set<string>();
+    const push = (text: string | undefined, source: "NATIVE_TEXT" | "OCR") => {
+      const normalized = text?.replace(/\s+/g, " ").trim();
+      if (!normalized) return;
+      const key = `${source}:${normalized}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      texts.push({ text: normalized, source });
+    };
+    push(page.nativeText, "NATIVE_TEXT");
+    push(page.ocrText, "OCR");
+    for (const line of page.lines ?? []) push(line.text, line.source);
+
+    // PDF text extraction can fragment a visual note into separate words even
+    // when nativeText/lines do not preserve the reading order. Reconstruct
+    // small same-row windows from canonical positioned words as a final
+    // evidence surface. The regex still requires an explicit weight label +
+    // KG-shaped expression, so this does not turn arbitrary nearby numbers
+    // into shipment-weight authority.
+    const words = [...(page.words ?? [])].filter((word) => word.text?.trim());
+    // Canonical bbox coordinates are normalized in the IDP candidate layer.
+    // 1.6.9.15 accidentally mixed that coordinate space with page pixel/point
+    // height via Math.max(2, page.height * 0.004). On a normal PDF this makes
+    // the tolerance >= 2 while canonical y coordinates are ~0..1, collapsing
+    // essentially the whole page into one synthetic row. Preserve the same
+    // normalized geometry convention used by invoiceShipmentCandidateDiscovery.
+    const maxCanonicalY = words.reduce((max, word) => Math.max(max, word.bbox.y0, word.bbox.y1), 0);
+    const coordinatesAreNormalized = maxCanonicalY <= 2;
+    const tolerance = coordinatesAreNormalized
+      ? 0.025
+      : Math.max(2, page.height * 0.004);
+    const rows: typeof words[] = [];
+    for (const word of words.sort((a, b) => ((a.bbox.y0 + a.bbox.y1) / 2) - ((b.bbox.y0 + b.bbox.y1) / 2) || a.bbox.x0 - b.bbox.x0)) {
+      const cy = (word.bbox.y0 + word.bbox.y1) / 2;
+      let row = rows.find((candidate) => {
+        const first = candidate[0];
+        if (!first) return false;
+        const fy = (first.bbox.y0 + first.bbox.y1) / 2;
+        return Math.abs(fy - cy) <= tolerance;
+      });
+      if (!row) { row = []; rows.push(row); }
+      row.push(word);
+    }
+    for (const row of rows) {
+      row.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+      const source: "NATIVE_TEXT" | "OCR" = row.some((word) => word.source === "OCR") ? "OCR" : "NATIVE_TEXT";
+      push(row.map((word) => word.text).join(" "), source);
+    }
+    return texts;
+  };
+
+  const shipmentWeightAnchorHints = (text: string | undefined): string[] => {
+    if (!text?.trim()) return [];
+    const normalized = text.replace(/\r/g, "\n");
+    const lines = normalized.split(/\n+/).map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+    const labelPattern = /\b(?:brüt|brut|gross|net)(?:\s+(?:kg|weight|ağırlık|agirlik))?\b/i;
+    const hints: string[] = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      if (!labelPattern.test(lines[index]!)) continue;
+      const window = lines.slice(Math.max(0, index - 1), Math.min(lines.length, index + 2)).join(" | ");
+      if (window && !hints.includes(window)) hints.push(window);
+      if (hints.length >= 6) break;
+    }
+    return hints;
+  };
 
   const isRetryableAbort = (error: unknown): boolean => {
     if (!(error instanceof Error)) return false;
@@ -451,6 +567,13 @@ export async function executeInvoiceVisionByPage(params: {
       shipmentWeightRecoveryAttempted = true;
       try {
         const pageContext = params.canonicalDocument.pages.find((page) => page.pageNumber === pageNumber);
+        const weightAnchorHints = [
+          ...shipmentWeightAnchorHints(pageContext?.nativeText),
+          ...shipmentWeightAnchorHints(pageContext?.ocrText)
+        ].filter((hint, index, all) => all.indexOf(hint) === index).slice(0, 6);
+        const weightAnchorContext = weightAnchorHints.length > 0
+          ? ` Assistive label-anchor snippets located in page-local text: ${weightAnchorHints.map((hint) => `[${hint}]`).join(" ")}. These snippets are navigation hints only: verify the label and raw value against the supplied page image before returning any field.`
+          : "";
         const weightRecovery = await params.provider.extractInvoice({
           ...params.request,
           requestedFields: ["grossKg", "netKg"],
@@ -460,8 +583,9 @@ export async function executeInvoiceVisionByPage(params: {
             "Return grossKg only from a visibly labelled Gross/Brüt shipment-weight value and netKg only from a visibly labelled Net shipment-weight value.",
             "For every returned value also return shipmentWeightEvidence.grossKg/netKg with the exact visible label and rawValue token. If the label and raw token are not both visible, return null.",
             "Never use Miktar/Quantity/Qty, Koli/Package/Box/Pallet, goods-row quantities, arithmetic, or totals of goods quantities as shipment weight evidence.",
-            "Page-local native/OCR text is assistive reading context only; PAGE_IMAGE remains the semantic authority."
-          ].join(" "),
+            "Page-local native/OCR text is assistive reading context only; PAGE_IMAGE remains the semantic authority.",
+            weightAnchorContext
+          ].filter(Boolean).join(" "),
           nativeText: pageContext?.nativeText?.trim() || "",
           ocrText: pageContext?.ocrText?.trim() || "",
           documentId: `${params.segmentId}:page:${pageNumber}:shipment-weight-evidence-recovery`,
@@ -522,10 +646,48 @@ export async function executeInvoiceVisionByPage(params: {
       pageNumber,
       goodsLineOffset
     }) : undefined;
+
+    // 1.6.9.14: deterministic text is a bounded fallback, never the primary
+    // shipment-weight authority. It is considered only after a role collision
+    // triggered the Qwen recovery and Qwen still produced no evidence-gated
+    // candidate for that role. Exact Gross/Brüt/Net + KG-shaped evidence is
+    // required; generic quantities and commercial totals cannot qualify.
+    const shipmentWeightTextFallback: FieldCandidateEnvelope = { version: "1", fields: {} };
+    const shipmentWeightTextFallbackReturnedFields: string[] = [];
+    const shipmentWeightTextFallbackSources: string[] = [];
+    if (shipmentWeightRecoveryTriggered) {
+      const pageContext = params.canonicalDocument.pages.find((page) => page.pageNumber === pageNumber);
+      const evidenceTexts = canonicalPageWeightEvidenceTexts(pageContext);
+      for (const role of ["grossKg", "netKg"] as const) {
+        if ((shipmentWeightRecoveryProjected?.fields[role]?.length ?? 0) > 0) continue;
+        const matched = evidenceTexts
+          .map((entry) => ({ entry, match: labelledShipmentWeightFallback(entry.text, role) }))
+          .find((candidate) => candidate.match);
+        if (!matched?.match) continue;
+        const declarationWeightField = role === "grossKg" ? "grossWeight" : "netWeight";
+        shipmentWeightTextFallback.fields[declarationWeightField] = [{
+          candidateId: `${params.segmentId}:text-weight:${pageNumber}:${role}`,
+          field: declarationWeightField,
+          value: matched.match.value,
+          confidence: 0.98,
+          extractor: "invoice-labelled-weight-text-fallback-v2",
+          evidence: [{
+            segmentId: params.segmentId,
+            pageNumber,
+            text: matched.match.quote,
+            contentSource: matched.entry.source
+          }]
+        }];
+        shipmentWeightTextFallbackReturnedFields.push(role);
+        shipmentWeightTextFallbackSources.push(matched.entry.source);
+      }
+    }
+
     const pageProjected = mergeInvoiceCandidateSources(
       projected,
       ...(numericRecoveryProjected ? [numericRecoveryProjected] : []),
       ...(shipmentWeightRecoveryProjected ? [shipmentWeightRecoveryProjected] : []),
+      ...(Object.keys(shipmentWeightTextFallback.fields).length > 0 ? [shipmentWeightTextFallback] : []),
       ...(scalarProjected ? [scalarProjected] : []),
       ...(criticalScalarProjected ? [criticalScalarProjected] : []),
       ...(originProjected ? [originProjected] : [])
@@ -545,7 +707,8 @@ export async function executeInvoiceVisionByPage(params: {
       goodsNumericRecoveryTriggered, goodsNumericRecoveryReasons, goodsNumericRecoveryAttempted,
       goodsNumericRecoveryDecision, goodsNumericRecoveryReturnedFields, goodsNumericRecoveryError,
       shipmentWeightRecoveryTriggered, shipmentWeightRecoveryReasons, shipmentWeightRecoveryAttempted,
-      shipmentWeightRecoveryDecision, shipmentWeightRecoveryReturnedFields, shipmentWeightRecoveryError
+      shipmentWeightRecoveryDecision, shipmentWeightRecoveryReturnedFields, shipmentWeightRecoveryError,
+      shipmentWeightTextFallbackReturnedFields, shipmentWeightTextFallbackSources
     };
     checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact, extractionArtifacts: pageArtifacts, recoveryDiagnostic });
     await params.onPageCheckpoint?.({
