@@ -2825,3 +2825,63 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Expected safety effect: PML/Dermeternal incomplete HS classifications remain review-required instead of being promoted. Volta's 11-digit-vs-12-digit extraction mismatch is intentionally not guessed/fixed by this checkpoint; it remains a separate `GOODS_CODE` extraction issue.
+
+### 1.6.9.9 — Goods Numeric Evidence Diagnostic
+
+After 1.6.9.8 closed the GTIP fail-closed authority class (4/4 expected review checks), the remaining corpus showed repeated but nondeterministic goods numeric failures. Eryem retained gross-weight / quantity / line-total disagreement, while Dermeternal FOC line totals could alternate between visible zero and arithmetic-derived 1050 across real Qwen runs.
+
+This checkpoint is measurement-only. It does not alter production extraction, candidate authority, Foundation 6 resolution, promotion, or normalizedData. It reruns only the focused Eryem and Dermeternal frozen holdouts by default and records the numeric value at each observable boundary: raw Qwen model response, provider semantic artifact, run candidates, Foundation 6 candidate envelope, Foundation 6 resolution, and final normalizedData.
+
+The purpose is to distinguish a model-reading failure from candidate projection / authority / resolution loss before adding any numeric recovery. Ground truth remains measurement-only and is never supplied to Qwen. No supplier-specific rule, direct normalized write, or orchestration agent is introduced.
+
+Run:
+
+```powershell
+npm run typecheck
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1699GoodsNumericEvidenceDiagnostic.ts
+```
+
+If the script is newly added after the backend image was built, rebuild/recreate `backend` first so `/app/backend/scripts/idp` contains it.
+
+### 1.6.9.10 — Goods Numeric Semantic Recovery
+
+The 1.6.9.9 evidence diagnostic localized the remaining repeated numeric failures to the Qwen semantic extraction boundary rather than Foundation 6. In the Eryem holdout, Qwen itself emitted `grossKg=25000`, `quantity=1250`, `unitPrice=0.7`, and `lineTotal=17.5`; those values then flowed unchanged through candidate projection and Foundation 6. Dermeternal likewise showed that non-zero FOC totals originate in the model output and are not introduced by resolution/promotion.
+
+1.6.9.10 adds one bounded, conditional Qwen recovery on the same page image when the primary goods extraction is semantically suspicious: either `quantity * unitPrice` materially disagrees with the extracted line total, or an explicitly FOC/free-of-charge row has a non-zero extracted payable total. Arithmetic is only an anomaly trigger/corroboration signal; it never writes or calculates the authoritative value. The recovery re-reads visible table headers/row alignment, receives page-local native/OCR text only as assistive reading context, and may also re-read labelled shipment gross/net weights. It explicitly keeps adjacent packaging-count columns (Koli/Package/Box/Pallet) separate from the commercial Miktar/Quantity column, and interprets locale-specific thousands/decimal separators before returning JSON numbers (for example Turkish/European `17.500,00` -> `17500`). It must not derive shipment weights from goods quantities.
+
+Only fields actually returned by the recovery replace their primary Qwen counterparts before ordinary candidate projection. The resulting values still pass through the unchanged Foundation 6 resolver, validation and promotion path. Missing/uncertain recovery values remain fail-closed. No supplier, invoice number, known answer, or layout-specific rule is introduced. This checkpoint advances the extraction skill to `invoice-extraction-v9` and does not introduce an orchestration agent or a direct `normalizedData` write path.
+
+### Product E2E 1.6.9.11 — Table-Column & Shipment-Weight Evidence Recovery
+
+1.6.9.11 hardens the bounded 1.6.9.10 goods-numeric recovery after the unseen corpus showed that a second Qwen read could still map an adjacent packaging count to goods quantity and could leave a goods quantity masquerading as shipment gross weight.
+
+- The focused recovery now asks Qwen for exact visible provenance alongside numeric values: goods numeric `header/rawValue` evidence and shipment-weight `label/rawValue` evidence.
+- The provider enforces this evidence only for the bounded `goods-numeric-semantic-recovery` document. Primary extraction behavior is not globally rewritten.
+- Packaging headers (`Koli`, package, box, carton, pallet/palet, container) cannot authorize `goodsLines[].quantity`; quantity must be backed by a commercial quantity header such as `Miktar`/`Quantity`/`Qty`.
+- `grossKg`/`netKg` survive recovery only when their exact visible evidence label carries the corresponding gross/brüt or net semantic role. Goods quantity is never promoted as shipment weight merely because it is numeric or expressed in KG.
+- Locale normalization is applied to the exact evidence token after Qwen establishes its semantic role, so values such as European thousands/decimal formatting preserve magnitude without arithmetic becoming extraction authority.
+- Arithmetic remains anomaly detection/corroboration only. FOC/free-of-charge commercial semantics remain authoritative over multiplication.
+- Qwen remains the semantic reader of the page image; page-local text is assistive context. Foundation 6 remains the only resolution/validation/promotion authority.
+- No supplier/invoice-specific rule and no direct `normalizedData` write is introduced.
+
+Contract:
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E16911TableColumnShipmentWeightEvidenceRecoveryContract.ts
+```
+
+After the contract passes, rerun the Eryem-only 1.6.9.9 evidence diagnostic before the full semantic matrix. The expected architectural signal is not a hard-coded value; it is that the recovery artifact exposes a commercial quantity backed by a quantity-column header/raw token and a shipment gross weight backed by an explicit gross/brüt label/raw token.
+
+### 1.6.9.12 — Shipment Weight Role-Collision Recovery
+
+The unseen-corpus Eryem diagnostic proved that table-column evidence recovery correctly canonicalized the commercial quantity from visible `Miktar` evidence, while independent scalar passes could still reuse the same commercial quantity as shipment gross/net weight. This checkpoint adds a bounded, general role-collision recovery boundary.
+
+- A shipment-weight candidate that is numerically identical to an evidence-backed recovered goods quantity is treated only as a suspicion trigger, never as proof of the correct weight.
+- The triggered recovery asks Qwen only for `grossKg` / `netKg` and requires exact visible `shipmentWeightEvidence` labels and raw tokens.
+- `Gross/Brüt` evidence is required for gross weight and `Net` evidence for net weight; goods-table `Miktar/Quantity/Qty`, packaging counts and arithmetic cannot authorize shipment weights.
+- Colliding unlabeled weight candidates are suppressed. If the focused pass cannot return labelled evidence, the field remains unresolved/absent rather than promoting the goods quantity as shipment weight.
+- PAGE_IMAGE remains semantic authority; page-local native/OCR text is assistive context only.
+- Foundation 6 remains the only resolver/validation/promotion authority. No supplier/invoice hardcodes and no direct `normalizedData` writes are introduced.

@@ -6,7 +6,7 @@
  */
 import { INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE } from "./invoiceExtractionKnowledge.js";
 
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v8" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v10" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
@@ -42,6 +42,10 @@ Shape:
   "origin": null,
   "grossKg": null,
   "netKg": null,
+  "shipmentWeightEvidence": {
+    "grossKg": { "label": null, "rawValue": null },
+    "netKg": { "label": null, "rawValue": null }
+  },
   "criticalScalarEvidence": {
     "invoiceDate": { "label": null, "rawValue": null },
     "currency": { "label": null, "rawValue": null }
@@ -55,7 +59,12 @@ Shape:
       "unit": null,
       "unitPrice": null,
       "lineTotal": null,
-      "origin": null
+      "origin": null,
+      "evidence": {
+        "quantity": { "header": null, "rawValue": null, "unit": null },
+        "unitPrice": { "header": null, "rawValue": null },
+        "lineTotal": { "header": null, "rawValue": null }
+      }
     }
   ]
 }
@@ -69,8 +78,8 @@ Rules:
 4. Normalize well-supported semantic values to the requested contract: dates as YYYY-MM-DD, currencies as ISO-4217 codes, countries/origins as ISO-3166-1 alpha-2 when unambiguous, and common commercial units to a stable uppercase unit token. Preserve the source meaning; if normalization is uncertain, return null.
 5. Weight fields grossKg/netKg are kilograms. Convert an explicitly labelled source unit only when the conversion is unambiguous (for example 87000 g -> 87 kg). Do not infer a unit from an unlabeled number.
 6. Goods origin means explicit goods origin/menşe, not seller/buyer/address/destination/bank country.
-7. Each goodsLines object is one commercial goods row. Interpret table headers, spatial layout and row semantics together. description, quantity, unit, unitPrice and lineTotal must describe the same commercial row. Packaging/shipment counts such as pallet/palet, koli/package, box/kutu or container are not goods quantity/unit unless the commercial row explicitly uses them.
-8. Use arithmetic only as corroboration, never as the sole reason to swap column roles. If both 1 x 560 and 560 x 1 fit the total, use headers/layout/unit evidence; otherwise leave the ambiguous fields null.
+7. Each goodsLines object is one commercial goods row. Interpret table headers, spatial layout and row semantics together. description, quantity, unit, unitPrice and lineTotal must describe the same commercial row. Packaging/shipment counts such as pallet/palet, koli/package, box/kutu or container are not goods quantity/unit unless the commercial row explicitly uses them. When packaging-count and commercial-quantity columns are adjacent (for example Koli next to Miktar/Quantity), keep their column roles separate: a value under Koli/Package belongs to packaging, while goodsLines[].quantity must come from the commercial Miktar/Quantity column together with its visible unit.
+8. Locale-aware magnitude is part of reading the visible value: in a document using Turkish/European formatting, a token such as 17.500,00 means 17500, not 17.5; in an English-format document 17,500.00 means 17500. Use arithmetic only as corroboration, never as the sole reason to swap column roles. If both 1 x 560 and 560 x 1 fit the total, use headers/layout/unit evidence; otherwise leave the ambiguous fields null.
 9. A numeric-looking product/catalog/model code is not an HS/GTIP merely because it has 6, 8, 10 or 12 digits. Populate hsCode only when the document semantically identifies the value as HS/HSN/GTIP/tariff/customs code or equivalent.
 10. Read the whole page, including notes/general explanations; GTIP/HS, origin, delivery term and weights may appear outside the goods table.
 11. Preserve visible goods descriptions and do not translate them.
@@ -80,6 +89,6 @@ Rules:
 15. When a page contains multiple dates, assign invoiceDate only from the date whose visible label/context identifies the invoice/document issue-date role. If that role cannot be distinguished from the other dates, return invoiceDate as null rather than choosing the first, nearest or only convenient date.
 16. For a non-null invoiceDate, criticalScalarEvidence.invoiceDate.label and rawValue must reproduce the visible label/context and the visible raw date token that support that exact value. Do not invent, paraphrase, repair or normalize these evidence strings. If you cannot provide both from the page, return invoiceDate as null and both evidence members as null.
 17. For a non-null currency, criticalScalarEvidence.currency.label and rawValue must reproduce visible page text that identifies the invoice monetary currency and its raw token/code. Do not infer currency only from locale, seller/buyer country or a currency symbol whose meaning is ambiguous. If the currency cannot be grounded in visible text, return currency as null and both evidence members as null.
-18. criticalScalarEvidence is provenance, not an additional extraction field. Keep it limited to invoiceDate and currency; goods-line extraction behavior is unchanged.
+18. criticalScalarEvidence is provenance, not an additional extraction field. Keep it limited to invoiceDate and currency. shipmentWeightEvidence and goodsLines[].evidence are provenance for focused evidence-recovery passes; when supplied, copy their label/header/rawValue tokens from visible page text rather than paraphrasing them.
 19. Critical-scalar uncertainty is field-local. If invoiceDate or currency is null or lacks valid visible evidence, continue extracting every other independently supported field on the page, including goodsLines, grossKg, netKg, origin, deliveryTerm and identifiers. Never null, suppress or downgrade unrelated supported fields merely because invoiceDate or currency is unsupported.
 `.trim();

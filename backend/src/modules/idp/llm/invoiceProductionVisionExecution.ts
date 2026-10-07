@@ -40,6 +40,18 @@ export interface InvoiceVisionCheckpoint {
     originRecoveryDecision?: string;
     originRecoveryReturned: boolean;
     originRecoveryError?: string;
+    goodsNumericRecoveryTriggered: boolean;
+    goodsNumericRecoveryReasons: string[];
+    goodsNumericRecoveryAttempted: boolean;
+    goodsNumericRecoveryDecision?: string;
+    goodsNumericRecoveryReturnedFields: string[];
+    goodsNumericRecoveryError?: string;
+    shipmentWeightRecoveryTriggered: boolean;
+    shipmentWeightRecoveryReasons: string[];
+    shipmentWeightRecoveryAttempted: boolean;
+    shipmentWeightRecoveryDecision?: string;
+    shipmentWeightRecoveryReturnedFields: string[];
+    shipmentWeightRecoveryError?: string;
   };
 }
 
@@ -161,6 +173,12 @@ export async function executeInvoiceVisionByPage(params: {
     let originRecoveryDecision: string | undefined;
     let originRecoveryReturned = false;
     let originRecoveryError: string | undefined;
+    let goodsNumericRecoveryTriggered = false;
+    let goodsNumericRecoveryReasons: string[] = [];
+    let goodsNumericRecoveryAttempted = false;
+    let goodsNumericRecoveryDecision: string | undefined;
+    let goodsNumericRecoveryReturnedFields: string[] = [];
+    let goodsNumericRecoveryError: string | undefined;
     const pageArtifacts: InvoiceLlmExtractionArtifact[] = [];
     // 1.6.8.30: persist every recovery model execution, including fail-closed
     // zero-field responses, so real-Qwen failures remain diagnosable.
@@ -337,6 +355,136 @@ export async function executeInvoiceVisionByPage(params: {
       }
     }
 
+    // 1.6.9.10: bounded semantic recovery for suspicious goods numerics.
+    // Trigger only when the primary Qwen row is internally inconsistent
+    // (quantity * unitPrice != lineTotal) or explicitly carries a free-of-charge
+    // marker with a non-zero payable total. This is a second Qwen read of the
+    // same page image, aided by page-local text; arithmetic is a trigger/check,
+    // never an authority. Recovered values replace only the fields Qwen actually
+    // returned, then continue through the ordinary F6 candidate path.
+    const fieldValue = (field: string): unknown => response?.fields.find((item) => item.field === field)?.value;
+    const quantities = Array.isArray(fieldValue("goodsLines[].quantity")) ? fieldValue("goodsLines[].quantity") as unknown[] : [];
+    const unitPrices = Array.isArray(fieldValue("goodsLines[].unitPrice")) ? fieldValue("goodsLines[].unitPrice") as unknown[] : [];
+    const lineTotals = Array.isArray(fieldValue("goodsLines[].lineTotal")) ? fieldValue("goodsLines[].lineTotal") as unknown[] : [];
+    const descriptions = Array.isArray(fieldValue("goodsLines[].description")) ? fieldValue("goodsLines[].description") as unknown[] : [];
+    const numericRowCount = Math.max(quantities.length, unitPrices.length, lineTotals.length, descriptions.length);
+    for (let index = 0; index < numericRowCount; index += 1) {
+      const quantity = typeof quantities[index] === "number" ? quantities[index] as number : undefined;
+      const unitPrice = typeof unitPrices[index] === "number" ? unitPrices[index] as number : undefined;
+      const lineTotal = typeof lineTotals[index] === "number" ? lineTotals[index] as number : undefined;
+      if (quantity !== undefined && unitPrice !== undefined && lineTotal !== undefined) {
+        const expected = quantity * unitPrice;
+        const tolerance = Math.max(0.01, Math.abs(lineTotal) * 0.005);
+        if (Math.abs(expected - lineTotal) > tolerance) goodsNumericRecoveryReasons.push(`ROW_${index}_ARITHMETIC_INCONSISTENT`);
+      }
+      const description = typeof descriptions[index] === "string" ? descriptions[index] as string : "";
+      if (/\b(?:FOC|FREE\s+OF\s+CHARGE|NO\s+CHARGE)\b/i.test(description) && typeof lineTotal === "number" && lineTotal !== 0) {
+        goodsNumericRecoveryReasons.push(`ROW_${index}_FREE_OF_CHARGE_NONZERO_TOTAL`);
+      }
+    }
+    goodsNumericRecoveryReasons = [...new Set(goodsNumericRecoveryReasons)];
+    goodsNumericRecoveryTriggered = goodsNumericRecoveryReasons.length > 0;
+
+    let numericRecoveryResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
+    if (goodsNumericRecoveryTriggered) {
+      goodsNumericRecoveryAttempted = true;
+      try {
+        const pageContext = params.canonicalDocument.pages.find((page) => page.pageNumber === pageNumber);
+        const numericRecovery = await params.provider.extractInvoice({
+          ...params.request,
+          requestedFields: ["grossKg", "netKg", "goodsLines[].description", "goodsLines[].quantity", "goodsLines[].unit", "goodsLines[].unitPrice", "goodsLines[].lineTotal"],
+          focusInstruction: [
+            "This is a focused goods-numeric semantic recovery pass triggered by an internally suspicious primary extraction.",
+            "Re-read the visible commercial table from the supplied page image using its headers and row alignment; the page-local text is assistive reading context only.",
+            "Resolve every numeric cell by its visible column header before returning it. Adjacent packaging columns such as Koli/Package/Box/Pallet are packaging counts, not goods quantity. goodsLines[].quantity must come from the commercial Miktar/Quantity column and stay paired with its visible unit.",
+            "For every returned goods numeric, also return goodsLines[].evidence with the exact visible header and rawValue token from the same row: quantity {header,rawValue,unit}, unitPrice {header,rawValue}, lineTotal {header,rawValue}. Do not paraphrase headers or repair rawValue. If the header/raw token cannot be identified, return that numeric as null.",
+            "For each commercial row, return the visibly supported quantity, unit, unit price and payable line total from that same row. Do not calculate a line total merely from quantity times unit price and do not move values between rows or columns.",
+            "Interpret thousands and decimal separators from the document's visible formatting convention before producing JSON numbers. For Turkish/European formatting, 25.000 means 25000 and 17.500,00 means 17500; for English formatting, 25,000 and 17,500.00 mean the corresponding thousands values. Never collapse a thousands-formatted monetary total such as 17.500,00 to 17.5.",
+            "FOC/free-of-charge is commercial evidence: if a row is explicitly free of charge, read the actual payable total shown for that row and never replace a visible zero/blank-free total with quantity multiplied by unit price.",
+            "grossKg/netKg are shipment-level labelled weights only; never derive them from goods quantity or arithmetic. For each returned shipment weight also return shipmentWeightEvidence.grossKg/netKg with the exact visible label and rawValue. A goods-table Miktar/Quantity header is never gross/net weight evidence.",
+            "If a numeric role or value cannot be read confidently from the page, return null for it rather than guessing."
+          ].join(" "),
+          nativeText: pageContext?.nativeText?.trim() || "",
+          ocrText: pageContext?.ocrText?.trim() || "",
+          documentId: `${params.segmentId}:page:${pageNumber}:goods-numeric-semantic-recovery`,
+          evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+        }, [image]);
+        goodsNumericRecoveryDecision = numericRecovery.decision;
+        goodsNumericRecoveryReturnedFields = numericRecovery.fields.map((field) => field.field);
+        pushArtifact(numericRecovery.extractionArtifact);
+        if (numericRecovery.fields.length > 0) {
+          numericRecoveryResponse = numericRecovery;
+          const replacementFields = new Set(numericRecovery.fields.map((field) => field.field).filter((field) =>
+            field === "grossKg" || field === "netKg" || field.startsWith("goodsLines[].")
+          ));
+          response = { ...response, fields: response.fields.filter((field) => !replacementFields.has(field.field)) };
+        }
+      } catch (error) {
+        goodsNumericRecoveryError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    // 1.6.9.12: if a shipment weight is numerically identical to a recovered
+    // commercial quantity, treat that as a role-collision signal. Re-read only
+    // labelled shipment weights. The dedicated pass is evidence-gated by the
+    // provider, so a Miktar/Quantity token can never become gross/net weight.
+    const recoveredQuantities = numericRecoveryResponse?.fields.find((field) => field.field === "goodsLines[].quantity")?.value;
+    const recoveredQuantityValues = Array.isArray(recoveredQuantities)
+      ? recoveredQuantities.filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+      : [];
+    const candidateWeightValues = [
+      ...response.fields.filter((field) => field.field === "grossKg" || field.field === "netKg"),
+      ...(scalarResponse?.fields.filter((field) => field.field === "grossKg" || field.field === "netKg") ?? [])
+    ];
+    let shipmentWeightRecoveryReasons = candidateWeightValues
+      .filter((field) => typeof field.value === "number" && recoveredQuantityValues.some((quantity) => Math.abs(quantity - (field.value as number)) < 1e-9))
+      .map((field) => `${field.field.toUpperCase()}_EQUALS_GOODS_QUANTITY`);
+    shipmentWeightRecoveryReasons = [...new Set(shipmentWeightRecoveryReasons)];
+    const shipmentWeightRecoveryTriggered = shipmentWeightRecoveryReasons.length > 0;
+    let shipmentWeightRecoveryAttempted = false;
+    let shipmentWeightRecoveryDecision: string | undefined;
+    let shipmentWeightRecoveryReturnedFields: string[] = [];
+    let shipmentWeightRecoveryError: string | undefined;
+    let shipmentWeightRecoveryResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
+
+    if (shipmentWeightRecoveryTriggered) {
+      shipmentWeightRecoveryAttempted = true;
+      try {
+        const pageContext = params.canonicalDocument.pages.find((page) => page.pageNumber === pageNumber);
+        const weightRecovery = await params.provider.extractInvoice({
+          ...params.request,
+          requestedFields: ["grossKg", "netKg"],
+          focusInstruction: [
+            "This is a focused shipment-weight evidence recovery pass triggered because a previously extracted shipment weight collides numerically with a goods-table quantity.",
+            "Inspect the entire supplied page image, especially notes, totals, shipment summaries, headers and footers, only for explicit gross/brüt and net shipment weights.",
+            "Return grossKg only from a visibly labelled Gross/Brüt shipment-weight value and netKg only from a visibly labelled Net shipment-weight value.",
+            "For every returned value also return shipmentWeightEvidence.grossKg/netKg with the exact visible label and rawValue token. If the label and raw token are not both visible, return null.",
+            "Never use Miktar/Quantity/Qty, Koli/Package/Box/Pallet, goods-row quantities, arithmetic, or totals of goods quantities as shipment weight evidence.",
+            "Page-local native/OCR text is assistive reading context only; PAGE_IMAGE remains the semantic authority."
+          ].join(" "),
+          nativeText: pageContext?.nativeText?.trim() || "",
+          ocrText: pageContext?.ocrText?.trim() || "",
+          documentId: `${params.segmentId}:page:${pageNumber}:shipment-weight-evidence-recovery`,
+          evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+        }, [image]);
+        shipmentWeightRecoveryDecision = weightRecovery.decision;
+        shipmentWeightRecoveryReturnedFields = weightRecovery.fields.map((field) => field.field);
+        pushArtifact(weightRecovery.extractionArtifact);
+        shipmentWeightRecoveryResponse = weightRecovery;
+
+        // Once the role collision is established, unlabeled colliding weights
+        // are not authoritative. Remove them from primary/scalar sources; only
+        // evidence-gated labelled recovery values may replace them.
+        const collidingRoles = new Set(candidateWeightValues
+          .filter((field) => typeof field.value === "number" && recoveredQuantityValues.some((quantity) => Math.abs(quantity - (field.value as number)) < 1e-9))
+          .map((field) => field.field));
+        response = { ...response, fields: response.fields.filter((field) => !collidingRoles.has(field.field)) };
+        if (scalarResponse) scalarResponse = { ...scalarResponse, fields: scalarResponse.fields.filter((field) => !collidingRoles.has(field.field)) };
+      } catch (error) {
+        shipmentWeightRecoveryError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
     const projected = projectVisionResponseToFieldCandidates({
       response,
       segmentId: params.segmentId,
@@ -361,8 +509,23 @@ export async function executeInvoiceVisionByPage(params: {
       pageNumber,
       goodsLineOffset
     }) : undefined;
+
+    const numericRecoveryProjected = numericRecoveryResponse ? projectVisionResponseToFieldCandidates({
+      response: numericRecoveryResponse,
+      segmentId: params.segmentId,
+      pageNumber,
+      goodsLineOffset
+    }) : undefined;
+    const shipmentWeightRecoveryProjected = shipmentWeightRecoveryResponse ? projectVisionResponseToFieldCandidates({
+      response: shipmentWeightRecoveryResponse,
+      segmentId: params.segmentId,
+      pageNumber,
+      goodsLineOffset
+    }) : undefined;
     const pageProjected = mergeInvoiceCandidateSources(
       projected,
+      ...(numericRecoveryProjected ? [numericRecoveryProjected] : []),
+      ...(shipmentWeightRecoveryProjected ? [shipmentWeightRecoveryProjected] : []),
       ...(scalarProjected ? [scalarProjected] : []),
       ...(criticalScalarProjected ? [criticalScalarProjected] : []),
       ...(originProjected ? [originProjected] : [])
@@ -378,7 +541,11 @@ export async function executeInvoiceVisionByPage(params: {
       scalarRecoveryAttempted, scalarRecoveryDecision, scalarRecoveryReturnedFields, scalarRecoveryError,
       criticalScalarRecoveryRequestedFields, criticalScalarRecoveryAttempted, criticalScalarRecoveryDecision,
       criticalScalarRecoveryReturnedFields, criticalScalarRecoveryError,
-      originRecoveryAttempted, originRecoveryDecision, originRecoveryReturned, originRecoveryError
+      originRecoveryAttempted, originRecoveryDecision, originRecoveryReturned, originRecoveryError,
+      goodsNumericRecoveryTriggered, goodsNumericRecoveryReasons, goodsNumericRecoveryAttempted,
+      goodsNumericRecoveryDecision, goodsNumericRecoveryReturnedFields, goodsNumericRecoveryError,
+      shipmentWeightRecoveryTriggered, shipmentWeightRecoveryReasons, shipmentWeightRecoveryAttempted,
+      shipmentWeightRecoveryDecision, shipmentWeightRecoveryReturnedFields, shipmentWeightRecoveryError
     };
     checkpoints.push({ pageNumber, decision: response.decision, candidateCount, extractionArtifact: response.extractionArtifact, extractionArtifacts: pageArtifacts, recoveryDiagnostic });
     await params.onPageCheckpoint?.({

@@ -16,6 +16,13 @@ function stripFence(value: string): string {
 }
 
 
+type NaturalFieldEvidence = {
+  header?: unknown;
+  label?: unknown;
+  rawValue?: unknown;
+  unit?: unknown;
+};
+
 type NaturalGoodsLine = {
   productCode?: unknown;
   description?: unknown;
@@ -25,6 +32,11 @@ type NaturalGoodsLine = {
   unitPrice?: unknown;
   lineTotal?: unknown;
   origin?: unknown;
+  evidence?: {
+    quantity?: NaturalFieldEvidence;
+    unitPrice?: NaturalFieldEvidence;
+    lineTotal?: NaturalFieldEvidence;
+  };
 };
 
 type NaturalCriticalScalarEvidence = {
@@ -43,6 +55,10 @@ type NaturalInvoice = {
   origin?: unknown;
   grossKg?: unknown;
   netKg?: unknown;
+  shipmentWeightEvidence?: {
+    grossKg?: NaturalFieldEvidence;
+    netKg?: NaturalFieldEvidence;
+  };
   criticalScalarEvidence?: {
     invoiceDate?: NaturalCriticalScalarEvidence;
     currency?: NaturalCriticalScalarEvidence;
@@ -51,6 +67,71 @@ type NaturalInvoice = {
 };
 
 const GOODS_PREFIX = "goodsLines[].";
+
+function evidenceText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function parseLocaleNumericEvidence(raw: unknown): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw !== "string") return undefined;
+  const match = raw.replace(/\u00a0/g, " ").match(/[-+]?\d[\d\s.,]*/);
+  if (!match) return undefined;
+  let token = match[0]!.replace(/\s+/g, "");
+  const comma = token.lastIndexOf(",");
+  const dot = token.lastIndexOf(".");
+  if (comma >= 0 && dot >= 0) {
+    const decimal = comma > dot ? "," : ".";
+    const thousands = decimal === "," ? "." : ",";
+    token = token.split(thousands).join("").replace(decimal, ".");
+  } else if (comma >= 0 || dot >= 0) {
+    const sep = comma >= 0 ? "," : ".";
+    const parts = token.split(sep);
+    // A single separator followed by exactly three digits is a thousands
+    // grouping when the integer side is non-zero and no second grouping exists.
+    // Evidence such as 0.700 remains decimal; 25.000 becomes 25000.
+    if (parts.length === 2 && parts[0] !== "0" && /^\d{3}$/.test(parts[1] ?? "")) token = parts.join("");
+    else if (parts.length > 2 && parts.slice(1).every((part) => /^\d{3}$/.test(part))) token = parts.join("");
+    else token = token.replace(sep, ".");
+  }
+  const value = Number(token);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function isPackagingHeader(header: string): boolean {
+  return /\b(?:koli|package|packages|box|boxes|carton|cartons|pallet|palet|container|containers)\b/i.test(header);
+}
+
+function isQuantityHeader(header: string): boolean {
+  return /\b(?:miktar|quantity|qty|amount)\b/i.test(header) && !isPackagingHeader(header);
+}
+
+function isUnitPriceHeader(header: string): boolean {
+  return /(?:birim\s*fiyat|unit\s*price|price\s*\/\s*unit|unit\s*cost)/i.test(header);
+}
+
+function isLineTotalHeader(header: string): boolean {
+  return /(?:mal\s*hizmet\s*tutar|line\s*total|amount|tutar|total)/i.test(header) && !isQuantityHeader(header);
+}
+
+function isWeightLabel(label: string, role: "grossKg" | "netKg"): boolean {
+  return role === "grossKg"
+    ? /\b(?:brüt|brut|gross)(?:\s+(?:kg|weight|ağırlık|agirlik))?\b/i.test(label)
+    : /\b(?:net)(?:\s+(?:kg|weight|ağırlık|agirlik))?\b/i.test(label);
+}
+
+function evidenceBackedRecoveryValue(
+  line: NaturalGoodsLine,
+  key: "quantity" | "unitPrice" | "lineTotal"
+): number | null | undefined {
+  const evidence = line.evidence?.[key];
+  const header = evidenceText(evidence?.header) ?? evidenceText(evidence?.label);
+  const rawValue = evidence?.rawValue;
+  if (!header || rawValue === undefined || rawValue === null) return null;
+  const roleOk = key === "quantity" ? isQuantityHeader(header) : key === "unitPrice" ? isUnitPriceHeader(header) : isLineTotalHeader(header);
+  if (!roleOk) return null;
+  return parseLocaleNumericEvidence(rawValue) ?? null;
+}
 
 function naturalScalar(value: unknown): string | number | null | undefined {
   if (value === null || value === undefined) return value;
@@ -73,79 +154,20 @@ export function canonicalizeVisionInvoiceNumber(value: unknown): unknown {
 }
 
 
-const MONTH_NUMBER_BY_TOKEN: Readonly<Record<string, string>> = {
-  JAN: "01", JANUARY: "01",
-  FEB: "02", FEBRUARY: "02",
-  MAR: "03", MARCH: "03",
-  APR: "04", APRIL: "04",
-  MAY: "05",
-  JUN: "06", JUNE: "06",
-  JUL: "07", JULY: "07",
-  AUG: "08", AUGUST: "08",
-  SEP: "09", SEPT: "09", SEPTEMBER: "09",
-  OCT: "10", OCTOBER: "10",
-  NOV: "11", NOVEMBER: "11",
-  DEC: "12", DECEMBER: "12"
-};
-
-function fourDigitEvidenceYear(raw: string): string | undefined {
-  if (/^20\d{2}$/.test(raw)) return raw;
-  if (/^\d{2}$/.test(raw)) return `20${raw}`;
-  return undefined;
-}
-
-export function normalizeCriticalScalarEvidenceDate(raw: string): string | undefined {
-  const token = raw
-    .trim()
-    .replace(/,/g, " ")
-    .replace(/(\d{1,2})(?:st|nd|rd|th)\b/gi, "$1")
-    .replace(/\s+/g, " ");
+function normalizeEvidenceDate(raw: string): string | undefined {
+  const token = raw.trim();
   let match = token.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
   if (match) return `${match[1]}-${match[2]!.padStart(2, "0")}-${match[3]!.padStart(2, "0")}`;
   match = token.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);
   if (match) return `${match[3]}-${match[2]!.padStart(2, "0")}-${match[1]!.padStart(2, "0")}`;
-
-  // Common invoice evidence also uses textual month names, ordinal days and
-  // two-digit years (for example 16-Sep-26 or June 05th, 2026). Normalize
-  // only structurally unambiguous day/month-name/year shapes; this does not
-  // infer whether an arbitrary date is the invoice issue date.
-  match = token.match(/\b(\d{1,2})[-\s]([A-Za-z]{3,9})[-\s](\d{2}|20\d{2})\b/);
-  if (match) {
-    const month = MONTH_NUMBER_BY_TOKEN[match[2]!.toUpperCase()];
-    const year = fourDigitEvidenceYear(match[3]!);
-    if (month && year) return `${year}-${month}-${match[1]!.padStart(2, "0")}`;
-  }
-  match = token.match(/\b([A-Za-z]{3,9})[-\s](\d{1,2})[-\s](\d{2}|20\d{2})\b/);
-  if (match) {
-    const month = MONTH_NUMBER_BY_TOKEN[match[1]!.toUpperCase()];
-    const year = fourDigitEvidenceYear(match[3]!);
-    if (month && year) return `${year}-${month}-${match[2]!.padStart(2, "0")}`;
-  }
   return undefined;
 }
 
-export function normalizeCriticalScalarEvidenceCurrency(raw: string): string | undefined {
-  const token = raw.trim().toUpperCase().replace(/\s+/g, " ");
-  if (token === "TL" || token === "₺") return "TRY";
-  if (token === "€") return "EUR";
-  if (token === "£") return "GBP";
+function normalizeEvidenceCurrency(raw: string): string | undefined {
+  const token = raw.trim().toUpperCase();
+  if (token === "TL") return "TRY";
   if (/^[A-Z]{3}$/.test(token)) return token;
-
-  // Explicit currency words are unambiguous monetary evidence. This remains
-  // a general vocabulary mapping, not a supplier/layout rule. Bare $/¥ stay
-  // unsupported because they can denote more than one currency.
-  const named: Array<[RegExp, string]> = [
-    [/\bEUROS?\b/, "EUR"],
-    [/\bUS\s+DOLLARS?\b|\bU\.?S\.?\s*DOLLARS?\b/, "USD"],
-    [/\bPOUNDS?\s+STERLING\b/, "GBP"],
-    [/\bTURKISH\s+LIRAS?\b|\bTURK\s+LIRASI\b/, "TRY"]
-  ];
-  for (const [pattern, code] of named) if (pattern.test(token)) return code;
-
-  // Accept an explicit ISO code inside visible evidence such as "Total EUR"
-  // or "Unit Price(USD)". Multiple different codes are ambiguous.
-  const codes = [...new Set(token.match(/\b[A-Z]{3}\b/g) ?? [])];
-  return codes.length === 1 ? codes[0] : undefined;
+  return undefined;
 }
 
 export function criticalScalarEvidenceSupportsValue(
@@ -158,20 +180,8 @@ export function criticalScalarEvidenceSupportsValue(
   const label = typeof evidence.label === "string" ? evidence.label.trim() : "";
   const rawValue = typeof evidence.rawValue === "string" ? evidence.rawValue.trim() : "";
   if (!label || !rawValue || typeof value !== "string") return false;
-
-  // Compare semantic normal forms on BOTH sides. Qwen is allowed to return the
-  // visible invoice spelling (14.08.2026, June 05th 2026, EURO...) while the
-  // evidence quote can use the same or another equivalent visible spelling.
-  // Previously only evidence was normalized, causing valid grounded values to
-  // fail the provider gate before candidate projection.
-  if (field === "invoiceDate") {
-    const evidenceDate = normalizeCriticalScalarEvidenceDate(rawValue);
-    const valueDate = normalizeCriticalScalarEvidenceDate(value);
-    return Boolean(evidenceDate && valueDate && evidenceDate === valueDate);
-  }
-  const evidenceCurrency = normalizeCriticalScalarEvidenceCurrency(rawValue);
-  const valueCurrency = normalizeCriticalScalarEvidenceCurrency(value);
-  return Boolean(evidenceCurrency && valueCurrency && evidenceCurrency === valueCurrency);
+  if (field === "invoiceDate") return normalizeEvidenceDate(rawValue) === value.trim();
+  return normalizeEvidenceCurrency(rawValue) === value.trim().toUpperCase();
 }
 
 export function criticalScalarEvidenceQuote(parsed: NaturalInvoice, field: "invoiceDate" | "currency"): string | undefined {
@@ -199,10 +209,21 @@ export function adaptNaturalInvoiceResponse(
     let value: unknown;
     if (requestedField.startsWith(GOODS_PREFIX)) {
       const key = requestedField.slice(GOODS_PREFIX.length) as keyof NaturalGoodsLine;
-      value = goodsLines.map((line) => naturalScalar(line[key]) ?? null);
+      const evidenceRecovery = request.documentId.endsWith(":goods-numeric-semantic-recovery");
+      value = goodsLines.map((line) => {
+        if (evidenceRecovery && (key === "quantity" || key === "unitPrice" || key === "lineTotal")) {
+          return evidenceBackedRecoveryValue(line, key) ?? null;
+        }
+        return naturalScalar(line[key]) ?? null;
+      });
       if ((value as unknown[]).every((item) => item === null)) continue;
     } else {
       value = naturalScalar(parsed[requestedField as keyof NaturalInvoice]);
+      if ((request.documentId.endsWith(":goods-numeric-semantic-recovery") || request.documentId.endsWith(":shipment-weight-evidence-recovery")) && (requestedField === "grossKg" || requestedField === "netKg")) {
+        const evidence = parsed.shipmentWeightEvidence?.[requestedField];
+        const label = evidenceText(evidence?.label) ?? evidenceText(evidence?.header);
+        value = label && isWeightLabel(label, requestedField) ? parseLocaleNumericEvidence(evidence?.rawValue) : undefined;
+      }
       if (requestedField === "invoiceNumber") value = canonicalizeVisionInvoiceNumber(value);
       if (value === null || value === undefined) continue;
       if ((requestedField === "invoiceDate" || requestedField === "currency") && (!criticalScalarEvidenceQuote(parsed, requestedField) || !criticalScalarEvidenceSupportsValue(parsed, requestedField, value))) continue;
