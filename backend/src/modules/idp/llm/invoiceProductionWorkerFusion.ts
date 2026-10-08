@@ -17,6 +17,8 @@ import {
 import { executeInvoiceVisionByPage } from "./invoiceProductionVisionExecution.js";
 import { prepareInvoiceVisionCheckpoint, type PersistedInvoiceVisionCheckpoint } from "./invoiceVisionCheckpoint.js";
 import { associateExplicitGoodsUnitsFromQuantity } from "./invoiceGoodsUnitAssociation.js";
+import { planInvoiceAdaptiveRecovery } from "./invoiceAdaptiveRecoveryOrchestrator.js";
+import { executeInvoiceAdaptiveScalarRecovery } from "./invoiceAdaptiveRecoveryExecution.js";
 
 const REQUESTED_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency", "deliveryTerm",
@@ -213,13 +215,28 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       ? mergeInvoicePrimaryWithFallback(execution.candidates, deterministicFallback)
       : mergeInvoiceCandidateSources(deterministicFallback, execution.candidates);
 
+    const associatedCandidates = associateExplicitGoodsUnitsFromQuantity({
+      canonicalDocument: params.canonicalDocument,
+      segmentId: result.segmentId,
+      candidates: fusedCandidates
+    });
+    const adaptiveRecoveryPlan = planInvoiceAdaptiveRecovery(associatedCandidates);
+    const adaptiveRecoveryExecution = await executeInvoiceAdaptiveScalarRecovery({
+      canonicalDocument: params.canonicalDocument,
+      segmentId: result.segmentId,
+      pageNumbers: [...segment.pageNumbers],
+      plan: adaptiveRecoveryPlan,
+      currentCandidates: associatedCandidates,
+      provider,
+      renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
+      persistModelExtractionArtifact: params.persistModelExtractionArtifact
+    });
+
     result.data = {
       ...result.data,
-      fieldCandidates: associateExplicitGoodsUnitsFromQuantity({
-        canonicalDocument: params.canonicalDocument,
-        segmentId: result.segmentId,
-        candidates: fusedCandidates
-      }),
+      fieldCandidates: adaptiveRecoveryExecution.candidates,
+      adaptiveRecoveryAudit: adaptiveRecoveryPlan,
+      adaptiveRecoveryExecutionAudit: adaptiveRecoveryExecution.audit,
       visionCandidateAudit: {
         route: plan.route,
         checkpoints: execution.checkpoints,

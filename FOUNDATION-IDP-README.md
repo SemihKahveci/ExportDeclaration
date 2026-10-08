@@ -2974,3 +2974,122 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 After the contract passes, rerun the Eryem-only 1.6.9.9 evidence diagnostic. The expected architectural signal is that the evidence-backed fallback appears as declaration field `grossWeight` in the run/Foundation 6 candidate path while the goods quantity remains independently resolved. Then run the full unseen semantic matrix before any further tuning.
+
+### 1.7.0 — Adaptive Recovery Orchestrator (Shadow Planner)
+
+The unseen generalization matrix exposed the architectural limit of stacking unconditional invoice recoveries: a recovery that improves one layout can expand the regression surface of unrelated layouts. Foundation 7 therefore starts with a supplier-agnostic adaptive recovery planner instead of another invoice-specific patch.
+
+- Added `invoiceAdaptiveRecoverySkill.ts` (`invoice-adaptive-recovery-v1`) as the versioned reusable recovery policy. It intentionally contains general invoice semantics only; supplier names, invoice IDs and expected answers are forbidden.
+- Added `invoiceAdaptiveRecoveryOrchestrator.ts`. It observes the final evidence-backed candidate envelope and produces a bounded minimal tool plan for scalar evidence, goods/table evidence, layout/vision evidence or cross-page evidence.
+- The first checkpoint is deliberately `SHADOW`: it records `adaptiveRecoveryAudit` beside the candidate audit but does not execute recovery tools, mutate candidates, resolve fields or write `normalizedData`.
+- Initial generic triggers cover missing core identity/date/currency evidence, conflicting candidate values, incomplete HS/GTIP shape, shipment-weight/goods-quantity role collisions and goods arithmetic disagreement. Arithmetic remains corroboration only.
+- No extra "control agent" is introduced before promotion. Foundation 6 already provides the independent resolution/validation/promotion boundary; duplicating that authority with another LLM would add cost and nondeterminism without adding a stronger guarantee. A later verifier tool should be added only if the shadow corpus proves a distinct evidence-verification gap.
+- Next gate: run the frozen unseen corpus and inspect `adaptiveRecoveryAudit`. Only after the planner routes failures correctly without changing extraction results should selected tools be made executable behind strict budgets.
+
+### 1.7.1 — Adaptive Recovery Shadow Plan Observability
+
+The frozen unseen semantic matrix now reports the persisted `adaptiveRecoveryAudit` emitted by the 1.7.0 production worker fusion boundary for every segment. This is deliberately measurement-only: it does not execute a recovery tool, mutate candidates, or write `normalizedData`.
+
+Purpose: compare the planner's selected tool family/reason/fields against the independently measured failure classes before allowing adaptive orchestration to execute anything. The planner remains supplier-agnostic and Foundation 6 remains authoritative.
+
+Run with a durable console transcript in PowerShell:
+
+```powershell
+npm run typecheck
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E170AdaptiveRecoveryOrchestratorContract.ts
+
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts 2>&1 | Tee-Object -FilePath output.txt
+```
+
+Acceptance remains conservative: the shadow plan is evidence routing telemetry only; no supplier names, invoice IDs, frozen expected values, direct normalized writes, or autonomous skill mutation are introduced.
+
+### 1.7.2 — Adaptive Recovery Planner Precision
+
+The 1.7.1 unseen-corpus shadow audit showed that the planner is directionally useful but not yet precise enough to execute. It correctly routed missing scalar evidence and arithmetic disagreement, but it also treated a valid prefixed 12-digit `GTIP:` value as malformed, did not detect invoice-number/date role contamination, and did not route a populated goods row whose description alone was absent.
+
+- The planner remains `SHADOW`; no recovery tool is executed and candidate values are unchanged.
+- HS/GTIP shape detection now ignores presentation characters and asks only whether the observed candidate contains exactly 12 digits. This removes the false recovery request for values such as `GTIP:<12 digits>` while still routing incomplete 11-digit evidence.
+- A date-like fragment embedded in an invoice-number candidate is now treated as `IDENTITY_ROLE_COLLISION` and routed to bounded `SCALAR_EVIDENCE` for `invoiceNo`.
+- If a goods row is evidenced by other row fields but has no description candidate, the planner emits `MISSING_GOODS_FIELD` for that row's description and routes it to `GOODS_TABLE_EVIDENCE`.
+- The reusable recovery skill advances to `invoice-adaptive-recovery-v2`; the policy remains supplier-agnostic and contains no frozen expected values.
+- Foundation 6 remains the only resolution/validation/promotion authority. There is still no direct `normalizedData` write and no recovery execution in this checkpoint.
+
+Run the contract and frozen matrix with a durable transcript:
+
+```powershell
+npm run typecheck
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E172AdaptiveRecoveryPlannerPrecisionContract.ts
+
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts 2>&1 | Tee-Object -FilePath output-1.7.2.txt
+```
+
+Acceptance before executable recovery: the shadow plan should stop requesting recovery for already-valid prefixed 12-digit GTIP evidence, should route contaminated invoice identity separately from missing date/currency, and should identify missing goods descriptions from otherwise-populated rows. Only then should one bounded tool family be made executable at a time.
+
+### 1.7.3 — Bounded Scalar Recovery Execution
+
+1.7.2 proved that the adaptive planner can identify the remaining scalar evidence gaps without supplier-specific rules. 1.7.3 activates only the narrow `SCALAR_EVIDENCE` slice; goods/layout/cross-page planner actions remain observational until separate executors are proven.
+
+- `invoiceAdaptiveRecoveryExecution.ts` executes planner-requested `invoiceNo`, `invoiceDate`, and `currency` recovery only.
+- Recovery is PAGE_IMAGE evidence based, uses page-local native/OCR text only as assistance, and is capped at the first two pages of the invoice segment.
+- The focused prompt separates invoice identity from adjacent dates, distinguishes invoice date from due/delivery dates, and requires visible monetary evidence for currency. Uncertain fields are omitted rather than inferred.
+- A successful focused Qwen recovery replaces only that field from the earlier semantic-primary pass. Fields not recovered retain their existing candidates.
+- The executor produces ordinary candidates only. Foundation 6 remains the sole resolver/validator/promoter and the recovery path never writes `normalizedData`.
+- `GOODS_TABLE_EVIDENCE`, `LAYOUT_VISION_EVIDENCE`, and `CROSS_PAGE_EVIDENCE` actions remain shadow-only in this checkpoint.
+- No supplier/invoice-specific values or frozen ground truth are used by production recovery logic.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E173BoundedScalarRecoveryExecutionContract.ts
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts 2>&1 | Tee-Object -FilePath output-1.7.3.txt
+```
+
+Expected architectural result: missing/mixed invoice header scalars can now trigger one bounded focused semantic recovery path, while goods recovery remains unchanged and Foundation 6 authority/fail-closed behavior is preserved.
+
+### 1.7.3.2 — Bounded scalar recovery execution observability
+
+- Keeps the 1.7.3 production behavior unchanged.
+- Extends the frozen semantic failure matrix output with the persisted `adaptiveRecoveryExecutionAudit` next to the planner audit.
+- This checkpoint is measurement-only and is used to distinguish planner selection from actual bounded execution: requested fields, attempted pages, recovered fields, replaced primary fields, and failed page calls are now visible per segment.
+- No supplier/invoice-specific extraction rule, no direct `normalizedData` write, and Foundation 6 remains authoritative.
+
+
+### 1.7.3.3 — Adaptive Scalar Raw Evidence Diagnostic
+
+- Extends the frozen semantic failure matrix with persisted artifacts whose `documentId` contains `:adaptive-scalar:`.
+- Reports both the exact `rawModelResponse` and provider-validated `parsedSemanticResponse` for each bounded scalar recovery call.
+- Purpose: distinguish **model omission** from **critical-scalar evidence-gate rejection** before changing recovery behavior.
+- Measurement only: no recovery routing, candidates, Foundation 6 resolution/promotion, or `normalizedData` behavior is changed.
+- Supplier/file/invoice-specific runtime rules remain forbidden.
+
+### 1.7.4 — Adaptive Scalar Evidence Adapter
+
+The 1.7.3.3 raw-evidence diagnostic proved that the bounded scalar Qwen call is already reading the missing values correctly, while the generic provider semantic gate can still reject them. Examples include currency values backed by explicit monetary-column evidence and invoice dates backed by an explicit invoice-date label. This checkpoint fixes that boundary without weakening the primary extraction gate.
+
+The adapter exists only inside `executeInvoiceAdaptiveScalarRecovery`. It may retain only planner-requested `currency` and `invoiceDate` values when the same persisted raw response contains matching `criticalScalarEvidence`. Currency acceptance is limited to standard currency aliases visibly present in the evidence; date acceptance requires the returned scalar to be directly supported by the raw evidence value. The normal provider gate is unchanged, invoice-number recovery keeps using the existing semantic path, execution remains capped at two pages, and the resulting values are still only candidates for Foundation 6.
+
+Guardrails remain unchanged: no supplier-specific rules, no ground-truth access, no direct `normalizedData` write, no goods executor activation, and Foundation 6 remains authoritative.
+
+Verification:
+
+```powershell
+npm run typecheck 2>&1 | Tee-Object -FilePath output-1.7.4-typecheck.txt
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E174AdaptiveScalarEvidenceAdapterContract.ts `
+  2>&1 | Tee-Object -FilePath output-1.7.4-contract.txt
+
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker `
+  2>&1 | Tee-Object -FilePath output-1.7.4-recreate.txt
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts `
+  2>&1 | Tee-Object -FilePath output-1.7.4.txt
+```

@@ -234,6 +234,38 @@ async function main(): Promise<void> {
         assert(docs.every((doc) => String(doc.sourceProcessingRunId) === runId), `${testCase.id}: logical-document run ownership mismatch`);
 
         const audits = await DeclarationFieldResolutionRunModel.find({ companyId, declarationId }).lean();
+        // 1.7.1 observability: expose the persisted 1.7.0 SHADOW recovery plans
+        // from the exact production worker run. Measurement only: no tool is
+        // executed here and no candidate/normalizedData value is changed.
+        const adaptiveRecoveryAudits = ((terminal.run as any).candidates?.segments ?? [])
+          .map((segment: any) => ({
+            segmentId: segment?.segmentId,
+            documentType: segment?.documentType,
+            plan: segment?.data?.adaptiveRecoveryAudit,
+            execution: segment?.data?.adaptiveRecoveryExecutionAudit,
+          }))
+          .filter((entry: any) => entry.plan || entry.execution);
+        // 1.7.3.3 observability: inspect the exact persisted raw/parsed artifacts
+        // produced by the bounded adaptive scalar executor. This is intentionally
+        // measurement-only and lets us distinguish model omission from provider
+        // evidence-gate rejection before changing recovery behavior.
+        const adaptiveScalarArtifacts = (Array.isArray((terminal.run as any).modelExtractionArtifacts)
+          ? (terminal.run as any).modelExtractionArtifacts
+          : [])
+          .filter((artifact: any) => String(artifact?.documentId ?? "").includes(":adaptive-scalar:"))
+          .map((artifact: any) => {
+            let rawModelResponse: unknown = artifact?.rawModelResponse ?? null;
+            if (typeof rawModelResponse === "string") {
+              try { rawModelResponse = JSON.parse(rawModelResponse); } catch { /* preserve exact raw string */ }
+            }
+            return {
+              documentId: artifact?.documentId,
+              requestedFields: artifact?.requestedFields ?? [],
+              pageNumbers: artifact?.pageNumbers ?? [],
+              rawModelResponse,
+              parsedSemanticResponse: artifact?.parsedSemanticResponse ?? null,
+            };
+          });
         const assessment = classifyFailure(extractionChecks, reviewChecks);
         const result = {
           id:testCase.id,
@@ -258,7 +290,12 @@ async function main(): Promise<void> {
             total:reviewChecks.length,
             checks:reviewChecks,
           },
-          artifacts:{ logicalDocuments:docs.length, resolutionAudits:audits.length },
+          artifacts:{
+            logicalDocuments:docs.length,
+            resolutionAudits:audits.length,
+            adaptiveRecoveryAudits,
+            adaptiveScalarArtifacts,
+          },
         };
         results.push(result);
         console.log(JSON.stringify({ event:"product-e2e-1.6.9.1.case.measured", ...result }, null, 2));
