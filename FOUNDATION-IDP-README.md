@@ -3093,3 +3093,69 @@ docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-wo
 docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts `
   2>&1 | Tee-Object -FilePath output-1.7.4.txt
 ```
+
+### 1.7.5 — Grouped numeric canonicalization boundary
+
+The unseen-corpus run after 1.7.4 isolated a deterministic numeric boundary loss: a model artifact could carry a correct goods line total such as `10500` with visible evidence `10'500.00`, while the final promoted value became `10`. This checkpoint fixes that representation boundary without adding supplier-specific recovery or another model call.
+
+- `canonicalVisionValue` now accepts apostrophe (`'`) and right-single-quote (`’`) thousands grouping only when the token has strict three-digit grouping shape.
+- Examples such as `10'500.00`, `10’500.00`, `1'234'567.89`, and `26'020 KG` canonicalize to ordinary numeric candidates before Foundation 6.
+- malformed grouping such as `10'50.00` remains unchanged and therefore continues through the existing fail-closed path.
+- no ground truth is used at runtime, no supplier rule is introduced, and no code writes directly to `normalizedData`.
+- Foundation 6 remains the final resolution/validation/promotion authority.
+- GOODS_TABLE_EVIDENCE execution remains shadow-only; missing-description recovery is intentionally deferred to the next bounded checkpoint.
+
+Contract: `backend/scripts/idp/verifyProductE2E175GroupedNumericCanonicalizationContract.ts`.
+
+
+### 1.7.6 — Bounded Missing Goods Description Recovery
+
+1.7.5 left the unseen matrix at 76/81 (93.8%) with fail-closed authority at 4/4. Ningbo still had one missing goods description even though the adaptive planner requested `GOODS_TABLE_EVIDENCE` for `goodsLines.3.description` and the focused PAGE_IMAGE raw response visibly contained the row description.
+
+This checkpoint activates only the `MISSING_GOODS_FIELD` + `goodsLines.<n>.description` slice of `GOODS_TABLE_EVIDENCE`. The executor re-reads at most the first two segment pages and accepts a raw Qwen goods row only when at least two of quantity/unitPrice/lineTotal match the existing target row and that match is unique on the page. Array position, supplier identity and ground truth are not used as authority. The recovered description becomes an ordinary PAGE_IMAGE candidate and still flows through Foundation 6. GTIP and arithmetic goods recovery remain shadow-only; there is no direct normalizedData write.
+
+Verification:
+
+```powershell
+npm run typecheck 2>&1 | Tee-Object -FilePath typecheck-176.txt
+
+npm run typecheck --prefix frontend 2>&1 | Tee-Object -FilePath frontend-typecheck-176.txt
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E176BoundedMissingGoodsDescriptionRecoveryContract.ts `
+  2>&1 | Tee-Object -FilePath output-1.7.6-contract.txt
+
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker `
+  2>&1 | Tee-Object -FilePath output-1.7.6-recreate.txt
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts `
+  2>&1 | Tee-Object -FilePath output-1.7.6.txt
+```
+
+### 1.7.7 — Bounded Goods Code Recovery
+
+Foundation 7 now executes one additional planner-driven goods recovery slice for `INVALID_GTIN_SHAPE` HS/GTIP fields. The executor remains candidate-only and accepts a recovered code only when a focused `PAGE_IMAGE` Qwen pass returns exactly 12 digits and the raw row uniquely matches the existing declaration row by at least two numeric anchors (`quantity`, `unitPrice`, `lineTotal`). It never pads, truncates, completes, guesses or tariff-lookups a code. Short/long/ambiguous codes therefore remain fail-closed for Foundation 6 review. Arithmetic recovery remains shadow-only.
+
+The semantic failure matrix now exposes `goodsCodeExecution` audit data so requested/recovered fields, exact-12-digit acceptance and numeric row binding are visible in the full corpus run.
+
+Verification:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E177BoundedGoodsCodeRecoveryContract.ts
+
+docker compose -f compose.dev.yaml up -d --build --force-recreate backend idp-worker
+
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyProductE2E1691SemanticFailureMatrix.ts `
+  2>&1 | Tee-Object -FilePath output-1.7.7.txt
+```
+
+### 1.7.8 — Bounded Goods Numeric Recovery
+
+- Activates only planner-requested `GOODS_ARITHMETIC_DISAGREEMENT` recovery for `goodsLines.<n>.lineTotal`.
+- Recovery remains PAGE_IMAGE/Qwen evidence-bound and is capped at the first two segment pages.
+- A recovered row must uniquely match the existing declaration row by both quantity and unit price.
+- The recovered line total must also be arithmetically corroborated by `quantity * unitPrice`.
+- Quantity and unit price are deliberately not replaced in this checkpoint; FOC rows and unrelated numeric fields remain untouched.
+- No supplier-specific rule, direct normalized-data write, or Foundation 6 bypass is introduced.

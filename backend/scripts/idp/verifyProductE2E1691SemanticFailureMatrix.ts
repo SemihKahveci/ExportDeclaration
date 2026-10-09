@@ -243,8 +243,11 @@ async function main(): Promise<void> {
             documentType: segment?.documentType,
             plan: segment?.data?.adaptiveRecoveryAudit,
             execution: segment?.data?.adaptiveRecoveryExecutionAudit,
+            goodsDescriptionExecution: segment?.data?.adaptiveGoodsDescriptionExecutionAudit,
+            goodsCodeExecution: segment?.data?.adaptiveGoodsCodeExecutionAudit,
+            goodsNumericExecution: segment?.data?.adaptiveGoodsNumericExecutionAudit,
           }))
-          .filter((entry: any) => entry.plan || entry.execution);
+          .filter((entry: any) => entry.plan || entry.execution || entry.goodsDescriptionExecution || entry.goodsCodeExecution);
         // 1.7.3.3 observability: inspect the exact persisted raw/parsed artifacts
         // produced by the bounded adaptive scalar executor. This is intentionally
         // measurement-only and lets us distinguish model omission from provider
@@ -253,6 +256,23 @@ async function main(): Promise<void> {
           ? (terminal.run as any).modelExtractionArtifacts
           : [])
           .filter((artifact: any) => String(artifact?.documentId ?? "").includes(":adaptive-scalar:"))
+          .map((artifact: any) => {
+            let rawModelResponse: unknown = artifact?.rawModelResponse ?? null;
+            if (typeof rawModelResponse === "string") {
+              try { rawModelResponse = JSON.parse(rawModelResponse); } catch { /* preserve exact raw string */ }
+            }
+            return {
+              documentId: artifact?.documentId,
+              requestedFields: artifact?.requestedFields ?? [],
+              pageNumbers: artifact?.pageNumbers ?? [],
+              rawModelResponse,
+              parsedSemanticResponse: artifact?.parsedSemanticResponse ?? null,
+            };
+          });
+        const adaptiveGoodsDescriptionArtifacts = (Array.isArray((terminal.run as any).modelExtractionArtifacts)
+          ? (terminal.run as any).modelExtractionArtifacts
+          : [])
+          .filter((artifact: any) => String(artifact?.documentId ?? "").includes(":adaptive-goods-description:"))
           .map((artifact: any) => {
             let rawModelResponse: unknown = artifact?.rawModelResponse ?? null;
             if (typeof rawModelResponse === "string") {
@@ -295,6 +315,7 @@ async function main(): Promise<void> {
             resolutionAudits:audits.length,
             adaptiveRecoveryAudits,
             adaptiveScalarArtifacts,
+            adaptiveGoodsDescriptionArtifacts,
           },
         };
         results.push(result);

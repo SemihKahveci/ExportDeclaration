@@ -45,12 +45,18 @@ const NUMERIC_INVOICE_FIELDS = new Set([
  * unit suffix. Unrecognized text remains unchanged and therefore fails closed
  * in the existing validator/review path.
  */
-function canonicalVisionValue(field: string, value: unknown): unknown {
+export function canonicalVisionValue(field: string, value: unknown): unknown {
   if (!NUMERIC_INVOICE_FIELDS.has(field) || typeof value !== "string") return value;
   let raw = value.trim();
   if (!raw) return value;
 
   raw = raw.replace(/\s+/g, "");
+  // Apostrophe/right-single-quote grouping is common in Swiss/German commercial
+  // documents (for example 10'500.00 or 10’500.00). Treat it strictly as a
+  // thousands separator only when it forms canonical 3-digit groups.
+  if (/^[+-]?\d{1,3}(?:['’]\d{3})+(?:[.,]\d+)?(?:[A-Za-z%]+)?$/.test(raw)) {
+    raw = raw.replace(/['’]/g, "");
+  }
   const match = raw.match(/^([+-]?[0-9][0-9.,]*)(?:[A-Za-z%]+)?$/);
   if (!match) return value;
   let numeric = match[1]!;

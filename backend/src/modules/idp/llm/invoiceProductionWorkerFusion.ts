@@ -18,7 +18,12 @@ import { executeInvoiceVisionByPage } from "./invoiceProductionVisionExecution.j
 import { prepareInvoiceVisionCheckpoint, type PersistedInvoiceVisionCheckpoint } from "./invoiceVisionCheckpoint.js";
 import { associateExplicitGoodsUnitsFromQuantity } from "./invoiceGoodsUnitAssociation.js";
 import { planInvoiceAdaptiveRecovery } from "./invoiceAdaptiveRecoveryOrchestrator.js";
-import { executeInvoiceAdaptiveScalarRecovery } from "./invoiceAdaptiveRecoveryExecution.js";
+import {
+  executeInvoiceAdaptiveGoodsCodeRecovery,
+  executeInvoiceAdaptiveGoodsDescriptionRecovery,
+  executeInvoiceAdaptiveGoodsNumericRecovery,
+  executeInvoiceAdaptiveScalarRecovery
+} from "./invoiceAdaptiveRecoveryExecution.js";
 
 const REQUESTED_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "buyer", "currency", "deliveryTerm",
@@ -232,11 +237,47 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       persistModelExtractionArtifact: params.persistModelExtractionArtifact
     });
 
+    const adaptiveGoodsDescriptionExecution = await executeInvoiceAdaptiveGoodsDescriptionRecovery({
+      canonicalDocument: params.canonicalDocument,
+      segmentId: result.segmentId,
+      pageNumbers: [...segment.pageNumbers],
+      plan: adaptiveRecoveryPlan,
+      currentCandidates: adaptiveRecoveryExecution.candidates,
+      provider,
+      renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
+      persistModelExtractionArtifact: params.persistModelExtractionArtifact
+    });
+
+    const adaptiveGoodsCodeExecution = await executeInvoiceAdaptiveGoodsCodeRecovery({
+      canonicalDocument: params.canonicalDocument,
+      segmentId: result.segmentId,
+      pageNumbers: [...segment.pageNumbers],
+      plan: adaptiveRecoveryPlan,
+      currentCandidates: adaptiveGoodsDescriptionExecution.candidates,
+      provider,
+      renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
+      persistModelExtractionArtifact: params.persistModelExtractionArtifact
+    });
+
+    const adaptiveGoodsNumericExecution = await executeInvoiceAdaptiveGoodsNumericRecovery({
+      canonicalDocument: params.canonicalDocument,
+      segmentId: result.segmentId,
+      pageNumbers: [...segment.pageNumbers],
+      plan: adaptiveRecoveryPlan,
+      currentCandidates: adaptiveGoodsCodeExecution.candidates,
+      provider,
+      renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
+      persistModelExtractionArtifact: params.persistModelExtractionArtifact
+    });
+
     result.data = {
       ...result.data,
-      fieldCandidates: adaptiveRecoveryExecution.candidates,
+      fieldCandidates: adaptiveGoodsNumericExecution.candidates,
       adaptiveRecoveryAudit: adaptiveRecoveryPlan,
       adaptiveRecoveryExecutionAudit: adaptiveRecoveryExecution.audit,
+      adaptiveGoodsDescriptionExecutionAudit: adaptiveGoodsDescriptionExecution.audit,
+      adaptiveGoodsCodeExecutionAudit: adaptiveGoodsCodeExecution.audit,
+      adaptiveGoodsNumericExecutionAudit: adaptiveGoodsNumericExecution.audit,
       visionCandidateAudit: {
         route: plan.route,
         checkpoints: execution.checkpoints,
