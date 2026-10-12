@@ -48,11 +48,18 @@ type NaturalInvoice = {
   invoiceNumber?: unknown;
   invoiceDate?: unknown;
   seller?: unknown;
+  sellerAddress?: unknown;
+  sellerCountry?: unknown;
   buyer?: unknown;
+  buyerAddress?: unknown;
+  buyerCountry?: unknown;
   currency?: unknown;
+  totalAmount?: unknown;
   deliveryTerm?: unknown;
+  paymentType?: unknown;
   transportMode?: unknown;
   origin?: unknown;
+  totalPackage?: unknown;
   grossKg?: unknown;
   netKg?: unknown;
   shipmentWeightEvidence?: {

@@ -26,8 +26,9 @@ import {
 } from "./invoiceAdaptiveRecoveryExecution.js";
 
 const REQUESTED_FIELDS = [
-  "invoiceNumber", "invoiceDate", "seller", "buyer", "currency", "deliveryTerm",
-  "transportMode", "origin", "grossKg", "netKg",
+  "invoiceNumber", "invoiceDate", "seller", "sellerAddress", "sellerCountry",
+  "buyer", "buyerAddress", "buyerCountry", "currency", "totalAmount", "deliveryTerm",
+  "paymentType", "transportMode", "origin", "totalPackage", "grossKg", "netKg",
   "goodsLines[].productCode", "goodsLines[].description", "goodsLines[].hsCode",
   "goodsLines[].quantity", "goodsLines[].unit", "goodsLines[].unitPrice",
   "goodsLines[].lineTotal", "goodsLines[].origin"
@@ -63,7 +64,11 @@ export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> |
     "header.invoiceNo": "invoiceNo",
     "header.invoiceDate": "invoiceDate",
     "parties.seller.name": "parties.seller.name",
-    "parties.buyer.name": "parties.buyer.name"
+    "parties.seller.address": "parties.seller.address",
+    "parties.seller.country": "parties.seller.country",
+    "parties.buyer.name": "parties.buyer.name",
+    "parties.buyer.address": "parties.buyer.address",
+    "parties.buyer.country": "parties.buyer.country"
   };
   for (const [field, candidates] of Object.entries(source.fields)) {
     const target = fieldMap[field];

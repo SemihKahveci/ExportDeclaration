@@ -15,8 +15,13 @@ const GOODS_PREFIX = "goodsLines[].";
 const VISION_TO_DECLARATION_FIELD: Readonly<Record<string, string>> = {
   invoiceNumber: "invoiceNo",
   seller: "parties.seller.name",
+  sellerAddress: "parties.seller.address",
+  sellerCountry: "parties.seller.country",
   buyer: "parties.buyer.name",
+  buyerAddress: "parties.buyer.address",
+  buyerCountry: "parties.buyer.country",
   origin: "originCountry",
+  totalPackage: "totalPackage",
   grossKg: "grossWeight",
   netKg: "netWeight"
 };
@@ -28,6 +33,8 @@ function declarationFieldName(visionField: string): string {
 const NUMERIC_INVOICE_FIELDS = new Set([
   "grossKg",
   "netKg",
+  "totalAmount",
+  "totalPackage",
   "goodsLines[].quantity",
   "goodsLines[].unitPrice",
   "goodsLines[].lineTotal"

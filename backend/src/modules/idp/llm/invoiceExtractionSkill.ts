@@ -6,11 +6,12 @@
  */
 import { INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE } from "./invoiceExtractionKnowledge.js";
 
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v10" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v11" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
-  "invoiceNumber", "invoiceDate", "seller", "buyer", "currency",
-  "deliveryTerm", "transportMode", "origin", "grossKg", "netKg",
+  "invoiceNumber", "invoiceDate", "seller", "sellerAddress", "sellerCountry",
+  "buyer", "buyerAddress", "buyerCountry", "currency", "totalAmount",
+  "deliveryTerm", "paymentType", "transportMode", "origin", "totalPackage", "grossKg", "netKg",
   "goodsLines[].productCode", "goodsLines[].description", "goodsLines[].hsCode",
   "goodsLines[].quantity", "goodsLines[].unit", "goodsLines[].unitPrice",
   "goodsLines[].lineTotal", "goodsLines[].origin"
@@ -35,11 +36,18 @@ Shape:
   "invoiceNumber": null,
   "invoiceDate": null,
   "seller": null,
+  "sellerAddress": null,
+  "sellerCountry": null,
   "buyer": null,
+  "buyerAddress": null,
+  "buyerCountry": null,
   "currency": null,
+  "totalAmount": null,
   "deliveryTerm": null,
+  "paymentType": null,
   "transportMode": null,
   "origin": null,
+  "totalPackage": null,
   "grossKg": null,
   "netKg": null,
   "shipmentWeightEvidence": {
@@ -90,5 +98,7 @@ Rules:
 16. For a non-null invoiceDate, criticalScalarEvidence.invoiceDate.label and rawValue must reproduce the visible label/context and the visible raw date token that support that exact value. Do not invent, paraphrase, repair or normalize these evidence strings. If you cannot provide both from the page, return invoiceDate as null and both evidence members as null.
 17. For a non-null currency, criticalScalarEvidence.currency.label and rawValue must reproduce visible page text that identifies the invoice monetary currency and its raw token/code. Do not infer currency only from locale, seller/buyer country or a currency symbol whose meaning is ambiguous. If the currency cannot be grounded in visible text, return currency as null and both evidence members as null.
 18. criticalScalarEvidence is provenance, not an additional extraction field. Keep it limited to invoiceDate and currency. shipmentWeightEvidence and goodsLines[].evidence are provenance for focused evidence-recovery passes; when supplied, copy their label/header/rawValue tokens from visible page text rather than paraphrasing them.
-19. Critical-scalar uncertainty is field-local. If invoiceDate or currency is null or lacks valid visible evidence, continue extracting every other independently supported field on the page, including goodsLines, grossKg, netKg, origin, deliveryTerm and identifiers. Never null, suppress or downgrade unrelated supported fields merely because invoiceDate or currency is unsupported.
+19. Party coverage is field-local. Extract seller/buyer name, postal address and country independently when supported. A country may be normalized from an unambiguous visible postal/geographic address (for example a city/province that uniquely identifies a country), but never from supplier identity alone. If geographic evidence is ambiguous, leave country null.
+20. totalPackage means an explicitly labelled shipment/package count such as KAP ADET, TOTAL PACKAGES, CARTONS or PALLETS; it is not goods quantity. paymentType means an explicitly stated payment method/terms. totalAmount means the invoice payable/total commercial amount, not a tax subtotal or local-currency informational equivalent when the invoice currency total is visible.
+21. Critical-scalar uncertainty is field-local. If invoiceDate or currency is null or lacks valid visible evidence, continue extracting every other independently supported field on the page, including goodsLines, grossKg, netKg, origin, deliveryTerm and identifiers. Never null, suppress or downgrade unrelated supported fields merely because invoiceDate or currency is unsupported.
 `.trim();

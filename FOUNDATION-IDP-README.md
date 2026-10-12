@@ -3287,3 +3287,29 @@ This checkpoint makes both surfaces truthful without changing extraction authori
 - package-level gross/net remain package fields and are not copied into line-level weights without line evidence.
 
 Foundation 6 remains the only automatic normalized-data authority. No supplier/invoice-specific extraction rule is introduced. The next checkpoint is general source-present invoice field coverage (party addresses/countries, payment, package count/type and other fields that are visibly present in the source but not yet promoted).
+
+### 1.8.5 — General Source-Present Field Coverage
+
+Product E2E showed that correctness and source-present coverage must be measured separately from raw UI field occupancy. This checkpoint broadens the generic invoice extraction contract without supplier/invoice-specific rules.
+
+- Qwen/VLM primary extraction now requests seller/buyer address and country, invoice total, payment type and shipment package count in addition to the existing scalar/goods contract.
+- Party country is field-local and evidence-bounded: an unambiguous visible postal/geographic address may support country normalization, but supplier identity alone never does. Ambiguous geography remains null/reviewable.
+- Generic deterministic header/party fallback is now allowed to contribute seller/buyer address/country to Foundation 6 instead of discarding those already-discovered candidates.
+- Foundation 6 promotion targets now include seller/buyer address/country. Automatic writes still occur only through resolved Foundation 6 promotion.
+- Generic shipment discovery recognizes common explicit package-count labels such as `KAP ADET`, `KAP SAYISI`, `TOTAL PACKAGES`, `CARTONS` and `PALLETS`; package count remains distinct from commercial goods quantity.
+- Source authority stays explicit: fields marked document-parse are attempted only when supported by the actual source. User/settings/Evrim-owned declaration fields are not fabricated merely to increase UI occupancy. In particular, vehicle/container identifiers remain empty when the invoice does not contain them.
+- The supplied declaration-field authority matrix is treated as product requirements guidance, not as invoice-specific extraction truth. The runtime remains vendor-agnostic and fail-closed.
+
+
+### 1.8.5.1 — Source-Present Coverage Contract Hardening
+
+- Fixed the 1.8.5 acceptance contract so package-label coverage is verified by executing the generic shipment candidate discovery against synthetic `KAP ADET` and `KAP SAYISI` evidence instead of matching the implementation's regex source text.
+- This is a verification-only correction; the 1.8.5 production extraction/promotion behavior is unchanged.
+- The guard remains vendor/invoice agnostic and fails if the generic discovery no longer produces `packageInfo.totalPackage = 1` from either supported Turkish label.
+
+
+#### 1.8.5.2 — Coverage contract behavior verification fix
+
+- Replaced the remaining source-text regex assertion for English package labels with runtime behavior fixtures.
+- Package-count coverage contract now executes the real generic shipment candidate discovery for Turkish and English singular/plural labels.
+- This is a contract-only correction; production extraction behavior is unchanged.
