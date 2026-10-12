@@ -49,9 +49,33 @@ export interface NormalizedDeclaration {
     deliveryTerm?: string;
     paymentType?: string;
     origin?: string;
+    exitCountry?: string;
+    arrivalCountry?: string;
+    destinationCountry?: string;
+    tradeCountry?: string;
   };
   transport: {
     mode?: string;
+    carrier?: string;
+    departureVehicleId?: string;
+    borderVehicleId?: string;
+    vehiclePlate?: string;
+    containerNo?: string;
+    billOfLadingNo?: string;
+    cmrNo?: string;
+    awbNo?: string;
+    transportDocumentNo?: string;
+  };
+  finance?: {
+    exchangeRate?: number;
+    freight?: number;
+    insurance?: number;
+    bankInfo?: string;
+  };
+  documents?: {
+    previousDocumentNo?: string;
+    circulationDocumentNo?: string;
+    originDocumentNo?: string;
   };
   packageInfo: {
     totalPackage?: number;

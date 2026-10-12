@@ -35,6 +35,9 @@ const NUMERIC_INVOICE_FIELDS = new Set([
   "netKg",
   "totalAmount",
   "totalPackage",
+  "exchangeRate",
+  "freight",
+  "insurance",
   "goodsLines[].quantity",
   "goodsLines[].unitPrice",
   "goodsLines[].lineTotal"

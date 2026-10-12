@@ -3321,3 +3321,11 @@ Beyanname Yazım alanlarının doluluk oranı artık tek başına IDP başarıs�
 `DOCUMENT` sınıfı "her faturada zorunlu" anlamına gelmez. Alan ancak kaynak dokümanda güvenilir kanıt varsa çıkarılır; kanıt yoksa fail-closed olarak boş kalır. Özellikle gönderici/alıcı ülkesi, çıkış/varış/gideceği/ticaret yapılan ülke semantik olarak ayrı alanlardır. Birbirlerine körlemesine kopyalanmazlar. Adres/coğrafyadan ülke üretimi yalnız tartışmasız kanıtla bounded derivation olarak yapılabilir.
 
 UI grup sayaçları artık hem doküman-kaynaklı alanların doluluğunu hem toplam grup doluluğunu ayrı gösterir. Böylece Evrim, kullanıcı, ayarlar veya hesaplama kaynağından gelmesi gereken alanların boşluğu IDP extraction açığı gibi görünmez. Bu checkpoint extraction authority'yi değiştirmez ve `normalizedData` için Foundation 6 tek otomatik yazım otoritesi olmaya devam eder.
+
+### 1.8.7 — Remaining Document Field Coverage
+
+The source-authority matrix is now wired into the production invoice path for the remaining document-sourced scalar families rather than being only a UI classification. Primary Qwen/VLM extraction can emit independent exit/arrival/destination/trade countries; carrier and role-bound transport identifiers (departure/border vehicle, plate, container, B/L, CMR, AWB, transport document); exchange rate, freight, insurance and bank information; package type; and previous/circulation/origin document numbers. These candidates still pass through the normal Foundation 6 projection, resolution, validation and promotion path.
+
+Semantic roles remain independent and fail closed. Buyer country is not copied into arrival/destination/trade country; seller country is not copied into exit country. Invoice/order/SAP/reference identifiers are not reused as transport or customs-document identifiers. Freight, insurance and exchange rate require explicit source evidence and are not derived from invoice totals. Missing source evidence remains empty.
+
+The persisted normalized declaration schema and the Beyanname Yazım bridge now have explicit homes for these values, so a supported value is not lost between extraction and UI. This checkpoint is vendor-agnostic and does not introduce invoice-specific rules or direct normalizedData writes.

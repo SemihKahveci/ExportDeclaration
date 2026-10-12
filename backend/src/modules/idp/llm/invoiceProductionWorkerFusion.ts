@@ -28,7 +28,11 @@ import {
 const REQUESTED_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "sellerAddress", "sellerCountry",
   "buyer", "buyerAddress", "buyerCountry", "currency", "totalAmount", "deliveryTerm",
-  "paymentType", "transportMode", "origin", "totalPackage", "grossKg", "netKg",
+  "paymentType", "transportMode", "origin", "exitCountry", "arrivalCountry", "destinationCountry",
+  "tradeCountry", "carrier", "departureVehicleId", "borderVehicleId", "vehiclePlate", "containerNo",
+  "billOfLadingNo", "cmrNo", "awbNo", "transportDocumentNo", "exchangeRate", "freight", "insurance",
+  "bankInfo", "packageType", "totalPackage", "grossKg", "netKg", "previousDocumentNo",
+  "circulationDocumentNo", "originDocumentNo",
   "goodsLines[].productCode", "goodsLines[].description", "goodsLines[].hsCode",
   "goodsLines[].quantity", "goodsLines[].unit", "goodsLines[].unitPrice",
   "goodsLines[].lineTotal", "goodsLines[].origin"

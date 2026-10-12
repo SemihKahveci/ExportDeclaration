@@ -11,7 +11,11 @@ export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v11" as cons
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "sellerAddress", "sellerCountry",
   "buyer", "buyerAddress", "buyerCountry", "currency", "totalAmount",
-  "deliveryTerm", "paymentType", "transportMode", "origin", "totalPackage", "grossKg", "netKg",
+  "deliveryTerm", "paymentType", "transportMode", "origin", "exitCountry", "arrivalCountry",
+  "destinationCountry", "tradeCountry", "carrier", "departureVehicleId", "borderVehicleId",
+  "vehiclePlate", "containerNo", "billOfLadingNo", "cmrNo", "awbNo", "transportDocumentNo",
+  "exchangeRate", "freight", "insurance", "bankInfo", "packageType", "totalPackage", "grossKg", "netKg",
+  "previousDocumentNo", "circulationDocumentNo", "originDocumentNo",
   "goodsLines[].productCode", "goodsLines[].description", "goodsLines[].hsCode",
   "goodsLines[].quantity", "goodsLines[].unit", "goodsLines[].unitPrice",
   "goodsLines[].lineTotal", "goodsLines[].origin"
@@ -47,7 +51,28 @@ Shape:
   "paymentType": null,
   "transportMode": null,
   "origin": null,
+  "exitCountry": null,
+  "arrivalCountry": null,
+  "destinationCountry": null,
+  "tradeCountry": null,
+  "carrier": null,
+  "departureVehicleId": null,
+  "borderVehicleId": null,
+  "vehiclePlate": null,
+  "containerNo": null,
+  "billOfLadingNo": null,
+  "cmrNo": null,
+  "awbNo": null,
+  "transportDocumentNo": null,
+  "exchangeRate": null,
+  "freight": null,
+  "insurance": null,
+  "bankInfo": null,
+  "packageType": null,
   "totalPackage": null,
+  "previousDocumentNo": null,
+  "circulationDocumentNo": null,
+  "originDocumentNo": null,
   "grossKg": null,
   "netKg": null,
   "shipmentWeightEvidence": {
@@ -100,5 +125,9 @@ Rules:
 18. criticalScalarEvidence is provenance, not an additional extraction field. Keep it limited to invoiceDate and currency. shipmentWeightEvidence and goodsLines[].evidence are provenance for focused evidence-recovery passes; when supplied, copy their label/header/rawValue tokens from visible page text rather than paraphrasing them.
 19. Party coverage is field-local. Extract seller/buyer name, postal address and country independently when supported. A country may be normalized from an unambiguous visible postal/geographic address (for example a city/province that uniquely identifies a country), but never from supplier identity alone. If geographic evidence is ambiguous, leave country null.
 20. totalPackage means an explicitly labelled shipment/package count such as KAP ADET, TOTAL PACKAGES, CARTONS or PALLETS; it is not goods quantity. paymentType means an explicitly stated payment method/terms. totalAmount means the invoice payable/total commercial amount, not a tax subtotal or local-currency informational equivalent when the invoice currency total is visible.
-21. Critical-scalar uncertainty is field-local. If invoiceDate or currency is null or lacks valid visible evidence, continue extracting every other independently supported field on the page, including goodsLines, grossKg, netKg, origin, deliveryTerm and identifiers. Never null, suppress or downgrade unrelated supported fields merely because invoiceDate or currency is unsupported.
+21. Destination semantics are independent: sellerCountry, buyerCountry, exitCountry, arrivalCountry, destinationCountry, tradeCountry and origin are never aliases. Extract each only from evidence supporting that exact role. Do not copy buyerCountry into destination/arrival/tradeCountry or sellerCountry into exitCountry.
+22. Transport identifiers are role-specific. A plate, vehicle id, container, B/L, CMR, AWB or generic transport-document number must be visibly labelled or structurally unambiguous for that role. Do not reinterpret invoice/order/SAP/reference numbers as transport identifiers.
+23. Financial extras are field-local. exchangeRate requires an explicit currency/exchange-rate label; freight and insurance require explicit charge labels; bankInfo requires visible bank/account/IBAN/SWIFT evidence. Never derive these from invoice total. packageType requires an explicit packaging type.
+24. previousDocumentNo, circulationDocumentNo and originDocumentNo require explicit document-role evidence (for example previous document, ATR/EUR.1/circulation, certificate of origin). Never reuse invoice/order/dispatch identifiers merely because another document number is absent.
+25. Critical-scalar uncertainty is field-local. If invoiceDate or currency is null or lacks valid visible evidence, continue extracting every other independently supported field on the page, including goodsLines, grossKg, netKg, origin, deliveryTerm and identifiers. Never null, suppress or downgrade unrelated supported fields merely because invoiceDate or currency is unsupported.
 `.trim();
