@@ -269,10 +269,52 @@ async function main(): Promise<void> {
               parsedSemanticResponse: artifact?.parsedSemanticResponse ?? null,
             };
           });
+        // 1.7.12 observability: the 1.7.11 currency monetary-context retry uses
+        // a distinct artifact id (adaptive-scalar-currency-context), so it is not
+        // covered by the older ":adaptive-scalar:" filter above. Surface it
+        // explicitly to verify whether the bounded retry saw visible currency
+        // evidence or the model omitted it. Measurement only.
+        const adaptiveCurrencyContextArtifacts = (Array.isArray((terminal.run as any).modelExtractionArtifacts)
+          ? (terminal.run as any).modelExtractionArtifacts
+          : [])
+          .filter((artifact: any) => String(artifact?.documentId ?? "").includes(":adaptive-scalar-currency-context:"))
+          .map((artifact: any) => {
+            let rawModelResponse: unknown = artifact?.rawModelResponse ?? null;
+            if (typeof rawModelResponse === "string") {
+              try { rawModelResponse = JSON.parse(rawModelResponse); } catch { /* preserve exact raw string */ }
+            }
+            return {
+              documentId: artifact?.documentId,
+              requestedFields: artifact?.requestedFields ?? [],
+              pageNumbers: artifact?.pageNumbers ?? [],
+              rawModelResponse,
+              parsedSemanticResponse: artifact?.parsedSemanticResponse ?? null,
+            };
+          });
         const adaptiveGoodsDescriptionArtifacts = (Array.isArray((terminal.run as any).modelExtractionArtifacts)
           ? (terminal.run as any).modelExtractionArtifacts
           : [])
           .filter((artifact: any) => String(artifact?.documentId ?? "").includes(":adaptive-goods-description:"))
+          .map((artifact: any) => {
+            let rawModelResponse: unknown = artifact?.rawModelResponse ?? null;
+            if (typeof rawModelResponse === "string") {
+              try { rawModelResponse = JSON.parse(rawModelResponse); } catch { /* preserve exact raw string */ }
+            }
+            return {
+              documentId: artifact?.documentId,
+              requestedFields: artifact?.requestedFields ?? [],
+              pageNumbers: artifact?.pageNumbers ?? [],
+              rawModelResponse,
+              parsedSemanticResponse: artifact?.parsedSemanticResponse ?? null,
+            };
+          });
+        // 1.7.9 observability: expose the exact persisted raw/parsed artifacts
+        // produced by bounded goods-numeric recovery. Measurement only: this
+        // does not execute another recovery, mutate candidates, or write normalizedData.
+        const adaptiveGoodsNumericArtifacts = (Array.isArray((terminal.run as any).modelExtractionArtifacts)
+          ? (terminal.run as any).modelExtractionArtifacts
+          : [])
+          .filter((artifact: any) => String(artifact?.documentId ?? "").includes(":adaptive-goods-numeric:"))
           .map((artifact: any) => {
             let rawModelResponse: unknown = artifact?.rawModelResponse ?? null;
             if (typeof rawModelResponse === "string") {
@@ -315,7 +357,9 @@ async function main(): Promise<void> {
             resolutionAudits:audits.length,
             adaptiveRecoveryAudits,
             adaptiveScalarArtifacts,
+            adaptiveCurrencyContextArtifacts,
             adaptiveGoodsDescriptionArtifacts,
+            adaptiveGoodsNumericArtifacts,
           },
         };
         results.push(result);

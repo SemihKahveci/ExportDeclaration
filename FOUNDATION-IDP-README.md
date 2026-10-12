@@ -3159,3 +3159,39 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 - The recovered line total must also be arithmetically corroborated by `quantity * unitPrice`.
 - Quantity and unit price are deliberately not replaced in this checkpoint; FOC rows and unrelated numeric fields remain untouched.
 - No supplier-specific rule, direct normalized-data write, or Foundation 6 bypass is introduced.
+
+### 1.7.10 — Goods Numeric Row Identity Disambiguation
+
+1.7.9 proved the focused numeric recovery already reads the two Dermeternal payable rows correctly as `10500` with visible `10'500.00` evidence. Recovery still stayed empty because both rows share the same quantity (`2000`) and unit price (`5.25`), so the original quantity+unitPrice fingerprint intentionally rejected the ambiguous two-row match.
+
+This checkpoint keeps that fail-closed numeric boundary and adds one generic disambiguation step only when the numeric fingerprint has multiple matches: the target row's already-existing description must exactly match the normalized PAGE_IMAGE raw-row description. A unique description-qualified match may then proceed through the existing arithmetic corroboration (`quantity * unitPrice == lineTotal`). Missing descriptions, non-unique descriptions, or arithmetic disagreement still recover nothing. Row position, supplier identity, invoice identity and ground truth are never used. The executor still emits ordinary candidates only and Foundation 6 remains authoritative.
+
+### 1.7.11 — Bounded Currency Monetary-Context Recovery
+
+The unseen generalization matrix reached 80/81 after 1.7.10. The only remaining
+failure is a missing transaction currency on a digital invoice. The normal
+planner-driven scalar recovery executes, but its focused response can return an
+entirely empty raw scalar payload even when currency is visibly printed inside
+a monetary table rather than a header block.
+
+1.7.11 adds one bounded fallback inside the existing scalar executor. It runs
+only when `currency` was planner-requested and remains unresolved after the
+normal scalar pass. The retry inspects the first segment page only and asks Qwen
+for `currency` only, explicitly allowing visible monetary table headers/cells
+as evidence. Acceptance is still handled by the existing local raw-evidence
+adapter: the currency token must also be present in
+`criticalScalarEvidence.currency.rawValue`. No supplier/corpus value is known
+to the implementation, no currency is inferred from country/language, and the
+retry produces ordinary candidates for Foundation 6 rather than writing
+`normalizedData`.
+
+The audit now exposes `currencyContextRetryPages`. The retry has a distinct
+`adaptive-scalar-currency-context` artifact id so its raw evidence remains
+observable without weakening the primary provider semantic gate.
+
+
+### 1.7.12 — Currency Context Raw Evidence Diagnostic
+
+Reviewing the 1.7.11 checkpoint exposed an observability gap: the monetary-context retry persists its raw Qwen artifact under `adaptive-scalar-currency-context`, while the semantic failure matrix only surfaced artifacts matching the older `:adaptive-scalar:` id. The 1.7.11 retry could therefore execute without its exact raw/parsed response appearing in the full-matrix output.
+
+This checkpoint is measurement-only. The semantic matrix now exposes `adaptiveCurrencyContextArtifacts` separately, including the retry document id, requested fields, page numbers, raw model response and parsed semantic response. It does not execute another recovery, mutate candidates, change provider acceptance, or write `normalizedData`; Foundation 6 remains authoritative.

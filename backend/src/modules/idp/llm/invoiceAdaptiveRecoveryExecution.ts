@@ -102,6 +102,7 @@ export interface InvoiceAdaptiveRecoveryExecutionAudit {
   attemptedPages: number[];
   recoveredFields: string[];
   rawEvidenceAdaptedFields: string[];
+  currencyContextRetryPages: number[];
   replacedPrimaryFields: string[];
   failedPages: Array<{ pageNumber: number; error: string }>;
   foundation6Authoritative: true;
@@ -140,6 +141,7 @@ export async function executeInvoiceAdaptiveScalarRecovery(params: {
     attemptedPages: [],
     recoveredFields: [],
     rawEvidenceAdaptedFields: [],
+    currencyContextRetryPages: [],
     replacedPrimaryFields: [],
     failedPages: [],
     foundation6Authoritative: true,
@@ -199,6 +201,73 @@ export async function executeInvoiceAdaptiveScalarRecovery(params: {
       if (Object.keys(filtered.fields).length > 0) recoveredSources.push(filtered);
     } catch (error) {
       audit.failedPages.push({ pageNumber, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // A currency can be visually explicit in a monetary table even when the
+  // generic header-scalar pass returns no raw value at all (for example, a
+  // currency code printed beside a unit price). Retry once, only for an
+  // unresolved planner-requested currency, with a monetary-context focus.
+  // This remains evidence-bound: the local raw-evidence adapter still requires
+  // the returned currency token to be present in criticalScalarEvidence.
+  if (remaining.has("currency")) {
+    const pageNumber = [...params.pageNumbers].sort((a, b) => a - b)[0];
+    const page = pageNumber === undefined
+      ? undefined
+      : params.canonicalDocument.pages.find((item) => item.pageNumber === pageNumber);
+    if (page && pageNumber !== undefined) {
+      audit.currencyContextRetryPages.push(pageNumber);
+      try {
+        const image = await params.renderPage(pageNumber);
+        const response = await params.provider.extractInvoice({
+          version: "1",
+          documentId: `${params.segmentId}:adaptive-scalar-currency-context:${pageNumber}`,
+          evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE,
+          requestedFields: ["currency"],
+          nativeText: page.nativeText ?? "",
+          ocrText: page.ocrText ?? "",
+          verifiedKnowledge: [],
+          focusInstruction: [
+            "Focused recovery for transaction currency only.",
+            "Inspect visible monetary table headers and monetary cells as well as invoice header fields.",
+            "A currency code or symbol printed beside a unit price or amount is valid evidence for transaction currency.",
+            "Return currency only when the same visible page supplies the currency token in criticalScalarEvidence.currency.rawValue.",
+            "Do not infer currency from supplier identity, country, language, arithmetic or general knowledge. If no visible currency token exists, omit it."
+          ].join(" ")
+        }, [image]);
+        if (response.extractionArtifact) await params.persistModelExtractionArtifact?.(response.extractionArtifact);
+        const adapted = adaptFocusedScalarResponseFromRawEvidence({
+          response,
+          requestedVisionFields: ["currency"],
+          pageNumber
+        });
+        if (adapted.adaptedVisionFields.includes("currency") && !audit.rawEvidenceAdaptedFields.includes("currency")) {
+          audit.rawEvidenceAdaptedFields.push("currency");
+        }
+        const projected = projectVisionResponseToFieldCandidates({
+          response: adapted.response,
+          segmentId: params.segmentId,
+          pageNumber
+        });
+        const candidates = projected.fields.currency ?? [];
+        if (candidates.length > 0) {
+          recoveredSources.push({
+            version: "1",
+            fields: {
+              currency: candidates.map((candidate) => ({
+                ...candidate,
+                candidateId: `${candidate.candidateId}:adaptive-scalar-currency-context`
+              }))
+            }
+          });
+          remaining.delete("currency");
+        }
+      } catch (error) {
+        audit.failedPages.push({
+          pageNumber,
+          error: `currency-context: ${error instanceof Error ? error.message : String(error)}`
+        });
+      }
     }
   }
 
@@ -531,6 +600,17 @@ export interface InvoiceAdaptiveGoodsNumericRecoveryAudit {
   writesNormalizedData: false;
 }
 
+function normalizeGoodsRowIdentityText(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const normalized = value
+    .normalize("NFKC")
+    .toLocaleUpperCase("en-US")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  return normalized || undefined;
+}
+
 function arithmeticSupportsLineTotal(row: any): boolean {
   const quantity = numericFingerprintValue(row?.quantity);
   const unitPrice = numericFingerprintValue(row?.unitPrice);
@@ -618,10 +698,19 @@ export async function executeInvoiceAdaptiveGoodsNumericRecovery(params: {
         const targetUnitPrice = candidateNumericValue(params.currentCandidates.fields[`goodsLines.${index}.unitPrice`]);
         if (targetQuantity === undefined || targetUnitPrice === undefined) continue;
 
-        const matches = rawRows.filter((row: any) =>
+        const numericMatches = rawRows.filter((row: any) =>
           sameNumericValue(targetQuantity, row?.quantity)
           && sameNumericValue(targetUnitPrice, row?.unitPrice)
         );
+        let matches = numericMatches;
+        if (matches.length > 1) {
+          const targetDescription = params.currentCandidates.fields[`goodsLines.${index}.description`]?.[0]?.value;
+          const normalizedTargetDescription = normalizeGoodsRowIdentityText(targetDescription);
+          if (!normalizedTargetDescription) continue;
+          matches = matches.filter((row: any) =>
+            normalizeGoodsRowIdentityText(row?.description) === normalizedTargetDescription
+          );
+        }
         if (matches.length !== 1) continue;
         const row = matches[0];
         if (!arithmeticSupportsLineTotal(row)) continue;
