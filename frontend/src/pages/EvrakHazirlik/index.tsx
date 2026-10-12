@@ -175,16 +175,40 @@ export default function EvrakHazirlikPage() {
     });
   }, []);  // initial route context is intentionally consumed once
 
-  // Load docs + conflicts when selected file changes
+  // Load docs + conflicts when selected file changes. While an uploaded document
+  // is still inside the asynchronous IDP pipeline, poll the persisted document
+  // status so the UI follows Queue → Qwen → Recovery → Foundation 6 without a
+  // manual page refresh. MANUAL_REQUIRED is terminal here and is handled by the
+  // Belge İncelemesi tab rather than being polled forever.
   useEffect(() => {
     if (!selectedId) return;
-    Promise.all([
-      evrakService.getDocs(selectedId),
-      evrakService.getConflicts(selectedId),
-    ]).then(([d, c]) => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    async function refresh() {
+      const [d, c] = await Promise.all([
+        evrakService.getDocs(selectedId),
+        evrakService.getConflicts(selectedId),
+      ]);
+      if (cancelled) return;
       setDocs(d);
       setConflicts(c);
-    });
+
+      if (d.some((doc) => doc.status === 'İşleniyor')) {
+        timer = setTimeout(() => void refresh(), 3000);
+      } else {
+        // Refresh the declaration summary once processing reaches a terminal
+        // state so allReady/meta are based on the same persisted API state.
+        const refreshedFiles = await evrakService.getFiles();
+        if (!cancelled) setFiles(refreshedFiles);
+      }
+    }
+
+    void refresh();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [selectedId]);
 
   async function handlePreview(docName: string) {

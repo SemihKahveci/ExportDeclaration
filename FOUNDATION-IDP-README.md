@@ -3195,3 +3195,44 @@ observable without weakening the primary provider semantic gate.
 Reviewing the 1.7.11 checkpoint exposed an observability gap: the monetary-context retry persists its raw Qwen artifact under `adaptive-scalar-currency-context`, while the semantic failure matrix only surfaced artifacts matching the older `:adaptive-scalar:` id. The 1.7.11 retry could therefore execute without its exact raw/parsed response appearing in the full-matrix output.
 
 This checkpoint is measurement-only. The semantic matrix now exposes `adaptiveCurrencyContextArtifacts` separately, including the retry document id, requested fields, page numbers, raw model response and parsed semantic response. It does not execute another recovery, mutate candidates, change provider acceptance, or write `normalizedData`; Foundation 6 remains authoritative.
+
+### 1.8.0 — Product UI IDP Status Bridge
+
+Foundation 7's unseen corpus is closed at 5/5 invoices, 81/81 extraction checks and 4/4 fail-closed review checks. Product integration now starts from the persisted document boundary rather than exposing raw Qwen responses to the frontend.
+
+The Evrak Hazırlık screen now maps persisted document extraction state into explicit product states: `PENDING` is shown as `İşleniyor`, `SUCCESS` as `Geldi`, `MANUAL_REQUIRED` as `İnceleme`, and `FAILED` as `Eksik`. While a selected declaration contains an `İşleniyor` document, the screen polls the existing documents API every three seconds. Polling stops at a terminal state; the declaration summary is then refreshed so readiness is derived from persisted backend state. `MANUAL_REQUIRED` is deliberately terminal for polling and continues through the existing Belge İncelemesi / Foundation 6 human-review flow.
+
+This checkpoint does not expose model raw output, does not let the frontend write extracted values, and does not change Foundation 6 authority. It is the first UI bridge for the product E2E path: upload → queue → Qwen/recovery → Foundation 6 → persisted document state → UI.
+
+### 1.8.1 — Foundation 6 → Beyanname Yazım UI Bridge
+
+**Status:** implemented; host-side contract + frontend/backend typecheck pending in the target workspace.
+
+Purpose: make the existing Beyanname Yazım screen consume the persisted, Foundation-6-authoritative `Declaration.normalizedData` projection instead of leaving most declaration fields blank after IDP completion.
+
+Changes:
+- `frontend/src/api/adapters/declarationAdapter.ts`
+  - adds one bounded UI projection, `toWritingFieldValues(...)`, sourced only from persisted `Declaration.normalizedData` plus operation metadata;
+  - maps invoice number/date/currency/total, seller/buyer identity and addresses, countries, delivery/payment terms, transport, package count/type and gross/net weight to the existing `FIELD_GROUPS` labels;
+  - fixes the previous key mismatch `Toplam Fatura Tutarı` vs the actual UI field `Toplam Fatura Bedeli`;
+  - keeps goods lines sourced from persisted normalized goods and now carries quantity unit and declaration currency into the existing line table;
+  - does not read `UploadedDocument.extractedData`, raw Qwen output, recovery artifacts, or candidates directly.
+- `backend/scripts/idp/verifyProductE2E181Foundation6WritingUiBridgeContract.ts`
+  - host-side static contract proving the persisted authority boundary and key field projections.
+
+Authority / safety invariants:
+- Foundation 6 promotion remains the only automatic writer of normalized declaration values.
+- UI is a read projection of persisted `normalizedData`; it does not promote Qwen/recovery output itself.
+- Existing human-review flow remains separate and authoritative for review-required evidence.
+- No supplier-specific rule, invoice-specific expected value, or corpus hardcode is introduced.
+- No backend extraction/recovery behavior changes in 1.8.1.
+
+Next checkpoint: real Product E2E from browser upload through queue → Qwen/adaptive recovery → Foundation 6 promotion → persisted declaration read → Beyanname Yazım rendering, followed by the first genuinely unseen invoice batch.
+
+### 1.8.1.1 — Writing UI Contract Guardrail Fix
+
+- Fixed the 1.8.1 static contract so the raw-extraction guardrail inspects executable adapter source rather than matching the word `extractedData` inside comments.
+- Real property access to `extractedData` remains forbidden.
+- No production/UI behavior changed; Foundation 6 `Declaration.normalizedData` remains the writing-form authority.
+- This is a contract-only hotfix and requires no Docker rebuild.
+

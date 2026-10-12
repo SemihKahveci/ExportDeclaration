@@ -15,27 +15,54 @@ const DOC_TYPE_LABELS: Record<DocumentType, string> = {
 };
 
 export function toEvrakFile(d: BackendDeclaration, docs: UploadedDocument[]): EvrakFile {
-  const missing = docs.filter((doc) => doc.extractionStatus !== "SUCCESS").length;
-  const allReady = docs.length > 0 && missing === 0;
+  const pending = docs.filter((doc) => doc.extractionStatus === "PENDING").length;
+  const review = docs.filter((doc) => doc.extractionStatus === "MANUAL_REQUIRED").length;
+  const failed = docs.filter((doc) => doc.extractionStatus === "FAILED").length;
+  const allReady = docs.length > 0 && docs.every((doc) => doc.extractionStatus === "SUCCESS");
+
+  let meta = "Tüm evraklar işlendi";
+  if (docs.length === 0) meta = "Evrak bekleniyor";
+  else if (pending > 0) meta = `${pending} evrak IDP tarafından işleniyor`;
+  else if (review > 0) meta = `${review} evrak inceleme bekliyor`;
+  else if (failed > 0) meta = `${failed} evrak işlenemedi`;
+
   return {
     id: d._id,
     ref: refFromId(d._id),
     customer: mergeNormalizedFromApi(d.normalizedData).parties.buyer?.name ?? "—",
-    meta: missing > 0 ? `${missing} eksik evrak` : docs.length === 0 ? "Evrak bekleniyor" : "Tüm evraklar geldi",
+    meta,
     allReady
   };
 }
 
 export function toEvrakDocRows(docs: UploadedDocument[]): EvrakDocRow[] {
-  return docs.map((doc) => ({
-    id: doc._id,
-    name: DOC_TYPE_LABELS[doc.type] ?? doc.type,
-    required: "Evet",
-    status: doc.extractionStatus === "SUCCESS" ? "Geldi" : doc.extractionStatus === "FAILED" ? "Eksik" : "Koşullu",
-    source: doc.fileName ?? "Yükleme",
-    lastAction: doc.updatedAt ? new Date(doc.updatedAt).toLocaleString("tr-TR") : "—",
-    note: doc.parseErrors?.join(", ") ?? doc.extractionStatus
-  }));
+  return docs.map((doc) => {
+    const status: EvrakDocRow["status"] =
+      doc.extractionStatus === "SUCCESS" ? "Geldi" :
+      doc.extractionStatus === "FAILED" ? "Eksik" :
+      doc.extractionStatus === "MANUAL_REQUIRED" ? "İnceleme" :
+      "İşleniyor";
+
+    const note = doc.parseErrors?.length
+      ? doc.parseErrors.join(", ")
+      : doc.extractionStatus === "PENDING"
+        ? "Qwen / IDP işleme kuyruğunda veya çalışıyor"
+        : doc.extractionStatus === "MANUAL_REQUIRED"
+          ? "Foundation 6 insan kararı bekliyor"
+          : doc.extractionStatus === "SUCCESS"
+            ? "IDP tamamlandı; güvenilir alanlar beyannameye aktarıldı"
+            : "IDP işleme başarısız";
+
+    return {
+      id: doc._id,
+      name: DOC_TYPE_LABELS[doc.type] ?? doc.type,
+      required: "Evet",
+      status,
+      source: doc.fileName ?? "Yükleme",
+      lastAction: doc.updatedAt ? new Date(doc.updatedAt).toLocaleString("tr-TR") : "—",
+      note
+    };
+  });
 }
 
 export function toLegacyDocument(doc: UploadedDocument): Document {

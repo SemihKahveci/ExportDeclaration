@@ -333,7 +333,7 @@ export interface NotificationRule {
 
 // ─── Evrak Hazırlık screen ────────────────────────────────────────────────────
 
-export type DocReadinessStatus = 'Geldi' | 'Eksik' | 'Koşullu';
+export type DocReadinessStatus = 'Geldi' | 'Eksik' | 'Koşullu' | 'İşleniyor' | 'İnceleme';
 export type DocRequiredFlag = 'Evet' | 'Hayır' | 'Koşullu';
 export type ConflictType = 'Eksik Evrak' | 'Veri Uyumsuzluğu';
 

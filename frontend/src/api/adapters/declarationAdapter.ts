@@ -157,16 +157,69 @@ function hasConflict(_sourceTrace: BackendDeclaration["sourceTrace"] | undefined
   return false;
 }
 
+function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDeclaration["operation"]): Record<string, string> {
+  const h = norm.header;
+  const pkg = norm.packageInfo;
+  const seller = norm.parties.seller;
+  const buyer = norm.parties.buyer;
+  const evrim = norm.evrimHeader ?? {};
+  const text = (value: unknown): string => value == null || value === "" ? "" : String(value);
+  const number = (value: number | undefined): string => value == null ? "" : value.toLocaleString("tr-TR");
+
+  // This map is intentionally fed only from persisted Declaration.normalizedData / operation.
+  // Qwen raw output and UploadedDocument.extractedData are not writing-form authorities.
+  return {
+    "Beyanname No": op?.declarationNo ?? "",
+    "Referans No": h.invoiceNo ?? op?.ref ?? "",
+    "Tescil Tarihi": h.invoiceDate ? formatDate(h.invoiceDate) : "",
+    "Rejim": text(evrim.rejim),
+    "Rejim Kodu": text(evrim.rejimKodu),
+    "Gümrük İdaresi": text(evrim.gumrukIdaresi),
+    "Beyan Sahibi / Temsilci": text(evrim.beyanSahibi),
+    "İşlem Niteliği": op?.operationType ?? "",
+    "Beyan Türü": text(evrim.beyanTuru),
+
+    "Gönderici / İhracatçı Ünvanı": seller?.name ?? "",
+    "Gönderici / İhracatçı Adresi": seller?.address ?? "",
+    "Alıcı / İthalatçı Ünvanı": buyer?.name ?? "",
+    "Alıcı / İthalatçı Adresi": buyer?.address ?? "",
+
+    "Gönderici Ülke": seller?.country ?? "",
+    "Alıcı Ülke": buyer?.country ?? "",
+    "Çıkış Ülkesi": text(evrim.cikisUlkesi),
+    "Varış Ülkesi": text(evrim.varisUlkesi),
+    "Gideceği Ülke": text(evrim.gidecegiUlke),
+    "Menşe Ülke": norm.trade.origin ?? "",
+    "Ticaret Yapılan Ülke": text(evrim.ticaretYapilanUlke),
+    "Teslim Şekli": norm.trade.deliveryTerm ?? "",
+
+    "Taşıma Şekli": norm.transport.mode ?? op?.transportMode ?? "",
+    "Fatura No": h.invoiceNo ?? "",
+    "Fatura Tarihi": h.invoiceDate ? formatDate(h.invoiceDate) : "",
+    "Döviz Cinsi": h.currency ?? "",
+    "Toplam Fatura Bedeli": h.totalAmount == null ? "" : formatAmount(h.totalAmount, h.currency),
+    "Ödeme Şekli": norm.trade.paymentType ?? "",
+
+    "Kap Adedi": number(pkg.totalPackage),
+    "Kap Cinsi": pkg.packageType ?? "",
+    "Brüt Kilo": number(pkg.grossKg),
+    "Net Kilo": number(pkg.netKg),
+  };
+}
+
 function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
   return norm.goodsLines.map((line) => ({
     lineNo: line.lineNo,
     gtip: line.hsCode ?? "—",
     description: line.description ?? "—",
-    quantity: line.quantity != null ? `${line.quantity} ${line.unit ?? ""}`.trim() : "—",
+    quantity: line.quantity != null ? String(line.quantity) : "—",
     mense: line.origin ?? norm.trade.origin ?? "—",
     brutKg: line.grossKg != null ? line.grossKg.toLocaleString("tr-TR") : "—",
     netKg: line.netKg != null ? line.netKg.toLocaleString("tr-TR") : "—",
-    kiymet: line.lineTotal != null ? line.lineTotal.toLocaleString("tr-TR") : "—"
+    kiymet: line.lineTotal != null ? line.lineTotal.toLocaleString("tr-TR") : "—",
+    ticariTanim: line.description,
+    miktarBirimi: line.unit,
+    dovizCinsi: norm.header.currency
   }));
 }
 
@@ -232,13 +285,7 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     lineCount: norm.goodsLines.length,
     warningCount: d.status === "ERROR" ? 1 : 0,
     formFields,
-    fieldValues: {
-      "Referans No": formFields.referansNo,
-      "Gönderici / İhracatçı Ünvanı": formFields.gonderici,
-      "Alıcı / İthalatçı Ünvanı": formFields.alici,
-      "Teslim Şekli": formFields.teslimSekli,
-      "Toplam Fatura Tutarı": formFields.toplamFatura,
-    },
+    fieldValues: toWritingFieldValues(norm, op),
     fieldMappings: [],
     fields,
     lineItems: toLineItems(norm),

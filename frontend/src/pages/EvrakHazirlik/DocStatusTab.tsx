@@ -8,8 +8,9 @@ import Button from '../../components/ui/Button';
 
 function statusVariant(s: DocReadinessStatus) {
   if (s === 'Geldi')   return 'ok'   as const;
-  if (s === 'Eksik')   return 'warn' as const;
-  return 'blue' as const; // Koşullu
+  if (s === 'Eksik')    return 'red'  as const;
+  if (s === 'İnceleme') return 'warn' as const;
+  return 'blue' as const; // Koşullu / İşleniyor
 }
 
 function requiredVariant(r: DocRequiredFlag) {
@@ -40,7 +41,7 @@ export default function DocStatusTab({ docs, onPreview }: DocStatusTabProps) {
       <tbody>
         {docs.map((doc) => {
           const isMissing = doc.status === 'Eksik';
-          const canPreview = doc.status === 'Geldi';
+          const canPreview = doc.status === 'Geldi' || doc.status === 'İnceleme';
           return (
             <Tr
               key={doc.id}
