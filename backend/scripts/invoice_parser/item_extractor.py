@@ -732,8 +732,15 @@ def _prefer_structured_gtip_occurrences(page_map, gtips):
 
         words = page_map[g["page"]]
         anchors = _candidate_goods_row_anchors(words)
-        # Do not guess in multi-row layouts.  This deliberately handles invoices
-        # where one item's GTIP is disclosed separately from its sole goods row.
+        # Repaired 10/11-digit numeric tokens are intentionally weak: invoice/order/SAP
+        # identifiers can have the same shape. Never promote such a repaired token into
+        # a commercial row merely because the page happens to contain one good row.
+        # Only an exact 12-digit GTIP may use the bounded single-row re-anchor path.
+        if g.get("isExact12") is False:
+            continue
+
+        # Do not guess in multi-row layouts. This deliberately handles invoices
+        # where one exact item's GTIP is disclosed separately from its sole goods row.
         if len(anchors) == 1:
             rebound = dict(g)
             rebound["y0"] = anchors[0]["y0"]
@@ -741,6 +748,8 @@ def _prefer_structured_gtip_occurrences(page_map, gtips):
             rebound["gtipReanchorReason"] = "single-arithmetic-corroborated-goods-row"
             selected.append(rebound)
         else:
+            # Preserve an exact 12-digit occurrence for downstream evidence handling;
+            # only repaired numeric identifiers are discarded above.
             selected.append(g)
 
     return selected

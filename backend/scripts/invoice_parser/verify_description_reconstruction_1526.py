@@ -130,6 +130,15 @@ def run():
     assert len(ambiguous_selected) == 1 and abs(ambiguous_selected[0]["y0"] - 0.653) < 1e-6, ambiguous_selected
     assert "gtipReanchorReason" not in ambiguous_selected[0], ambiguous_selected
 
+    # 1.8.3.1: repaired 10/11-digit business identifiers must never be rebound
+    # onto the sole commercial row.
+    repaired_noise = _prefer_structured_gtip_occurrences({1: detached}, [
+        {"page": 1, "gtip": "009028004200", "y0": 0.20, "isExact12": False, "method": "padded_zero_10"},
+        {"page": 1, "gtip": "871110000011", "y0": 0.653, "isExact12": True, "method": "exact"},
+    ])
+    assert len(repaired_noise) == 1, repaired_noise
+    assert repaired_noise[0]["gtip"] == "871110000011", repaired_noise
+
     print({
         "event": "product-e2e-1.5.26.5.detached-gtip-goods-row-reanchoring.passed",
         "anchorBaselinePreferred": True,

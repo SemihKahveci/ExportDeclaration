@@ -3260,3 +3260,16 @@ This checkpoint intentionally does not change extraction, recovery, candidate re
 - Fixed the 1.8.2 static contract so the raw-extraction guardrail evaluates executable adapter source rather than matching the explanatory `UploadedDocument.extractedData` token inside comments.
 - Production/UI behavior is unchanged.
 - The writing UI remains restricted to persisted `Declaration.normalizedData`; direct raw extraction consumption and direct normalized writes remain forbidden.
+
+### 1.8.3 — Product Correctness Audit / Exact Goods Cardinality
+
+Real browser E2E exposed a gap that field-only corpus scoring did not detect: the Volta source contains exactly one commercial goods row, while the persisted declaration can contain additional ghost rows. The frozen Volta ground truth now records `exactGoodsLineCount: 1`; the unseen and semantic-failure gates include cardinality as an extraction check, so an otherwise-correct sentinel row cannot hide extra promoted goods rows.
+
+A diagnostic-only verifier (`verifyProductE2E183VoltaProductCorrectnessAudit.ts`) inspects the latest product-UI Volta upload, its ProcessingRun evidence, persisted Foundation 6 `normalizedData`, shipment fields and goods cardinality without writing production data. This checkpoint intentionally diagnoses the production source of ghost rows before changing fusion/recovery behavior.
+
+The Beyanname Yazım group counter also treats a populated goods table as populated rather than reporting `0/13`; this is presentation-only and does not alter extraction authority. Foundation 6 remains the only automatic normalized-data authority.
+
+
+### 1.8.3.1 — Ghost goods row hardening
+
+Product E2E exposed a cardinality bug on Volta: one commercial row was persisted as three goods lines because repaired 10/11-digit header identifiers (order/SAP numbers) were padded to 12 digits and rebound onto the page's sole arithmetic-corroborated goods row. The legacy item extractor now fails closed for repaired GTIP candidates during detached-row re-anchoring. Only exact 12-digit GTIP evidence may use the bounded single-row re-anchor path. The existing generic/supplier-independent behavior is preserved and the description-reconstruction regression verifier now covers repaired-identifier pollution. Foundation 6 remains the only automatic normalizedData authority.

@@ -174,7 +174,9 @@ function GroupSection({
 }: GroupSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
-  const filledCount   = fields.filter((f) => fieldValues[f]).length;
+  const filledCount = groupLabel === 'Kalem / Malzeme Bilgileri'
+    ? (lineItems?.length ? fields.length : 0)
+    : fields.filter((f) => fieldValues[f]).length;
   const mappedCount   = mappings.filter((m) => fields.includes(m.declarationFieldName)).length;
   const conflictCount = fields.filter((f) => conflictFields.has(f)).length;
 

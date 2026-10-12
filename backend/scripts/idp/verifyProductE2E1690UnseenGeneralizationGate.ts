@@ -189,11 +189,18 @@ async function main(): Promise<void> {
         const actualGoods = Array.isArray(nd.goodsLines) ? nd.goodsLines : [];
 
         const scalarChecks = Object.entries(testCase.expected)
-          .filter(([field, expected]) => field !== "goodsLines" && expected !== undefined)
+          .filter(([field, expected]) => field !== "goodsLines" && field !== "exactGoodsLineCount" && expected !== undefined)
           .map(([field, expected]) => scalarCheck(field, readField(nd, field), expected));
         const goodsMatches = matchGoodsLines(testCase.expected.goodsLines, actualGoods);
         const goodsChecks = goodsMatches.flatMap((match) => match.checks);
-        const extractionChecks = [...scalarChecks, ...goodsChecks];
+        const cardinalityChecks = testCase.expected.exactGoodsLineCount === undefined ? [] : [{
+          field: "goodsLines.length",
+          expected: testCase.expected.exactGoodsLineCount,
+          actual: actualGoods.length,
+          status: actualGoods.length === testCase.expected.exactGoodsLineCount ? "EXACT" : "MISMATCH",
+          passed: actualGoods.length === testCase.expected.exactGoodsLineCount,
+        }];
+        const extractionChecks = [...scalarChecks, ...goodsChecks, ...cardinalityChecks];
         const reviewChecks = testCase.expectedReviewFields.map((field) => reviewCheck(nd, field));
 
         const docs = await LogicalDocumentModel.find({ companyId, declarationId }).lean();

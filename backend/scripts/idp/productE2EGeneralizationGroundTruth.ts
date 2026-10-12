@@ -18,6 +18,8 @@ export type GeneralizationExpectedFields = {
   netWeight?: number;
   originCountry?: string;
   goodsLines: GeneralizationExpectedGoodsLine[];
+  /** Exact source commercial-row count when frozen ground truth establishes it. */
+  exactGoodsLineCount?: number;
 };
 
 export type ProductE2EGeneralizationCase = {
@@ -56,6 +58,7 @@ export const PRODUCT_E2E_GENERALIZATION_CASES: ProductE2EGeneralizationCase[] = 
       grossWeight: 87,
       netWeight: 83,
       originCountry: "TR",
+      exactGoodsLineCount: 1,
       goodsLines: [{
         descriptionContains: "PS4 GASOLINE SCOOTER (50CC) BLUE",
         hsCode: "871110000011",
