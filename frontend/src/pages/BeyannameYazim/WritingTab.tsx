@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Eye, Send, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, ExternalLink } from 'lucide-react';
 import type { BeyannameRecord, DeclarationFieldMapping } from '../../types';
 import { FIELD_GROUPS } from '../../services/declarationFieldRules';
+import { isDocumentSourcedField } from '../../services/declarationFieldSourceAuthority';
 import { documentFieldMappingService } from '../../services/documents';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
@@ -195,6 +196,10 @@ function GroupSection({
     : fields.filter((f) => fieldValues[f]).length;
   const mappedCount   = mappings.filter((m) => fields.includes(m.declarationFieldName)).length;
   const conflictCount = fields.filter((f) => conflictFields.has(f)).length;
+  const documentFields = fields.filter(isDocumentSourcedField);
+  const documentFilledCount = groupLabel === 'Kalem / Malzeme Bilgileri'
+    ? documentFields.filter((field) => goodsFieldPresence[field]).length
+    : documentFields.filter((field) => Boolean(fieldValues[field])).length;
 
   return (
     <div className="border border-line rounded-xl overflow-hidden">
@@ -220,7 +225,12 @@ function GroupSection({
           {mappedCount > 0 && (
             <span className="font-semibold text-accent">{mappedCount} eşleşti</span>
           )}
-          <span>{filledCount}/{fields.length} alan dolu</span>
+          {documentFields.length > 0 && (
+            <span title="Dokümandan gelmesi beklenen alanların mevcut doluluk görünümü; kaynak dokümanda bulunmayan alanlar hata sayılmaz.">
+              {documentFilledCount}/{documentFields.length} doküman alanı
+            </span>
+          )}
+          <span>{filledCount}/{fields.length} toplam</span>
         </div>
       </button>
 

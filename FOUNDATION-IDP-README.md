@@ -3313,3 +3313,11 @@ Product E2E showed that correctness and source-present coverage must be measured
 - Replaced the remaining source-text regex assertion for English package labels with runtime behavior fixtures.
 - Package-count coverage contract now executes the real generic shipment candidate discovery for Turkish and English singular/plural labels.
 - This is a contract-only correction; production extraction behavior is unchanged.
+
+### 1.8.6 — Source Authority & Semantic Field Matrix
+
+Beyanname Yazım alanlarının doluluk oranı artık tek başına IDP başarısı olarak yorumlanmaz. İş alanı dokümanındaki kaynak sahipliği ürün modeline taşındı ve mevcut 68 UI alanının tamamı `DOCUMENT`, `USER`, `SETTINGS`, `EVRIM`, `CALCULATED` veya operasyon bağlamı olarak sınıflandırıldı.
+
+`DOCUMENT` sınıfı "her faturada zorunlu" anlamına gelmez. Alan ancak kaynak dokümanda güvenilir kanıt varsa çıkarılır; kanıt yoksa fail-closed olarak boş kalır. Özellikle gönderici/alıcı ülkesi, çıkış/varış/gideceği/ticaret yapılan ülke semantik olarak ayrı alanlardır. Birbirlerine körlemesine kopyalanmazlar. Adres/coğrafyadan ülke üretimi yalnız tartışmasız kanıtla bounded derivation olarak yapılabilir.
+
+UI grup sayaçları artık hem doküman-kaynaklı alanların doluluğunu hem toplam grup doluluğunu ayrı gösterir. Böylece Evrim, kullanıcı, ayarlar veya hesaplama kaynağından gelmesi gereken alanların boşluğu IDP extraction açığı gibi görünmez. Bu checkpoint extraction authority'yi değiştirmez ve `normalizedData` için Foundation 6 tek otomatik yazım otoritesi olmaya devam eder.
