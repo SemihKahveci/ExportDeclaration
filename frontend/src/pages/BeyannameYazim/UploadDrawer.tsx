@@ -13,9 +13,10 @@ interface UploadDrawerProps {
   items: BeyannameListeItem[];
   preselectedRef?: string;
   onClose: () => void;
+  onUploaded?: (declarationId: string) => void;
 }
 
-export default function UploadDrawer({ open, items, preselectedRef, onClose }: UploadDrawerProps) {
+export default function UploadDrawer({ open, items, preselectedRef, onClose, onUploaded }: UploadDrawerProps) {
   const { toast } = useToast();
 
   const [customer, setCustomer] = useState('');
@@ -51,12 +52,19 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose }: U
   }
 
   async function handleSave() {
-    if (!ref || !docType) return;
+    if (!ref || !docType || !file) return;
     setSaving(true);
-    await beyannameListeService.uploadDocument({ ref, customer, docType, file, note });
-    setSaving(false);
-    toast(`Dosya yüklendi · ${docType} — ${ref}`);
-    handleClose();
+    try {
+      const uploaded = await beyannameListeService.uploadDocument({ ref, customer, docType, file, note });
+      toast(`Dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`);
+      handleClose();
+      onUploaded?.(uploaded.declarationId);
+    } catch (error) {
+      console.error(error);
+      toast('Dosya yüklenemedi');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -125,7 +133,7 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose }: U
           <Button
             variant="primary"
             onClick={handleSave}
-            disabled={!ref || !docType || saving}
+            disabled={!ref || !docType || !file || saving}
             writeCap="beyanname.write"
           >
             {saving ? 'Kaydediliyor…' : 'Kaydet'}

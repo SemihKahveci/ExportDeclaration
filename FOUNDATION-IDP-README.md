@@ -3236,3 +3236,27 @@ Next checkpoint: real Product E2E from browser upload through queue → Qwen/ada
 - No production/UI behavior changed; Foundation 6 `Declaration.normalizedData` remains the writing-form authority.
 - This is a contract-only hotfix and requires no Docker rebuild.
 
+
+### 1.8.1.1 — Writing UI Contract Guardrail Fix
+
+The 1.8.1 host-side contract originally rejected the literal word `extractedData` even when it appeared only inside a source comment explaining that raw extraction is not authoritative. The guardrail now detects actual property access instead. Production/UI behavior is unchanged.
+
+### 1.8.2 — Browser Upload → Product E2E Bridge
+
+Purpose: make the real browser upload path continue directly into the persisted IDP-status surface so the next verification is a genuine operator-visible Product E2E rather than a backend-only corpus run.
+
+Changes:
+- Beyanname Yazım upload now requires an actual file; a missing file can no longer silently produce a successful-looking toast.
+- The live upload service returns the persisted `UploadedDocument` created by the existing multipart API.
+- After a successful upload, the UI explicitly reports that IDP processing started and navigates to the matching Evrak Hazırlık declaration.
+- Evrak Hazırlık remains the asynchronous status surface from 1.8.0: `PENDING` is polled, `SUCCESS` is terminal, and `MANUAL_REQUIRED` remains routed to Foundation 6 human review.
+- Beyanname Yazım remains a read projection of persisted `Declaration.normalizedData` from 1.8.1; raw Qwen / `extractedData` is not a writing authority.
+
+This checkpoint intentionally does not change extraction, recovery, candidate resolution, promotion, or Foundation 6 authority. After the static contract passes, the acceptance test is manual browser Product E2E with one already-known corpus invoice: upload → visible processing → terminal persisted state → Beyanname Yazım populated from normalized data. Once that path passes, commit/push this checkpoint and begin the first genuinely unseen invoice batch.
+
+
+### 1.8.2.1 — Browser Product E2E Contract Guardrail Fix
+
+- Fixed the 1.8.2 static contract so the raw-extraction guardrail evaluates executable adapter source rather than matching the explanatory `UploadedDocument.extractedData` token inside comments.
+- Production/UI behavior is unchanged.
+- The writing UI remains restricted to persisted `Declaration.normalizedData`; direct raw extraction consumption and direct normalized writes remain forbidden.

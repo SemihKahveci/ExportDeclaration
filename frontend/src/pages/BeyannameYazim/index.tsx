@@ -171,6 +171,11 @@ export default function BeyannameYazimPage() {
           items={listeItems}
           preselectedRef={uploadRef}
           onClose={() => { setUploadOpen(false); setUploadRef(undefined); }}
+          onUploaded={(declarationId) => {
+            const uploadedItem = listeItems.find((item) => item.id === declarationId);
+            const uploadedRef = uploadedItem?.ref ?? uploadRef ?? "";
+            navigate(`/evrak-hazirlik?declarationId=${encodeURIComponent(declarationId)}&ref=${encodeURIComponent(uploadedRef)}`);
+          }}
         />
 
         <ReminderModal

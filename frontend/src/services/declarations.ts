@@ -101,9 +101,9 @@ export const beyannameListeService = {
     const live = await fetchBeyannameListeItems();
     return live ?? [];
   },
-  uploadDocument: async (payload: DocumentUploadPayload): Promise<void> => {
-    if (!payload.file) return;
-    await apiUploadByRef(payload.ref, payload.file, payload.docType);
+  uploadDocument: async (payload: DocumentUploadPayload) => {
+    if (!payload.file) throw new Error("Yüklenecek dosya seçilmedi");
+    return apiUploadByRef(payload.ref, payload.file, payload.docType);
   },
 };
 

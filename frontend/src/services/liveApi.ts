@@ -140,7 +140,7 @@ export async function apiPatchOperation(id: string, operation: Partial<Operation
 export async function apiUploadByRef(ref: string, file: File, docTypeLabel: string) {
   const id = await resolveDeclarationIdByRef(ref);
   if (!id) throw new Error("Beyanname bulunamadı");
-  await uploadDocument(id, file, mapDocLabelToType(docTypeLabel));
+  return uploadDocument(id, file, mapDocLabelToType(docTypeLabel));
 }
 
 export async function fetchCustomsFiles(): Promise<CustomsFile[] | null> {
