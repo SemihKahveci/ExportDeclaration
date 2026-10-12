@@ -211,6 +211,7 @@ function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
   return norm.goodsLines.map((line) => ({
     lineNo: line.lineNo,
     gtip: line.hsCode ?? "—",
+    malzemeNo: line.productCode,
     description: line.description ?? "—",
     quantity: line.quantity != null ? String(line.quantity) : "—",
     mense: line.origin ?? norm.trade.origin ?? "—",

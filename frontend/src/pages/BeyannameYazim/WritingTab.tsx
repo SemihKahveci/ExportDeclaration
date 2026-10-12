@@ -174,8 +174,24 @@ function GroupSection({
 }: GroupSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
+  const hasLineValue = (value: unknown) => value != null && value !== '' && value !== '—';
+  const goodsFieldPresence: Record<string, boolean> = {
+    'Kalem No': Boolean(lineItems?.some((item) => hasLineValue(item.lineNo))),
+    'Malzeme No': Boolean(lineItems?.some((item) => hasLineValue(item.malzemeNo))),
+    'GTİP No': Boolean(lineItems?.some((item) => hasLineValue(item.gtip))),
+    'Ticari Tanım': Boolean(lineItems?.some((item) => hasLineValue(item.ticariTanim))),
+    'Eşyanın Cinsi': Boolean(lineItems?.some((item) => hasLineValue(item.description))),
+    'Mal Tanımı': Boolean(lineItems?.some((item) => hasLineValue(item.description))),
+    'Miktar': Boolean(lineItems?.some((item) => hasLineValue(item.quantity))),
+    'Miktar Birimi': Boolean(lineItems?.some((item) => hasLineValue(item.miktarBirimi))),
+    'Kalem Menşe': Boolean(lineItems?.some((item) => hasLineValue(item.mense))),
+    'Kalem Brüt KG': Boolean(lineItems?.some((item) => hasLineValue(item.brutKg))),
+    'Kalem Net KG': Boolean(lineItems?.some((item) => hasLineValue(item.netKg))),
+    'Kalem Kıymet': Boolean(lineItems?.some((item) => hasLineValue(item.kiymet))),
+    'Kalem Döviz Cinsi': Boolean(lineItems?.some((item) => hasLineValue(item.dovizCinsi))),
+  };
   const filledCount = groupLabel === 'Kalem / Malzeme Bilgileri'
-    ? (lineItems?.length ? fields.length : 0)
+    ? fields.filter((field) => goodsFieldPresence[field]).length
     : fields.filter((f) => fieldValues[f]).length;
   const mappedCount   = mappings.filter((m) => fields.includes(m.declarationFieldName)).length;
   const conflictCount = fields.filter((f) => conflictFields.has(f)).length;

@@ -19,6 +19,7 @@ export interface Party {
 export interface GoodsLine {
   lineNo: number;
   hsCode?: string;
+  productCode?: string;
   description?: string;
   quantity?: number;
   unit?: string;
@@ -79,6 +80,7 @@ export function mergeNormalizedFromApi(raw: unknown): NormalizedDeclaration {
     ? n.goodsLines.map((row, idx) => ({
         lineNo: typeof row.lineNo === "number" ? row.lineNo : idx + 1,
         hsCode: row.hsCode,
+        productCode: row.productCode,
         description: row.description,
         quantity: row.quantity,
         unit: row.unit,

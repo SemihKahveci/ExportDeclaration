@@ -19,7 +19,7 @@ import {
 } from "@/api/adapters/operationAdapter";
 import { listDocuments, uploadDocument } from "@/api/documentApi";
 import type { DocumentType } from "@/api/types/document.types";
-import type { BeyannameListeItem, BeyannameRecord, CustomsFile, KapanicFile, TescilRecord } from "@/types";
+import type { BeyannameListeItem, BeyannameRecord, CustomsFile, DocPreviewData, KapanicFile, TescilRecord } from "@/types";
 
 /** API kullanılsın mı? Varsayılan: evet (VITE_USE_API=false ile kapatılır). */
 export function liveApiEnabled(): boolean {
@@ -208,6 +208,40 @@ export async function fetchSourceCardsById(id: string) {
     const row = await getDeclaration(id);
     const { toSourceCards } = await import("@/api/adapters/declarationAdapter");
     return toSourceCards(row);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchEvrakPreview(declarationId: string, documentId: string): Promise<DocPreviewData | null> {
+  if (!liveApiEnabled()) return null;
+  try {
+    const [declaration, docs] = await Promise.all([
+      getDeclaration(declarationId),
+      listDocuments(declarationId),
+    ]);
+    const doc = docs.find((item) => item._id === documentId);
+    if (!doc) return null;
+
+    const norm = declaration.normalizedData;
+    const normalized = (await import("@/api/types/document.types")).mergeNormalizedFromApi(norm);
+    const firstHs = normalized.goodsLines.find((line) => line.hsCode)?.hsCode ?? "—";
+    const packageCount = normalized.packageInfo.totalPackage;
+    const grossKg = normalized.packageInfo.grossKg;
+    const status = doc.extractionStatus === "SUCCESS" ? "Geldi"
+      : doc.extractionStatus === "MANUAL_REQUIRED" ? "İnceleme"
+      : doc.extractionStatus === "FAILED" ? "Eksik" : "İşleniyor";
+
+    return {
+      docName: ({ INVOICE: "Fatura", E_INVOICE_XML: "e-Fatura XML", EXPORT_INVOICE: "İhracat Faturası", PACKING_LIST: "Çeki Listesi", PROFORMA: "Proforma", BILL_OF_LADING_INSTRUCTION: "Konşimento Talimatı", OTHER: "Diğer" } as Record<string, string>)[doc.type] ?? doc.type,
+      kap: packageCount == null ? "—" : String(packageCount),
+      kilo: grossKg == null ? "—" : `${grossKg.toLocaleString("tr-TR")} KG`,
+      gtip: firstHs,
+      parseSource: "Kaynak: Foundation 6 tarafından promote edilmiş persisted normalizedData",
+      status,
+      origin: doc.fileName ?? "Yükleme",
+      lastAction: doc.updatedAt ? new Date(doc.updatedAt).toLocaleString("tr-TR") : "—",
+    };
   } catch {
     return null;
   }

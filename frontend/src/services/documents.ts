@@ -150,7 +150,13 @@ export const evrakService = {
     await delay(60);
     return (EVRAK_CONFLICTS[fileId] ?? []).map((c) => ({ ...c }));
   },
-  getPreview: async (docName: string): Promise<DocPreviewData | null> => {
+  getPreview: async (docName: string, declarationId?: string, documentId?: string): Promise<DocPreviewData | null> => {
+    if (declarationId && documentId && isMongoId(declarationId)) {
+      const live = await import('./liveApi').then((m) => m.fetchEvrakPreview(declarationId, documentId));
+      if (live !== null) return live;
+      // A live declaration must never fall back to demo preview values.
+      return null;
+    }
     await delay(40);
     return DOC_PREVIEW[docName] ?? null;
   },

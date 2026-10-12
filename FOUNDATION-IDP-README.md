@@ -3273,3 +3273,17 @@ The Beyanname Yazım group counter also treats a populated goods table as popula
 ### 1.8.3.1 — Ghost goods row hardening
 
 Product E2E exposed a cardinality bug on Volta: one commercial row was persisted as three goods lines because repaired 10/11-digit header identifiers (order/SAP numbers) were padded to 12 digits and rebound onto the page's sole arithmetic-corroborated goods row. The legacy item extractor now fails closed for repaired GTIP candidates during detached-row re-anchoring. Only exact 12-digit GTIP evidence may use the bounded single-row re-anchor path. The existing generic/supplier-independent behavior is preserved and the description-reconstruction regression verifier now covers repaired-identifier pollution. Foundation 6 remains the only automatic normalizedData authority.
+
+### 1.8.4 — Truthful Product UI Projection
+
+Product E2E showed two presentation defects that could make correct/incorrect IDP results impossible to judge from the UI. The Evrak Hazırlık preview for live Mongo-backed declarations still used legacy demo values (`18` packages, `1240 KG`, demo GTIP), and the Beyanname Yazım goods counter treated the existence of any goods row as `13/13` field coverage.
+
+This checkpoint makes both surfaces truthful without changing extraction authority:
+- live document preview is declaration/document scoped and reads only persisted `Declaration.normalizedData` plus persisted document status/metadata;
+- live declarations fail closed instead of falling back to demo preview values when live preview data cannot be loaded;
+- preview never reads raw `UploadedDocument.extractedData`;
+- goods coverage is counted per actual projected field, so one row no longer implies `13/13`;
+- `productCode` is preserved by the frontend normalized-data type/merge and projected as `Malzeme No`;
+- package-level gross/net remain package fields and are not copied into line-level weights without line evidence.
+
+Foundation 6 remains the only automatic normalized-data authority. No supplier/invoice-specific extraction rule is introduced. The next checkpoint is general source-present invoice field coverage (party addresses/countries, payment, package count/type and other fields that are visibly present in the source but not yet promoted).

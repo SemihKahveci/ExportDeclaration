@@ -211,8 +211,8 @@ export default function EvrakHazirlikPage() {
     };
   }, [selectedId]);
 
-  async function handlePreview(docName: string) {
-    const data = await evrakService.getPreview(docName);
+  async function handlePreview(doc: EvrakDocRow) {
+    const data = await evrakService.getPreview(doc.name, selectedId, doc.id);
     setPreviewData(data);
     setPreviewOpen(true);
   }

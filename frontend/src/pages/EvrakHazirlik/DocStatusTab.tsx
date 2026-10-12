@@ -21,7 +21,7 @@ function requiredVariant(r: DocRequiredFlag) {
 
 interface DocStatusTabProps {
   docs: EvrakDocRow[];
-  onPreview: (docName: string) => void;
+  onPreview: (doc: EvrakDocRow) => void;
 }
 
 export default function DocStatusTab({ docs, onPreview }: DocStatusTabProps) {
@@ -55,7 +55,7 @@ export default function DocStatusTab({ docs, onPreview }: DocStatusTabProps) {
               <Td><span className="text-muted text-[12.5px]">{doc.note}</span></Td>
               <Td>
                 {canPreview ? (
-                  <Button size="sm" icon={Eye} onClick={() => onPreview(doc.name)}>
+                  <Button size="sm" icon={Eye} onClick={() => onPreview(doc)}>
                     Görüntüle
                   </Button>
                 ) : (
