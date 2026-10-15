@@ -44,19 +44,79 @@ const NUMERIC_INVOICE_FIELDS = new Set([
 ]);
 
 /**
- * Vision models commonly serialize invoice numbers as strings (for example
- * "2", "10.00 USD", or "1.602,00 EUR"). F6 candidates must use the same
- * canonical numeric representation as deterministic extraction before
- * resolution; otherwise a valid LLM selection can later fail deterministic
- * invoice validation purely because of JSON representation.
- *
- * This parser is intentionally conservative: it accepts only a numeric token
- * with optional grouping/decimal separators and optional alphabetic currency/
- * unit suffix. Unrecognized text remains unchanged and therefore fails closed
- * in the existing validator/review path.
+ * Common Vision→F6 semantic boundary normalization. Identity and Incoterm
+ * canonicalization are deliberately narrow; numeric parsing preserves the
+ * existing conservative behavior. Unsupported values remain unchanged or are
+ * omitted so the existing Foundation 6 validation/review path stays fail-closed.
  */
+const INCOTERMS_2020 = ["EXW", "FCA", "CPT", "CIP", "DAP", "DPU", "DDP", "FAS", "FOB", "CFR", "CIF"] as const;
+
+const INVOICE_NUMBER_DATE_SUFFIX = String.raw`(?:\d{1,2}[-/.](?:\d{1,2}|[A-Za-z]{3,9})[-/.]\d{2,4}|\d{4}[-/.]\d{1,2}[-/.]\d{1,2})`;
+
+function splitInvoiceNumberDateSuffix(value: string): { invoiceNumber: string; dateToken?: string } {
+  const trimmed = value.trim();
+  const match = trimmed.match(new RegExp(`^(.+?)\\s*(?:&|\\||;)\\s*(${INVOICE_NUMBER_DATE_SUFFIX})\\s*$`, "i"));
+  return match?.[1]
+    ? { invoiceNumber: match[1].trim(), dateToken: match[2]?.trim() }
+    : { invoiceNumber: trimmed };
+}
+
+function validIsoDate(year: number, month: number, day: number): string | undefined {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return undefined;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function canonicalInvoiceDateSuffix(token: string | undefined): string | undefined {
+  if (!token) return undefined;
+  const raw = token.trim();
+
+  let match = raw.match(/^(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (match) return validIsoDate(Number(match[1]), Number(match[2]), Number(match[3]));
+
+  const monthNames: Readonly<Record<string, number>> = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+    may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9,
+    oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12
+  };
+  match = raw.match(/^(\d{1,2})[-/.]([A-Za-z]{3,9})[-/.](\d{2}|\d{4})$/);
+  if (match) {
+    const month = monthNames[match[2]!.toLowerCase()];
+    const yearToken = Number(match[3]);
+    const year = match[3]!.length === 2 ? 2000 + yearToken : yearToken;
+    if (month) return validIsoDate(year, month, Number(match[1]));
+  }
+
+  // Numeric D/M/Y is only promoted when it is unambiguous. 04/05/2026 could
+  // be either April 5 or 4 May, so it deliberately remains unresolved.
+  match = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})$/);
+  if (match && Number(match[1]) > 12) {
+    return validIsoDate(Number(match[3]), Number(match[2]), Number(match[1]));
+  }
+  return undefined;
+}
+
+function canonicalVisionInvoiceNumber(value: string): string {
+  // Some VLM responses concatenate a neighboring invoice date into the identifier
+  // (for example "P0087/26-27 & 16-Sep-26"). Strip only an explicitly separated,
+  // date-shaped suffix; arbitrary foreign invoice identifiers remain untouched.
+  return splitInvoiceNumberDateSuffix(value).invoiceNumber;
+}
+
+function canonicalVisionDeliveryTerm(value: string): string | undefined {
+  const upper = value.trim().toUpperCase();
+  if (!upper) return undefined;
+  // Delivery terms are a closed Incoterms 2020 vocabulary at this boundary.
+  // Location/payment suffixes are allowed ("FOB NINGBO", "DAP-30 DAYS"),
+  // but unrelated commercial tokens such as FOC must never become deliveryTerm.
+  return INCOTERMS_2020.find((term) => new RegExp(`(?:^|[^A-Z])${term}(?:$|[^A-Z])`).test(upper));
+}
+
 export function canonicalVisionValue(field: string, value: unknown): unknown {
-  if (!NUMERIC_INVOICE_FIELDS.has(field) || typeof value !== "string") return value;
+  if (typeof value !== "string") return value;
+  if (field === "invoiceNumber") return canonicalVisionInvoiceNumber(value);
+  if (field === "deliveryTerm") return canonicalVisionDeliveryTerm(value);
+  if (!NUMERIC_INVOICE_FIELDS.has(field)) return value;
   let raw = value.trim();
   if (!raw) return value;
 
@@ -167,7 +227,8 @@ export function projectVisionResponseToFieldCandidates(params: {
     const leaf = extracted.field.startsWith(GOODS_PREFIX) ? extracted.field.slice(GOODS_PREFIX.length) : extracted.field;
 
     values.forEach((value, index) => {
-      if (value === null || value === undefined || value === "") return;
+      const canonicalValue = canonicalVisionValue(extracted.field, value);
+      if (canonicalValue === null || canonicalValue === undefined || canonicalValue === "") return;
       const field = extracted.field.startsWith(GOODS_PREFIX)
         ? `goodsLines.${(params.goodsLineOffset ?? 0) + index}.${leaf}`
         : declarationFieldName(extracted.field);
@@ -176,7 +237,7 @@ export function projectVisionResponseToFieldCandidates(params: {
       const candidate: FieldCandidate = {
         candidateId: stableId(params.segmentId, field, params.pageNumber, index),
         field,
-        value: canonicalVisionValue(extracted.field, value),
+        value: canonicalValue,
         confidence: extracted.confidence,
         extractor: VISION_EXTRACTOR,
         evidence: [{
@@ -194,6 +255,41 @@ export function projectVisionResponseToFieldCandidates(params: {
       };
       (fields[field] ??= []).push(candidate);
     });
+  }
+
+  // A VLM can occasionally merge a visually adjacent invoice date into the
+  // invoice-number value while leaving invoiceDate null. Recover that date only
+  // from the same explicitly separated date-shaped suffix. Explicit invoiceDate
+  // evidence always wins; ambiguous numeric dates remain unresolved/fail-closed.
+  if (!(fields.invoiceDate?.length)) {
+    const invoiceNumberField = params.response.fields.find((item) => item.field === "invoiceNumber" && typeof item.value === "string");
+    if (invoiceNumberField && typeof invoiceNumberField.value === "string") {
+      const { dateToken } = splitInvoiceNumberDateSuffix(invoiceNumberField.value);
+      const derivedDate = canonicalInvoiceDateSuffix(dateToken);
+      const evidence = invoiceNumberField.evidence.find((item) => item.source === "PAGE_IMAGE" && item.pageNumber === params.pageNumber);
+      if (derivedDate && evidence) {
+        const field = "invoiceDate";
+        fields[field] = [{
+          candidateId: stableId(params.segmentId, field, params.pageNumber, 0),
+          field,
+          value: derivedDate,
+          confidence: invoiceNumberField.confidence,
+          extractor: VISION_EXTRACTOR,
+          evidence: [{
+            segmentId: params.segmentId,
+            pageNumber: params.pageNumber,
+            ...(evidence.region ? { bbox: {
+              x0: evidence.region.x,
+              y0: evidence.region.y,
+              x1: evidence.region.x + evidence.region.width,
+              y1: evidence.region.y + evidence.region.height
+            } } : {}),
+            ...(evidence.quote ? { text: evidence.quote } : {}),
+            contentSource: "PAGE_IMAGE"
+          }]
+        }];
+      }
+    }
   }
 
   return { version: "1", fields };

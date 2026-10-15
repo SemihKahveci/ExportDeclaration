@@ -3329,3 +3329,38 @@ The source-authority matrix is now wired into the production invoice path for th
 Semantic roles remain independent and fail closed. Buyer country is not copied into arrival/destination/trade country; seller country is not copied into exit country. Invoice/order/SAP/reference identifiers are not reused as transport or customs-document identifiers. Freight, insurance and exchange rate require explicit source evidence and are not derived from invoice totals. Missing source evidence remains empty.
 
 The persisted normalized declaration schema and the Beyanname Yazım bridge now have explicit homes for these values, so a supported value is not lost between extraction and UI. This checkpoint is vendor-agnostic and does not introduce invoice-specific rules or direct normalizedData writes.
+
+### 1.8.8 — Document Field Persistence & Source-Present Coverage Gate
+
+1.8.7 widened the Foundation 6 promotion surface for the remaining document-sourced field families. Product review then exposed an architectural persistence gap: the normalized TypeScript contract and promotion targets contained the new country, transport, finance and supporting-document fields, but the Mongoose `Declaration.normalizedData` schema still only persisted the older subset. With Mongoose strict persistence, a correctly resolved field could therefore disappear before the UI read it.
+
+1.8.8 closes that boundary generically. `Declaration.normalizedData` now persists the full document-field families promoted by Foundation 6: independent exit/arrival/destination/trade countries; carrier/vehicle/container/BOL/CMR/AWB/transport-document identifiers; exchange rate/freight/insurance/bank information; and previous/circulation/origin document identifiers. Existing party, package, scalar and goods persistence remains unchanged.
+
+The 1.8.8 contract checks the real Mongoose schema against the real Foundation 6 promotion target map rather than searching source text. A DOCUMENT field being absent from an invoice is still not a failure. The gate protects the opposite case: when reliable source evidence is resolved and promoted, the persistence layer must be capable of retaining it for product/UI consumption. Country roles remain semantically independent and missing transport/document evidence remains fail-closed. No supplier- or invoice-specific rule is introduced.
+
+
+### 1.8.9 — Corpus Source-Present Coverage Gate
+
+1.8.9 turns the existing frozen generalization corpus into a family-level source-present coverage measurement. The semantic failure matrix now reports `IDENTITY`, `TRADE`, `COUNTRY`, `PACKAGE`, and `GOODS` coverage in addition to its existing exact/semantic checks. Exact goods cardinality participates in the GOODS family whenever that cardinality was frozen before execution.
+
+The denominator is intentionally conservative: only assertions already frozen as source-present ground truth are counted. A field absent from an invoice is not a failure, and a DOCUMENT field whose presence has not yet been independently frozen is not silently assumed present. Therefore the metric is not advertised as coverage of every possible declaration field yet; it is a trustworthy baseline that can be expanded as source-present ground truth is independently annotated. The measurement remains vendor-agnostic, does not tune production extraction, does not write normalized data directly, and preserves Foundation 6 authority.
+
+### 1.8.9.1 — Scalar Boundary & Delivery-Term Authority Hardening
+
+The 1.8.9 source-present corpus gate exposed two generic semantic-boundary failures even though the gate contract itself passed: an invoice identifier could absorb an adjacent date, and a free-of-charge (`FOC`) goods token could be promoted as a delivery term.
+
+This checkpoint hardens the Vision→Foundation-6 candidate boundary without supplier- or invoice-specific rules:
+
+- `invoiceNumber` removes only an explicitly separated, date-shaped suffix (`&`, `|`, or `;` boundary). Arbitrary foreign invoice identifiers remain unchanged.
+- `deliveryTerm` is canonicalized only to the closed Incoterms 2020 vocabulary. Location/payment suffixes such as `FOB NINGBO` or `DAP-30 DAYS` may canonicalize to `FOB` / `DAP`; unrelated commercial tokens such as `FOC` or `FREE OF CHARGE` are rejected.
+- Canonicalization is enforced in the common Vision candidate projection boundary, so it applies to primary and bounded-recovery responses rather than to one vendor/corpus case.
+- Rejected values create no candidate and therefore remain fail-closed; Foundation 6 remains the only resolution/promotion authority and no direct `normalizedData` write is introduced.
+
+Verification: `backend/scripts/idp/verifyProductE2E1891ScalarBoundaryAuthorityContract.ts`.
+After the contract passes, rerun the 1.8.9 five-invoice source-present corpus gate. Target closure is 82/82 frozen source-present assertions and 4/4 fail-closed review assertions.
+
+### 1.8.9.2 — Adjacent Invoice Date Recovery
+
+The 1.8.9.1 real corpus rerun closed the invoice-number and Incoterm boundary issues, but exposed one remaining source-present failure: PML preserved `P0087/26-27` correctly while the visually adjacent `16-Sep-26` date, originally merged into the VLM invoice-number response, was discarded after identifier cleanup.
+
+This checkpoint keeps the 1.8.9.1 identifier boundary and adds a narrow, vendor-agnostic recovery at the same Vision→Foundation 6 boundary. When `invoiceDate` has no explicit projected candidate, an explicitly separated date-shaped suffix from the invoice-number response may produce an ordinary `invoiceDate` candidate using the same PAGE_IMAGE evidence. Text-month and ISO dates are accepted; numeric day/month dates are accepted only when unambiguous. An explicit invoiceDate candidate is never replaced, ambiguous dates remain unresolved, and Foundation 6 remains the only promotion authority. No direct normalizedData write is introduced.

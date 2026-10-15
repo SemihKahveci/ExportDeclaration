@@ -15,6 +15,10 @@ import { ProcessingStatus } from "../../src/modules/idp/domain/idp.types.js";
 import { enqueueDocumentProcessing } from "../../src/modules/idp/queue/idpProcessing.service.js";
 import { closeIdpQueue, getIdpQueue } from "../../src/modules/idp/queue/idpQueue.js";
 import {
+  aggregateSourcePresentCoverage,
+  summarizeSourcePresentCoverage,
+} from "./productE2ESourcePresentCoverage.js";
+import {
   PRODUCT_E2E_GENERALIZATION_CASES as CASES,
   PRODUCT_E2E_GENERALIZATION_CORPUS_ROOT as ROOT,
   type GeneralizationExpectedGoodsLine,
@@ -346,6 +350,7 @@ async function main(): Promise<void> {
           failureClasses:assessment.classes,
           failedFields:assessment.failedFields,
           failedReviewFields:assessment.failedReviewFields,
+          sourcePresentCoverage:summarizeSourcePresentCoverage(extractionChecks),
           extraction:{
             passed:extractionChecks.filter((check) => check.passed).length,
             total:extractionChecks.length,
@@ -389,6 +394,9 @@ async function main(): Promise<void> {
     const reviewPassed = results.reduce((sum, result) => sum + result.failClosedReview.passed, 0);
     const reviewTotal = results.reduce((sum, result) => sum + result.failClosedReview.total, 0);
     const passedCases = results.filter((result) => result.gatePass).length;
+    const sourcePresentCoverage = aggregateSourcePresentCoverage(results);
+    const sourcePresentPassed = sourcePresentCoverage.reduce((sum, family) => sum + family.passed, 0);
+    const sourcePresentTotal = sourcePresentCoverage.reduce((sum, family) => sum + family.total, 0);
     const failureClassCounts = results.flatMap((result) => result.failureClasses).reduce((acc: Record<string, number>, value: string) => {
       acc[value] = (acc[value] ?? 0) + 1;
       return acc;
@@ -402,6 +410,14 @@ async function main(): Promise<void> {
         fullInvoicePassPercent:results.length ? Number((100 * passedCases / results.length).toFixed(1)) : 100,
         failureClassCounts,
         tuningPolicy:"SEMANTIC_EQUIVALENCE_THEN_CLASSIFY",
+      },
+      sourcePresentCoverage:{
+        scope:"FROZEN_SOURCE_PRESENT_ASSERTIONS_ONLY",
+        note:"Absent/unfrozen source fields are excluded from the denominator; this is not a claim that every DOCUMENT field in every PDF has frozen ground truth yet.",
+        passed:sourcePresentPassed,
+        total:sourcePresentTotal,
+        percent:sourcePresentTotal ? Number((100 * sourcePresentPassed / sourcePresentTotal).toFixed(1)) : 100,
+        families:sourcePresentCoverage,
       },
       corpus:{
         cases:results.length,

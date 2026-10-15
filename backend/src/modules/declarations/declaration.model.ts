@@ -237,10 +237,34 @@ const DeclarationSchema = new Schema(
       trade: {
         deliveryTerm: String,
         paymentType: String,
-        origin: String
+        origin: String,
+        exitCountry: String,
+        arrivalCountry: String,
+        destinationCountry: String,
+        tradeCountry: String
       },
       transport: {
-        mode: String
+        mode: String,
+        carrier: String,
+        departureVehicleId: String,
+        borderVehicleId: String,
+        vehiclePlate: String,
+        containerNo: String,
+        billOfLadingNo: String,
+        cmrNo: String,
+        awbNo: String,
+        transportDocumentNo: String
+      },
+      finance: {
+        exchangeRate: Number,
+        freight: Number,
+        insurance: Number,
+        bankInfo: String
+      },
+      documents: {
+        previousDocumentNo: String,
+        circulationDocumentNo: String,
+        originDocumentNo: String
       },
       packageInfo: {
         totalPackage: Number,
