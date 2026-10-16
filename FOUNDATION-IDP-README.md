@@ -3503,3 +3503,12 @@ Guardrails: supplier-specific rules `false`; invoice-specific constants `false`;
 Persisted replay 1.8.20 proved that all 56 VED146 goods rows are complete, same-page, arithmetic-consistent and evidence-clean. Production fusion now projects the non-GTIP fields of a generic goods row as peer Foundation 6 candidates only when the canonical generic evidence validator marks that entire row `VALID`. Invalid/review rows remain shadow-only. Foundation 6 remains the only resolution/promotion authority; no direct `normalizedData` write was added. Existing stricter description and arithmetic unit-price selectors remain in force.
 
 Focused contract: `backend/scripts/idp/verifyProductE2E1821ValidatedNativeGoodsRowAuthorityContract.ts`.
+
+
+### 1.8.22 — Persisted Foundation 6 goods-resolution replay
+
+- Added `replayLatestInvoice1822Foundation6GoodsResolution.ts` to verify the complete goods-row authority path after 1.8.19/1.8.21 without rerunning OCR or Qwen.
+- Rebuilds generic goods evidence only from the persisted canonical document, applies the production exact-12 native GTIP bridge and VALID-row native peer bridge, merges them with the persisted declaration candidates, then runs the current Foundation 6 direct-source authority selector and resolver entirely in memory.
+- Reports all 56 logical goods rows across GTIP, product code, description, quantity, unit, unit price and line total, including unresolved/review fields and the selected candidate IDs.
+- The checkpoint is diagnostic/read-only: MongoDB is not mutated, normalized data is not written, and no supplier/invoice constants are introduced.
+- A clean result requires 56 fully resolved rows, zero unresolved core goods fields and zero Foundation 6 review-required goods fields before the next full VED146 model/browser run.
