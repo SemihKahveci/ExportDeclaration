@@ -3488,3 +3488,18 @@ Guardrails: supplier-specific rules `false`; invoice-specific constants `false`;
 - Row-level description/arithmetic review does not erase an independently valid exact GTIP token. Evidence-integrity failures still fail closed.
 - Regression contract: `verifyProductE2E1819NativeGtipAuthorityContract.ts` covers conflicting product-code/short-HS vision values, exact native GTIP authority, invalid/mismatched evidence rejection, and the 12-digit fail-closed boundary.
 - Guardrails: supplier-specific rules `false`; model inference required `false`; OCR rerun required `false`; direct normalized write `false`; Foundation 6 remains final write authority.
+
+### 1.8.20 — Persisted goods-row integrity replay
+
+- Added `replayLatestInvoice1820GoodsRowIntegrity.ts` as a model-free diagnostic over the latest persisted invoice canonical document.
+- Re-runs only the production generic geometry discovery and evidence validator; it does not call OCR/Qwen and does not mutate MongoDB.
+- Audits every logical goods row as a unit instead of validating GTIP alone: exact 12-digit GTIP, description, quantity, unit, unit price and line total are checked for presence and page alignment.
+- Reconciles `quantity × unitPrice = lineTotal` with the same production tolerance and reports page-boundary/row-shift suspects explicitly.
+- Emits compact summary counters plus `suspiciousRows`, followed by full per-row evidence so the next production fix can be based on persisted evidence rather than another full document run.
+- This checkpoint is diagnostic-only: no supplier-specific rule and no direct normalized-data write were introduced.
+
+### 1.8.21 — Validated native goods-row authority
+
+Persisted replay 1.8.20 proved that all 56 VED146 goods rows are complete, same-page, arithmetic-consistent and evidence-clean. Production fusion now projects the non-GTIP fields of a generic goods row as peer Foundation 6 candidates only when the canonical generic evidence validator marks that entire row `VALID`. Invalid/review rows remain shadow-only. Foundation 6 remains the only resolution/promotion authority; no direct `normalizedData` write was added. Existing stricter description and arithmetic unit-price selectors remain in force.
+
+Focused contract: `backend/scripts/idp/verifyProductE2E1821ValidatedNativeGoodsRowAuthorityContract.ts`.

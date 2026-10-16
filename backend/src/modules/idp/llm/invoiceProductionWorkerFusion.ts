@@ -118,6 +118,45 @@ export function canonicalNativeGoodsCodeCandidatesOf(data: Record<string, unknow
   return { version: "1", fields };
 }
 
+/**
+ * 1.8.21: Promote an entire generic goods row only when the generic evidence
+ * validator marked that row VALID.  This turns the persisted shadow parser into
+ * peer evidence for row-local fields without bypassing Foundation 6.  A row
+ * with missing/unsupported evidence or arithmetic mismatch stays shadow-only.
+ */
+export function canonicalValidatedNativeGoodsRowCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
+  const audit = data?.genericCandidateAudit as {
+    candidates?: FieldCandidateEnvelope;
+    validation?: { rows?: Array<{ rowIndex: number; status?: string; issues?: unknown[] }> };
+  } | undefined;
+  const source = audit?.candidates;
+  if (source?.version !== "1" || !source.fields) return { version: "1", fields: {} };
+
+  const validRows = new Set(
+    (audit?.validation?.rows ?? [])
+      .filter((row) => row.status === "VALID" && (row.issues?.length ?? 0) === 0)
+      .map((row) => row.rowIndex)
+  );
+  if (validRows.size === 0) return { version: "1", fields: {} };
+
+  const fields: Record<string, FieldCandidateEnvelope["fields"][string]> = {};
+  const rowField = /^goodsLines\.(\d+)\.(productCode|description|quantity|unit|unitPrice|lineTotal)$/;
+  for (const [field, candidates] of Object.entries(source.fields)) {
+    const match = field.match(rowField);
+    if (!match || !validRows.has(Number(match[1]))) continue;
+    const eligible = candidates.filter((candidate) =>
+      !candidate.derived && candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (eligible.length === 0) continue;
+    fields[field] = eligible.map((candidate) => ({
+      ...candidate,
+      field,
+      candidateId: `${candidate.candidateId}:f6-native-row`
+    }));
+  }
+  return { version: "1", fields };
+}
+
 export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
   const audit = data?.genericCandidateAudit as { headerPartyCandidates?: FieldCandidateEnvelope } | undefined;
   const source = audit?.headerPartyCandidates;
@@ -391,7 +430,8 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const roleBoundDeterministic = mergeInvoiceCandidateSources(
       canonicalCommercialTermsCandidatesOf(result.data),
       canonicalHeaderPartyCandidatesOf(result.data),
-      canonicalNativeGoodsCodeCandidatesOf(result.data)
+      canonicalNativeGoodsCodeCandidatesOf(result.data),
+      canonicalValidatedNativeGoodsRowCandidatesOf(result.data)
     );
     const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(execution.candidates, params.canonicalDocument);
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"

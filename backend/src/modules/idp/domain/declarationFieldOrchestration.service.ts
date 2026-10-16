@@ -281,6 +281,21 @@ export function selectDirectSourceEvidenceAuthority(
     selections.push({ field, candidateId: selected.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
   }
 
+  // 1.8.21: a generic goods row that passed the canonical evidence validator
+  // may provide direct native authority for its remaining row-local fields.
+  // Description and unit price retain their stricter existing selectors below,
+  // which intentionally override this generic row selection when applicable.
+  for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
+    if (!/^goodsLines\.\d+\.(productCode|description|quantity|unit|unitPrice|lineTotal)$/.test(field)) continue;
+    const nativeRow = fieldCandidates.filter((candidate) =>
+      candidate.candidateId.endsWith(":f6-native-row") &&
+      !candidate.derived &&
+      candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (nativeRow.length !== 1) continue;
+    selections.push({ field, candidateId: nativeRow[0]!.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+  }
+
   selections.push(...selectArithmeticCorroboratedUnitPrices(candidates));
   selections.push(...selectRowCorroboratedDescriptions(candidates));
   const unique = new Map(selections.map((selection) => [selection.field, selection]));
