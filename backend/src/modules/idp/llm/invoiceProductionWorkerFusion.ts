@@ -113,13 +113,36 @@ export function enforceVisionDocumentRoleAuthority(
   const pageText = new Map(canonicalDocument.pages.map((page) => [page.pageNumber, canonicalPageText(canonicalDocument, page.pageNumber)]));
   const fields = { ...candidates.fields };
 
-  const keepOnlyWithRole = (field: string, role: RegExp) => {
+  const normalized = (value: unknown) => String(value ?? "")
+    .toLocaleUpperCase("tr-TR")
+    .replace(/İ/g, "I").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U")
+    .replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+
+  const valueCorroboratedOnPage = (candidate: FieldCandidateEnvelope["fields"][string][number], evidencePage: number) => {
+    const value = normalized(candidate.value);
+    if (value.length < 6) return false;
+    return normalized(pageText.get(evidencePage) ?? "").includes(value);
+  };
+
+  const partyNameShape = (value: unknown) => {
+    const text = normalized(value);
+    if (text.length < 4 || /^\d/.test(text)) return false;
+    if (/\b(?:CADDE|SOKAK|MAHALLE|MAAKOND|STREET|ROAD|AVENUE|NO|TEL|FAX|KARAYOLU)\b/.test(text)) return false;
+    return /[A-Z]/.test(text) && /\b(?:A S|AS|LTD|LIMITED|LLC|INC|CORP|GMBH|OU|OÜ|S A|SRL|ELEKTRIK|TECHNOLOGY|TEKNOLOJI|SYSTEM|SISTEM|INDUSTRY|COMPANY)\b/.test(text);
+  };
+
+  const partyAddressShape = (value: unknown) => {
+    const text = normalized(value);
+    return text.length >= 8 && /\d/.test(text) && /\b(?:CADDE|SOKAK|MAHALLE|MAAKOND|STREET|ROAD|AVENUE|NO|TALLINN|ISTANBUL|TUZLA)\b/.test(text);
+  };
+
+  const keepOnlyWithRole = (field: string, role: RegExp, corroboration?: (candidate: FieldCandidateEnvelope["fields"][string][number], pageNumber: number) => boolean) => {
     const source = fields[field];
     if (!source?.length) return;
     const retained = source.filter((candidate) => {
       const imageEvidence = candidate.evidence.filter((evidence) => evidence.contentSource === "PAGE_IMAGE");
       if (imageEvidence.length === 0) return true;
-      return imageEvidence.some((evidence) => role.test(pageText.get(evidence.pageNumber) ?? ""));
+      return imageEvidence.some((evidence) => role.test(pageText.get(evidence.pageNumber) ?? "") || Boolean(corroboration?.(candidate, evidence.pageNumber)));
     });
     if (retained.length > 0) fields[field] = retained;
     else delete fields[field];
@@ -137,8 +160,12 @@ export function enforceVisionDocumentRoleAuthority(
   // role on the page that produced the vision candidate.
   const sellerRole = /\b(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER)\b/;
   const buyerRole = /\b(?:ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO)\b/;
-  for (const field of ["parties.seller.name", "parties.seller.address", "parties.seller.country"]) keepOnlyWithRole(field, sellerRole);
-  for (const field of ["parties.buyer.name", "parties.buyer.address", "parties.buyer.country"]) keepOnlyWithRole(field, buyerRole);
+  keepOnlyWithRole("parties.seller.name", sellerRole, (candidate, page) => partyNameShape(candidate.value) && valueCorroboratedOnPage(candidate, page));
+  keepOnlyWithRole("parties.seller.address", sellerRole, (candidate, page) => partyAddressShape(candidate.value) && valueCorroboratedOnPage(candidate, page));
+  keepOnlyWithRole("parties.seller.country", sellerRole);
+  keepOnlyWithRole("parties.buyer.name", buyerRole, (candidate, page) => partyNameShape(candidate.value) && valueCorroboratedOnPage(candidate, page));
+  keepOnlyWithRole("parties.buyer.address", buyerRole, (candidate, page) => partyAddressShape(candidate.value) && valueCorroboratedOnPage(candidate, page));
+  keepOnlyWithRole("parties.buyer.country", buyerRole);
 
   // Header/shipment scalars that are especially prone to numeric-role
   // collisions. Quantity/price values must not become invoice totals or
@@ -300,15 +327,22 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       throw new Error(`LLM_VISION_PRIMARY_REQUIRED: ${failureSummary}`);
     }
 
-    const deterministicFallback = mergeInvoiceCandidateSources(
-      fieldCandidatesOf(result.data),
+    // 1.8.17: role-bound deterministic commercial/header evidence must remain a
+    // peer candidate even when Vision produced the same field. Treating it as a
+    // fallback hid the explicit native invoice-total candidate whenever Qwen
+    // emitted any total at all, so Foundation 6 never got the evidence it is
+    // designed to authorize. Legacy/general deterministic extraction remains a
+    // true fallback; role-bound evidence is merged after primary selection.
+    const deterministicFallback = fieldCandidatesOf(result.data);
+    const roleBoundDeterministic = mergeInvoiceCandidateSources(
       canonicalCommercialTermsCandidatesOf(result.data),
       canonicalHeaderPartyCandidatesOf(result.data)
     );
     const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(execution.candidates, params.canonicalDocument);
-    const fusedCandidates = plan.route === "LLM_VISION_PRIMARY"
+    const primaryFused = plan.route === "LLM_VISION_PRIMARY"
       ? mergeInvoicePrimaryWithFallback(guardedVisionCandidates, deterministicFallback)
       : mergeInvoiceCandidateSources(deterministicFallback, guardedVisionCandidates);
+    const fusedCandidates = mergeInvoiceCandidateSources(primaryFused, roleBoundDeterministic);
 
     const associatedCandidates = associateExplicitGoodsUnitsFromQuantity({
       canonicalDocument: params.canonicalDocument,
@@ -360,9 +394,18 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       persistModelExtractionArtifact: params.persistModelExtractionArtifact
     });
 
+    // 1.8.16: adaptive recovery is another PAGE_IMAGE candidate source. The
+    // semantic-role guard must therefore be the final Vision boundary, not only
+    // a pre-recovery filter; otherwise a focused recovery call can reintroduce
+    // the same unsupported scalar that the primary pass correctly rejected.
+    const finalRoleGuardedCandidates = enforceVisionDocumentRoleAuthority(
+      adaptiveGoodsNumericExecution.candidates,
+      params.canonicalDocument
+    );
+
     result.data = {
       ...result.data,
-      fieldCandidates: adaptiveGoodsNumericExecution.candidates,
+      fieldCandidates: finalRoleGuardedCandidates,
       adaptiveRecoveryAudit: adaptiveRecoveryPlan,
       adaptiveRecoveryExecutionAudit: adaptiveRecoveryExecution.audit,
       adaptiveGoodsDescriptionExecutionAudit: adaptiveGoodsDescriptionExecution.audit,
