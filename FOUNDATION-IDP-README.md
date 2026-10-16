@@ -3478,3 +3478,13 @@ Guardrails: supplier-specific rules `false`; invoice-specific constants `false`;
 - Simulates adding only exact 12-digit `NATIVE_TEXT` GTIP candidates whose own canonical evidence is valid, then reruns the existing Foundation 6 direct-source authority and resolver in memory.
 - The simulation does **not** mutate MongoDB and does **not** change production behavior. Its output tells the next checkpoint whether rows 24–40 are recoverable from evidence already present in the real VED146 run or require an extraction/row-identity change.
 - Guardrails remain: no GTIP padding/completion, no tariff lookup, no supplier-specific rules, no direct normalized-data write, Foundation 6 remains final authority.
+
+### 1.8.19 — Native GTIP authority production bridge
+
+- The 1.8.18 persisted replay proved the missing VED146 GTIP block was not absent from the invoice: deterministic generic discovery recovered all 56 exact 12-digit GTIPs from persisted `NATIVE_TEXT`, with zero unresolved fields in simulation.
+- Root cause: generic goods discovery was still retained in the old Foundation 5 shadow audit, so exact native GTIP evidence for rows where Qwen returned product codes / short numeric fragments did not consistently enter the Foundation 6 production candidate stream.
+- Production fusion now bridges only self-proving generic `goodsLines.N.hsCode` candidates into Foundation 6 when the value is exactly 12 digits, its own `NATIVE_TEXT` evidence contains that same code, and canonical evidence validation has no evidence-integrity issue for that field.
+- Qwen/page-image candidates remain in the audit envelope as peers. Foundation 6 direct-source authority selects the valid native GTIP candidate; no direct `normalizedData` write is introduced.
+- Row-level description/arithmetic review does not erase an independently valid exact GTIP token. Evidence-integrity failures still fail closed.
+- Regression contract: `verifyProductE2E1819NativeGtipAuthorityContract.ts` covers conflicting product-code/short-HS vision values, exact native GTIP authority, invalid/mismatched evidence rejection, and the 12-digit fail-closed boundary.
+- Guardrails: supplier-specific rules `false`; model inference required `false`; OCR rerun required `false`; direct normalized write `false`; Foundation 6 remains final write authority.

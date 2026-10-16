@@ -64,6 +64,60 @@ function canonicalCommercialTermsCandidatesOf(data: Record<string, unknown> | un
   return { version: "1", fields };
 }
 
+/**
+ * Promote only self-proving generic GTIP evidence from the shadow audit into
+ * the Foundation 6 candidate stream.  The value must be an exact 12-digit
+ * token backed by its own NATIVE_TEXT evidence, and that field's evidence must
+ * have passed canonical validation.  Other row problems (description, math,
+ * etc.) do not invalidate a directly observed GTIP token.
+ *
+ * This keeps Qwen useful as a competing reader while preventing product codes
+ * such as AG.SCH.* or short numeric fragments from outranking the invoice's
+ * machine-readable GTIP column.
+ */
+export function canonicalNativeGoodsCodeCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
+  const audit = data?.genericCandidateAudit as {
+    candidates?: FieldCandidateEnvelope;
+    validation?: { rows?: Array<{ rowIndex: number; issues?: Array<{ field?: string; code?: string }> }> };
+  } | undefined;
+  const source = audit?.candidates;
+  if (source?.version !== "1" || !source.fields) return { version: "1", fields: {} };
+
+  const invalidEvidenceCodes = new Set([
+    "MISSING_EVIDENCE",
+    "INVALID_EVIDENCE_PAGE",
+    "INVALID_EVIDENCE_BBOX",
+    "EVIDENCE_NOT_SUPPORTED_BY_CANONICAL"
+  ]);
+  const invalidFields = new Set<string>();
+  for (const row of audit?.validation?.rows ?? []) {
+    for (const issue of row.issues ?? []) {
+      if (issue.field && issue.code && invalidEvidenceCodes.has(issue.code)) invalidFields.add(issue.field);
+    }
+  }
+
+  const fields: Record<string, FieldCandidateEnvelope["fields"][string]> = {};
+  for (const [field, candidates] of Object.entries(source.fields)) {
+    if (!/^goodsLines\.\d+\.hsCode$/.test(field) || invalidFields.has(field)) continue;
+    const eligible = candidates.filter((candidate) => {
+      const digits = String(candidate.value ?? "").replace(/\D/g, "");
+      if (!/^\d{12}$/.test(digits) || candidate.derived) return false;
+      return candidate.evidence.some((evidence) =>
+        evidence.contentSource === "NATIVE_TEXT" &&
+        typeof evidence.text === "string" &&
+        evidence.text.replace(/\D/g, "") === digits
+      );
+    });
+    if (eligible.length === 0) continue;
+    fields[field] = eligible.map((candidate) => ({
+      ...candidate,
+      field,
+      candidateId: `${candidate.candidateId}:f6-native-hs`
+    }));
+  }
+  return { version: "1", fields };
+}
+
 export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
   const audit = data?.genericCandidateAudit as { headerPartyCandidates?: FieldCandidateEnvelope } | undefined;
   const source = audit?.headerPartyCandidates;
@@ -336,7 +390,8 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const deterministicFallback = fieldCandidatesOf(result.data);
     const roleBoundDeterministic = mergeInvoiceCandidateSources(
       canonicalCommercialTermsCandidatesOf(result.data),
-      canonicalHeaderPartyCandidatesOf(result.data)
+      canonicalHeaderPartyCandidatesOf(result.data),
+      canonicalNativeGoodsCodeCandidatesOf(result.data)
     );
     const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(execution.candidates, params.canonicalDocument);
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"
