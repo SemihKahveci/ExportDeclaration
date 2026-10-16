@@ -163,12 +163,12 @@ export function buildEffectiveInvoiceHeaderParty(audit: GenericInvoiceCandidateA
 }
 
 
-const COMMERCIAL_TERM_FIELDS = ["header.currency", "header.totalAmount", "trade.deliveryTerm", "transport.mode"] as const;
-export interface EffectiveInvoiceCommercialTerms { header: { currency?: string; totalAmount?: number }; trade: { deliveryTerm?: string }; transport: { mode?: string } }
+const COMMERCIAL_TERM_FIELDS = ["header.currency", "header.totalAmount", "trade.deliveryTerm", "transport.mode", "finance.exchangeRate"] as const;
+export interface EffectiveInvoiceCommercialTerms { header: { currency?: string; totalAmount?: number }; trade: { deliveryTerm?: string }; transport: { mode?: string }; finance: { exchangeRate?: number } }
 
 export function buildEffectiveInvoiceCommercialTerms(audit: GenericInvoiceCandidateAudit, decisions: DecisionLike[] = []): { data: EffectiveInvoiceCommercialTerms; trace: Record<string, EffectiveFieldTrace> } {
   const decisionByField = latestDecisionByField(decisions);
-  const data: EffectiveInvoiceCommercialTerms = { header: {}, trade: {}, transport: {} };
+  const data: EffectiveInvoiceCommercialTerms = { header: {}, trade: {}, transport: {}, finance: {} };
   const trace: Record<string, EffectiveFieldTrace> = {};
   for (const field of COMMERCIAL_TERM_FIELDS) {
     const decision = decisionByField.get(field);
@@ -177,14 +177,20 @@ export function buildEffectiveInvoiceCommercialTerms(audit: GenericInvoiceCandid
       value = decision.value;
       fieldTrace = { value, source: "HUMAN_REVIEW", candidateId: decision.candidateId, decisionAction: decision.action };
     } else {
-      const selected = preferredCandidate(field, audit.candidates.fields[field] ?? []);
+      // Commercial terms have their own explicit-label discovery envelope.
+      // The legacy generic envelope can contain detached numeric values (for
+      // example a TRY equivalent paired with EUR). Prefer the role-aware source
+      // whenever it exists; fall back only for older persisted runs.
+      const commercialCandidates = audit.commercialTermsCandidates?.fields[field];
+      const selected = preferredCandidate(field, commercialCandidates?.length ? commercialCandidates : (audit.candidates.fields[field] ?? []));
       if (!selected) throw new Error(`Generic candidates for ${field} are unresolved or missing; human review is required.`);
       value = selected.value;
       fieldTrace = { value, source: "IDP_GENERIC", candidateId: selected.candidateId, extractor: selected.extractor, evidence: selected.evidence };
     }
-    if (field === "header.totalAmount") {
+    if (field === "header.totalAmount" || field === "finance.exchangeRate") {
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new Error(`${field} must be a non-negative finite number.`);
-      data.header.totalAmount = value;
+      if (field === "header.totalAmount") data.header.totalAmount = value;
+      if (field === "finance.exchangeRate") data.finance.exchangeRate = value;
     } else {
       if (typeof value !== "string" || !value.trim()) throw new Error(`${field} must be a non-empty string.`);
       const v = value.trim();

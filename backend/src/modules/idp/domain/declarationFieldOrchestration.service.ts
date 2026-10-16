@@ -54,6 +54,19 @@ function exactTwelveDigitGtip(value: unknown): string | undefined {
   return /^\d{12}$/.test(digits) ? digits : undefined;
 }
 
+const DIRECT_SOURCE_CURRENCIES = new Set(["TRY", "EUR", "USD", "GBP", "CHF", "JPY", "CNY", "RUB", "AED", "SAR"]);
+
+function canonicalCurrency(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const currency = value.trim().toUpperCase() === "TL" ? "TRY" : value.trim().toUpperCase();
+  return DIRECT_SOURCE_CURRENCIES.has(currency) ? currency : undefined;
+}
+
+function canonicalPositiveNumber(value: unknown): string | undefined {
+  const number = finiteNumber(value);
+  return number !== undefined && number > 0 ? String(number) : undefined;
+}
+
 /**
  * A machine-readable native-text GTIP is stronger evidence than a conflicting
  * image interpretation only when the direct source is unambiguous. We keep all
@@ -209,14 +222,50 @@ export function selectDirectSourceEvidenceAuthority(
   candidates: ReturnType<typeof projectDeclarationFieldCandidates>
 ): DeclarationCandidateAuthoritySelection[] {
   const selections: DeclarationCandidateAuthoritySelection[] = [];
+
+  /*
+   * Commercial monetary fields have a deliberately role-bound native-text
+   * candidate produced by invoiceCommercialTermsCandidateDiscovery.  Do not
+   * let an older generic native candidate make that evidence "ambiguous": the
+   * role-bound candidate exists precisely because its value was read from an
+   * explicit invoice-total / exchange-rate label.  The candidate still flows
+   * through Foundation 6; this is an authority selection, not a normalizedData
+   * write.
+   */
+  const roleBoundCommercialCandidateIds: Record<string, string> = {
+    totalAmount: "header-total-amount:f6-totalAmount",
+    exchangeRate: "finance-exchange-rate:f6-exchangeRate",
+    currency: "header-currency-from-total:f6-currency"
+  };
+  const roleBoundFields = new Set<string>();
+  for (const [field, candidateId] of Object.entries(roleBoundCommercialCandidateIds)) {
+    const candidate = (candidates.fields[field] ?? []).find((item) =>
+      item.candidateId === candidateId &&
+      !item.derived &&
+      item.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (!candidate) continue;
+    const valid = field === "currency"
+      ? canonicalCurrency(candidate.value) !== undefined
+      : canonicalPositiveNumber(candidate.value) !== undefined;
+    if (!valid) continue;
+    selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+    roleBoundFields.add(field);
+  }
+
   for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
+    if (roleBoundFields.has(field)) continue;
     const canonicalValue = /^goodsLines\.\d+\.hsCode$/.test(field)
       ? exactTwelveDigitGtip
       : field === "deliveryTerm"
         ? canonicalIncoterm
         : field === "invoiceNo"
           ? exactTurkishInvoiceNumber
-          : undefined;
+          : field === "currency"
+            ? canonicalCurrency
+            : field === "totalAmount" || field === "exchangeRate"
+              ? canonicalPositiveNumber
+              : undefined;
     if (!canonicalValue) continue;
 
     const native = fieldCandidates.filter((candidate) =>

@@ -173,6 +173,45 @@ function naturalScalar(value: unknown): string | number | null | undefined {
  * narrow, structurally unambiguous 15-character shape (AAA + YYYY + 8 digits).
  * Arbitrary/foreign invoice identifiers are returned untouched.
  */
+
+export function canonicalizeVisionHsCode(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  const cleaned = trimmed.replace(/^\s*(?:GT[İI]P|HS(?:N|\s*CODE)?|TARIFF(?:\s*CODE)?)\s*[:#-]?\s*/i, "").trim();
+  return cleaned || value;
+}
+
+export function sanitizeVisionPartyAddress(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  // A bare country/city token is not a postal address. Keep fail-closed rather
+  // than projecting destination/country text into the party-address field.
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const hasAddressShape = /\d/.test(trimmed) || /[,;/]/.test(trimmed) ||
+    /\b(?:STREET|ST\.?|ROAD|RD\.?|AVENUE|AVE\.?|MAH(?:ALLE)?|SOKAK|CAD(?:DE)?|NO\.?|BUILDING|BLDG|FLOOR|KAT|DISTRICT|DISTRIKT|STRASSE|STR\.?)\b/i.test(trimmed);
+  return words.length >= 2 || hasAddressShape ? trimmed : undefined;
+}
+
+export function sanitizeVisionPaymentType(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  // Customs/tax incentive phrases are not payment terms even when printed
+  // below a combined "Delivery and Payment" heading.
+  if (/\b(?:DUTY\s*DRAWBACK|RODTEP|EPCG|IGST|VAT|KDV|TAX\s*EXEMPT)\b/i.test(trimmed)) return undefined;
+  return trimmed;
+}
+
+export function sanitizeVisionCarrier(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  // Transport modes are not carrier identities.
+  if (/^(?:AIR|AIRFREIGHT|VESSEL|SEA|ROAD|TRUCK|KARAYOLU|HAVAYOLU|DENIZYOLU|DEMIRYOLU)$/i.test(trimmed.replace(/\s+/g, ""))) return undefined;
+  return trimmed;
+}
+
 export function canonicalizeVisionInvoiceNumber(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -242,7 +281,14 @@ export function adaptNaturalInvoiceResponse(
         if (evidenceRecovery && (key === "quantity" || key === "unitPrice" || key === "lineTotal")) {
           return evidenceBackedRecoveryValue(line, key) ?? null;
         }
-        return naturalScalar(line[key]) ?? null;
+        const raw = naturalScalar(line[key]);
+        if (key === "hsCode") return canonicalizeVisionHsCode(raw) ?? null;
+        if (key === "productCode") {
+          const hs = canonicalizeVisionHsCode(naturalScalar(line.hsCode));
+          const product = raw;
+          if (typeof product === "string" && typeof hs === "string" && product.trim() === hs.trim()) return null;
+        }
+        return raw ?? null;
       });
       if ((value as unknown[]).every((item) => item === null)) continue;
     } else {
@@ -253,6 +299,14 @@ export function adaptNaturalInvoiceResponse(
         value = label && isWeightLabel(label, requestedField) ? parseLocaleNumericEvidence(evidence?.rawValue) : undefined;
       }
       if (requestedField === "invoiceNumber") value = canonicalizeVisionInvoiceNumber(value);
+      if (requestedField === "sellerAddress" || requestedField === "buyerAddress") value = sanitizeVisionPartyAddress(value);
+      if (requestedField === "paymentType") value = sanitizeVisionPaymentType(value);
+      if (requestedField === "carrier") value = sanitizeVisionCarrier(value);
+      if (requestedField === "totalPackage" && typeof value === "number") {
+        const gross = naturalScalar(parsed.grossKg);
+        const net = naturalScalar(parsed.netKg);
+        if ((typeof gross === "number" && value === gross) || (typeof net === "number" && value === net)) value = undefined;
+      }
       if (value === null || value === undefined) continue;
       if ((requestedField === "invoiceDate" || requestedField === "currency") && (!criticalScalarEvidenceQuote(parsed, requestedField) || !criticalScalarEvidenceSupportsValue(parsed, requestedField, value))) continue;
     }
@@ -415,6 +469,31 @@ function ollamaImage(image: InvoiceLlmPageImage): string {
  * image inputs, structured JSON mode and thinking control directly. This provider extracts candidates/evidence only; it has no
  * normalized-data write path.
  */
+let activeVisionInferences = 0;
+const visionWaiters: Array<() => void> = [];
+
+async function acquireVisionSlot(): Promise<{ queueWaitMs: number; release: () => void }> {
+  const queuedAt = Date.now();
+  if (activeVisionInferences < env.llmVisionConcurrency) {
+    activeVisionInferences += 1;
+  } else {
+    // The releasing caller transfers its occupied slot directly to this waiter.
+    // This avoids a race where a newly arriving request could jump the queue.
+    await new Promise<void>((resolve) => visionWaiters.push(resolve));
+  }
+  let released = false;
+  return {
+    queueWaitMs: Date.now() - queuedAt,
+    release: () => {
+      if (released) return;
+      released = true;
+      const next = visionWaiters.shift();
+      if (next) next();
+      else activeVisionInferences = Math.max(0, activeVisionInferences - 1);
+    }
+  };
+}
+
 export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
   readonly name = "qwen-ollama-vision";
 
@@ -431,10 +510,20 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
       if (image.bytes.length <= 0 || image.bytes.length > env.llmVisionMaxImageBytes) throw new Error(`Vision image byte budget geçersiz (page=${image.pageNumber}).`);
     }
 
+    const slot = await acquireVisionSlot();
     const controller = new AbortController();
     const startedAt = Date.now();
-    const timeoutMs = env.llmVisionTimeoutMs;
+    const timeoutMs = Math.min(env.llmVisionTimeoutMs, env.llmVisionAttemptTimeoutMs);
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    console.info("idp.qwen_vision.started", {
+      documentId: request.documentId,
+      model: env.llmVisionModel,
+      pageNumbers: pageImages.map((image) => image.pageNumber),
+      queueWaitMs: slot.queueWaitMs,
+      activeVisionInferences,
+      concurrencyLimit: env.llmVisionConcurrency,
+      timeoutMs
+    });
     try {
       const userText = JSON.stringify({
         version: request.version,
@@ -495,6 +584,15 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
         doneReason: payload.done_reason,
         evalCount: payload.eval_count
       });
+      console.info("idp.qwen_vision.completed", {
+        documentId: request.documentId,
+        model: env.llmVisionModel,
+        pageNumbers: pageImages.map((image) => image.pageNumber),
+        queueWaitMs: slot.queueWaitMs,
+        elapsedMs: Date.now() - startedAt,
+        decision: parsedResponse.decision,
+        fieldCount: parsedResponse.fields.length
+      });
       return {
         ...parsedResponse,
         model: env.llmVisionModel,
@@ -530,6 +628,7 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
       throw error;
     } finally {
       clearTimeout(timeout);
+      slot.release();
     }
   }
 }

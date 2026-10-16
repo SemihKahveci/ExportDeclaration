@@ -125,21 +125,79 @@ function parseMoney(raw:string):number|undefined{
   if(lastComma>=0&&lastDot>=0){
     s=lastComma>lastDot ? s.replace(/\./g,"").replace(",",".") : s.replace(/,/g,"");
   } else if(lastComma>=0) {
-    const decimals=s.length-lastComma-1;
-    s=decimals===2 ? s.replace(/\./g,"").replace(",",".") : s.replace(/,/g,"");
+    const parts=s.split(",");
+    const grouped=parts.length===2 && parts[0]!=="0" && /^\d{1,3}$/.test(parts[0]??"") && /^\d{3}$/.test(parts[1]??"");
+    s=grouped ? parts.join("") : s.replace(",",".");
   } else if(lastDot>=0) {
-    const decimals=s.length-lastDot-1;
-    if(decimals!==2) s=s.replace(/\./g,"");
+    const parts=s.split(".");
+    const grouped=parts.length===2 && parts[0]!=="0" && /^\d{1,3}$/.test(parts[0]??"") && /^\d{3}$/.test(parts[1]??"");
+    if(grouped) s=parts.join("");
   }
   const n=Number(s); return Number.isFinite(n)&&n>=0?n:undefined;
 }
-function totalAmount(lines:EvidenceLine[]) {
-  const labels=lines.filter(l=>/\b(ODENECEK\s*TUTAR|GENEL\s*TOPLAM|MAL\s*HIZMET\s*TOPLAM\s*TUTARI|TOPLAM\s*TUTAR)\b/.test(norm(l.text)));
+function bankInfo(lines: EvidenceLine[]) {
+  const bankish = lines.filter(line => /\b(?:BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT\s*NO|BENEFICIAL\s*BANK|BENEFICIARY)\b/.test(norm(line.text)));
+  if (!bankish.length) return undefined;
+  const pageCounts = new Map<number, number>();
+  for (const line of bankish) pageCounts.set(line.pageNumber, (pageCounts.get(line.pageNumber) ?? 0) + 1);
+  const pageNumber = [...pageCounts.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0];
+  if (!pageNumber) return undefined;
+  const pageLines = lines.filter(line => line.pageNumber === pageNumber);
+  const selected = pageLines.filter(line => /\b(?:BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT\s*NO|BENEFICIAL\s*BANK|BENEFICIARY)\b/.test(norm(line.text)));
+  if (!selected.length) return undefined;
+  const value = selected.map(line => line.text.trim()).filter(Boolean).join(" | ");
+  const box: CanonicalBBox = {
+    x0: Math.min(...selected.map(line => line.bbox.x0)), y0: Math.min(...selected.map(line => line.bbox.y0)),
+    x1: Math.max(...selected.map(line => line.bbox.x1)), y1: Math.max(...selected.map(line => line.bbox.y1)),
+  };
+  return { value, line: { text: value, bbox: box, source: selected.some(line => line.source === "OCR") ? "OCR" as const : "NATIVE_TEXT" as const, pageNumber } };
+}
+
+function exchangeRate(lines: EvidenceLine[]) {
+  const labels=lines.filter(l=>/\b(?:DOVIZ\s*KURU|EXCHANGE\s*RATE|FX\s*RATE)\b/.test(norm(l.text)));
   for(const label of labels){
     const same=lines.filter(l=>l.pageNumber===label.pageNumber && sameRow(l,label) && l.bbox.x0>=label.bbox.x0-.02);
     const nums=same.flatMap(l=>Array.from(l.text.matchAll(/-?\d[\d.,]*\d|\d/g)).map(m=>({n:parseMoney(m[0]),line:l})))
+      .filter((x):x is {n:number;line:EvidenceLine}=>x.n!==undefined && x.n>0);
+    if(nums.length) return nums[0];
+  }
+  return undefined;
+}
+
+function monetaryPairs(line: EvidenceLine): Array<{ n: number; currency: string; line: EvidenceLine; index: number }> {
+  const out: Array<{ n: number; currency: string; line: EvidenceLine; index: number }> = [];
+  const re = /(-?\d[\d.,]*\d|\d)\s*(TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR|₺|€|\$|£)\b/giu;
+  for (const match of line.text.matchAll(re)) {
+    const n = parseMoney(match[1] ?? "");
+    const currency = currencyToken(match[2] ?? "");
+    if (n === undefined || !currency) continue;
+    out.push({ n, currency, line, index: match.index ?? Number.MAX_SAFE_INTEGER });
+  }
+  return out;
+}
+
+function totalAmount(lines:EvidenceLine[]) {
+  const labels=lines.filter(l=>/\b(ODENECEK\s*TUTAR|GENEL\s*TOPLAM|MAL\s*HIZMET\s*TOPLAM\s*TUTARI|TOPLAM\s*TUTAR)\b/.test(norm(l.text)));
+  for(const label of labels){
+    const same=lines.filter(l=>l.pageNumber===label.pageNumber && sameRow(l,label) && l.bbox.x0>=label.bbox.x0-.02)
+      .sort((a,b)=>a.bbox.x0-b.bbox.x0);
+
+    // Keep amount and currency as one semantic token.  A payable row may expose
+    // both the transaction amount and its local-currency TRY equivalent. Picking
+    // the numerically largest value detached from its currency can manufacture an
+    // impossible pair such as "1,657,456.20 EUR" from "31,081.10 EUR /
+    // 1,657,456.20 TRY". The first explicit amount+currency pair after the label
+    // is the payable transaction amount; later pairs remain informational evidence.
+    const paired=same.flatMap(monetaryPairs).sort((a,b)=>a.line.bbox.x0-b.line.bbox.x0 || a.index-b.index);
+    if(paired.length) return paired[0];
+
+    // Compatibility fallback for invoices whose total has no printed currency on
+    // the same visual row. Preserve the old numeric discovery, but never use the
+    // "largest number wins" heuristic. The first value after the explicit label
+    // is the only bounded choice.
+    const nums=same.flatMap(l=>Array.from(l.text.matchAll(/-?\d[\d.,]*\d|\d/g)).map(m=>({n:parseMoney(m[0]),line:l})))
       .filter((x):x is {n:number;line:EvidenceLine}=>x.n!==undefined);
-    if(nums.length) return nums.sort((a,b)=>b.n-a.n)[0];
+    if(nums.length) return nums[0];
   }
   return undefined;
 }
@@ -154,6 +212,10 @@ export function discoverInvoiceCommercialTermsFieldCandidates(
   if(d)add(fields,candidate("trade.deliveryTerm",d.value,"trade-delivery-term",segmentId,d.line,.98));
   const t=transportMode(lines);
   if(t)add(fields,candidate("transport.mode",t.value,"transport-mode",segmentId,t.line,.98));
+  const bank=bankInfo(lines);
+  if(bank)add(fields,candidate("finance.bankInfo",bank.value,"finance-bank-info",segmentId,bank.line,.97));
+  const rate=exchangeRate(lines);
+  if(rate)add(fields,candidate("finance.exchangeRate",rate.n,"finance-exchange-rate",segmentId,rate.line,.99));
   const total=totalAmount(lines);
   if(total){
     add(fields,candidate("header.totalAmount",total.n,"header-total-amount",segmentId,total.line,.98));
@@ -163,7 +225,7 @@ export function discoverInvoiceCommercialTermsFieldCandidates(
      * evidence. A document may also contain exchange-rate rows such as
      * "53,3268 TRY"; those are not the invoice currency.
      */
-    const totalCurrency=currencyToken(total.line.text);
+    const totalCurrency="currency" in total ? total.currency : currencyToken(total.line.text);
     if(totalCurrency){
       add(fields,candidate("header.currency",totalCurrency,"header-currency-from-total",segmentId,total.line,.99));
     }

@@ -212,17 +212,6 @@ export async function executeInvoiceVisionByPage(params: {
     return hints;
   };
 
-  const isRetryableAbort = (error: unknown): boolean => {
-    if (!(error instanceof Error)) return false;
-    const name = error.name.toLowerCase();
-    const message = error.message.toLowerCase();
-    return name === "aborterror"
-      || message.includes("operation was aborted")
-      || message.includes("operation was canceled")
-      || message.includes("operation was cancelled")
-      || message.includes("aborted");
-  };
-
   for (const pageNumber of params.pageNumbers) {
     const persisted = params.completedPages?.[pageNumber];
     if (persisted) {
@@ -251,19 +240,18 @@ export async function executeInvoiceVisionByPage(params: {
 
     let response: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
     let terminalError: unknown;
-    for (let attempt = 1; attempt <= 2; attempt += 1) {
-      try {
-        response = await params.provider.extractInvoice({
-          ...params.request,
-          documentId: `${params.segmentId}:page:${pageNumber}`,
-          evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
-        }, [image]);
-        terminalError = undefined;
-        break;
-      } catch (error) {
-        terminalError = error;
-        if (attempt >= 2 || !isRetryableAbort(error)) break;
-      }
+    try {
+      response = await params.provider.extractInvoice({
+        ...params.request,
+        documentId: `${params.segmentId}:page:${pageNumber}`,
+        evidenceMode: InvoiceLlmEvidenceMode.PAGE_IMAGE
+      }, [image]);
+    } catch (error) {
+      // A timeout/abort is already an expensive terminal attempt. Retrying the
+      // same PAGE_IMAGE immediately can double a 30 minute stall and overload
+      // the same local Ollama runtime. Fail this page closed and let the normal
+      // persisted/replay path decide whether it should be attempted later.
+      terminalError = error;
     }
 
     if (!response) {

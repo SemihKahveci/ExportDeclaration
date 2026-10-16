@@ -278,7 +278,21 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
     );
     const shipmentFields = audit.shipmentCandidates ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument as any, segmentId);
     const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, segmentId);
-    const commercialTermsFields = audit.commercialTermsCandidates ?? discoverInvoiceCommercialTermsFieldCandidates(run.canonicalDocument as any, segmentId);
+    // 1.8.12.3: commercial terms are deterministic canonical-document evidence.
+    // Re-derive them on normalization instead of trusting a persisted audit from
+    // an older processing run. This is intentionally different from the other
+    // compatibility fallbacks above: stale completed runs may already contain
+    // commercialTermsCandidates produced by an older parser (for example a
+    // detached local-currency equivalent selected as the invoice total, or a
+    // decimal-damaged exchange rate). Using `persisted ?? discover(...)` made
+    // parser fixes invisible to "Tekrar Yaz" because the old persisted envelope
+    // always won. Re-discovery is OCR/LLM-free and uses the already persisted
+    // canonical document, so existing uploads receive the current deterministic
+    // interpretation without reprocessing the invoice.
+    const commercialTermsFields = discoverInvoiceCommercialTermsFieldCandidates(
+      run.canonicalDocument as any,
+      segmentId
+    );
     const effectiveAuditForReview: GenericInvoiceCandidateAudit = {
       ...audit,
       originCandidates: originFields,
@@ -332,6 +346,7 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       normalized.header = { ...normalized.header, ...commercialTerms.data.header };
       normalized.trade = { ...normalized.trade, ...commercialTerms.data.trade };
       normalized.transport = { ...normalized.transport, ...commercialTerms.data.transport };
+      normalized.finance = { ...(normalized.finance ?? {}), ...commercialTerms.data.finance };
       for (const [field, trace] of Object.entries(commercialTerms.trace)) {
         (sourceTrace as Record<string, any>)[field] = { ...trace, processingRunId: String(run._id), uploadedFileId: String(invoiceDoc._id) };
       }

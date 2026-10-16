@@ -467,7 +467,7 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     canonical,
     segmentId,
     TOTAL_FIELD,
-    /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*([\d.,]+)/,
+    /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*([\d.,]+)/,
   );
   
   addLabeledNumber(

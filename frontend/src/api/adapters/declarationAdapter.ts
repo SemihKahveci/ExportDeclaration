@@ -170,8 +170,12 @@ function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDeclarati
   // Qwen raw output and UploadedDocument.extractedData are not writing-form authorities.
   return {
     "Beyanname No": op?.declarationNo ?? "",
-    "Referans No": h.invoiceNo ?? op?.ref ?? "",
-    "Tescil Tarihi": h.invoiceDate ? formatDate(h.invoiceDate) : "",
+    // Business authority: reference/registration date are supplied by Evrim,
+    // never borrowed from invoice identity/date.
+    "Referans No": text(evrim.fileReference) || op?.ref || "",
+    "Tescil Tarihi": typeof evrim.declarationDate === "string" && evrim.declarationDate
+      ? formatDate(evrim.declarationDate)
+      : "",
     "Rejim": text(evrim.rejim),
     "Rejim Kodu": text(evrim.rejimKodu),
     "Gümrük İdaresi": text(evrim.gumrukIdaresi),

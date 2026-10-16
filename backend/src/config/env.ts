@@ -77,6 +77,10 @@ export const env = {
   // its budget explicit so PAGE_IMAGE work is not silently governed by the
   // generic text timeout.
   llmVisionTimeoutMs: num(process.env.LLM_VISION_TIMEOUT_MS, num(process.env.LLM_TIMEOUT_MS, 120000)),
+  // Per-attempt guardrail. Keep this separate from the broader vision budget so a
+  // wedged local runtime cannot hold a worker slot for 30 minutes.
+  llmVisionAttemptTimeoutMs: Math.max(1000, Math.floor(num(process.env.LLM_VISION_ATTEMPT_TIMEOUT_MS, 5 * 60 * 1000))),
+  llmVisionConcurrency: Math.max(1, Math.floor(num(process.env.LLM_VISION_CONCURRENCY, 1))),
   llmVisionMaxPages: Math.max(1, Math.floor(num(process.env.LLM_VISION_MAX_PAGES, 12))),
   llmVisionMaxImageBytes: Math.max(256 * 1024, Math.floor(num(process.env.LLM_VISION_MAX_IMAGE_BYTES, 8 * 1024 * 1024))),
   

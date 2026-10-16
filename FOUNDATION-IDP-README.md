@@ -3364,3 +3364,68 @@ After the contract passes, rerun the 1.8.9 five-invoice source-present corpus ga
 The 1.8.9.1 real corpus rerun closed the invoice-number and Incoterm boundary issues, but exposed one remaining source-present failure: PML preserved `P0087/26-27` correctly while the visually adjacent `16-Sep-26` date, originally merged into the VLM invoice-number response, was discarded after identifier cleanup.
 
 This checkpoint keeps the 1.8.9.1 identifier boundary and adds a narrow, vendor-agnostic recovery at the same Vision→Foundation 6 boundary. When `invoiceDate` has no explicit projected candidate, an explicitly separated date-shaped suffix from the invoice-number response may produce an ordinary `invoiceDate` candidate using the same PAGE_IMAGE evidence. Text-month and ISO dates are accepted; numeric day/month dates are accepted only when unambiguous. An explicit invoiceDate candidate is never replaced, ambiguous dates remain unresolved, and Foundation 6 remains the only promotion authority. No direct normalizedData write is introduced.
+
+### Product E2E 1.8.10.1 — UI source-authority acceptance hardening
+
+The first five-invoice browser/UI acceptance pass exposed product-boundary issues that were outside the frozen 82-field backend corpus gate. This checkpoint keeps Foundation 6 authoritative and adds general, vendor-agnostic guards:
+
+- Evrim-owned `Referans No` / `Tescil Tarihi` are no longer populated from invoice number/date in the writing UI.
+- Vision HS/GTIP values drop semantic labels such as `GTIP:` / `HS CODE:` while preserving the identifier.
+- A product code identical to the extracted HS code is not projected as a material/product code.
+- Package count rejects weight mirroring and deterministic shipment discovery recognizes `PALET SAYISI` / `PALLET COUNT` labels.
+- Bare country tokens are not accepted as party postal addresses.
+- Customs incentive text (Duty Drawback/RoDTEP/EPCG etc.) is not accepted as payment terms; transport-mode words are not accepted as carrier identities.
+- Previous/circulation/origin document identifiers require explicit role evidence in canonical source text.
+- Visible BANK/IBAN/SWIFT/account evidence gets a deterministic bank-info fallback candidate when Vision omits it.
+
+These are source-role boundary rules, not supplier/document-specific patches. No direct `normalizedData` write is introduced.
+
+### Product E2E 1.8.11 — Vision runtime performance guardrail
+
+1.8.10.1 remains the functional baseline. This checkpoint is a runtime/performance guardrail and does not change Foundation 6 authority, candidate semantics, promotion rules, UI source authority, or write normalized data directly.
+
+Observed regression: local Qwen-VL work could occupy `VISION_CANDIDATE_FUSION` for tens of minutes. A timed-out/aborted primary PAGE_IMAGE request was immediately retried once, allowing one bad page to consume roughly two full vision timeout windows. With worker concurrency greater than one, multiple expensive local VLM requests could also contend for the same Ollama runtime.
+
+1.8.11 therefore:
+- bounds in-process Qwen-VL inference concurrency with `LLM_VISION_CONCURRENCY` (default `1`), while leaving BullMQ worker concurrency independent;
+- adds `LLM_VISION_ATTEMPT_TIMEOUT_MS` (default `300000` ms) as a per-call fail-closed guardrail even when the broader configured vision budget is larger;
+- removes the immediate retry of the identical primary PAGE_IMAGE call after timeout/abort; replay remains a later lifecycle concern rather than doubling the same stall in-place;
+- emits `idp.qwen_vision.started` / `idp.qwen_vision.completed` timing logs including `documentId`, pages, queue wait and elapsed time;
+- keeps all existing focused/adaptive recovery semantics intact so performance work does not silently discard the accuracy gains accumulated through 1.8.10.1.
+
+Acceptance order is deliberately regression-first: VED146 must complete with correct extraction in a bounded runtime, then the established corpus must retain its previous correctness/fail-closed behavior. No new feature checkpoint should proceed before both are demonstrated.
+
+### 1.8.12 — Digital Monetary Coherence Guardrail
+
+The VED146 digital/native-text demo exposed a monetary semantic regression even though the document itself carried explicit machine-readable evidence: the declaration UI paired the TRY local-currency equivalent with EUR as the invoice total, and the exchange-rate decimal semantics were not protected by a native-source candidate. This checkpoint fixes the generic evidence boundary rather than adding supplier/invoice rules.
+
+- Generic commercial-term discovery now emits `finance.exchangeRate` from explicit `Döviz Kuru` / `Exchange Rate` / `FX Rate` evidence.
+- Single-separator locale numbers preserve decimal semantics unless they match an unambiguous three-digit grouping shape; values such as a four-decimal FX rate therefore remain decimal values.
+- Existing native `header.totalAmount` and `header.currency` candidates are now projected into the Foundation 6 vocabulary instead of remaining audit-only.
+- Foundation 6 direct-source authority is extended narrowly to unambiguous NATIVE_TEXT `currency`, `totalAmount`, and `exchangeRate` candidates. Conflicting/ambiguous native values still fail closed.
+- Qwen/Vision remains an evidence source; no code writes `normalizedData` directly and no supplier, invoice number, expected amount, currency, or rate is hard-coded.
+- This checkpoint addresses correctness revealed by the demo result. Vision runtime/page-selection performance remains a separate guardrail and must be measured independently rather than hidden by this semantic fix.
+
+### 1.8.12.1 — Digital Monetary Authority Hotfix
+
+The first 1.8.12 pass added role-aware native monetary candidates, but Foundation 6 direct-source authority still required *all* native numeric candidates for a field to agree. That allowed an older generic native candidate (for example a local-currency informational total or a misparsed exchange-rate number) to veto the new explicit-label candidate, after which the resolver could still promote the wrong peer value.
+
+1.8.12.1 closes that wiring gap without supplier rules or direct normalized writes. The explicit native candidates produced by the generic commercial-terms discovery for invoice total, transaction currency and exchange rate are now eligible for deterministic `DIRECT_SOURCE_EVIDENCE` authority by their semantic role. Conflicting legacy/native peers remain persisted for audit, but cannot veto the role-bound candidate merely by existing. Foundation 6 remains the only resolution/promotion authority.
+
+For VED2026000000146 this means the visible invoice-currency payable total `31.081,10 EUR` and explicitly labelled exchange rate `53,3268 TRY` can no longer lose to the informational TRY equivalent `1.657.456,20 TRY` / legacy misparse. The rule is generic and label/evidence-bound; no supplier, invoice number, expected amount or expected currency is encoded in production logic.
+
+### 1.8.12.2 — Digital Monetary Normalization Wiring Fix
+
+The repeated VED monetary regression exposed two separate wiring defects that the 1.8.12/1.8.12.1 Foundation-6 authority patches could not fix by themselves. First, generic commercial-term discovery detached monetary values from their currency tokens and selected the numerically largest value on a payable row. On a row containing both a transaction amount and its TRY informational equivalent, that could pair the TRY number with the foreign transaction currency. Second, declaration normalization still read `header.currency` and `header.totalAmount` from the older generic audit envelope, while `finance.exchangeRate` was not overlaid from the explicit commercial-term envelope at all. Consequently a correct Foundation-6 candidate could coexist with the wrong value later shown by the UI.
+
+1.8.12.2 fixes the actual normalization path. Explicit payable amount + currency tokens are kept as a semantic pair and the `largest number wins` heuristic is removed. `buildEffectiveInvoiceCommercialTerms` now prefers the persisted role-aware `commercialTermsCandidates` envelope for commercial fields, with the legacy generic envelope retained only as an older-run fallback. Explicit `finance.exchangeRate` is included in the same effective normalization path and overlaid into `normalized.finance`. The change is generic: there is no supplier, invoice number, expected amount, currency, or exchange-rate constant in production code. Existing human-review decisions remain authoritative, and evidence/provenance remains attached to the selected candidate.
+
+The 1.8.12.2 contract is behavioral rather than source-regex-only: it reproduces a payable row containing a foreign transaction amount plus a larger TRY equivalent, verifies that the amount/currency pair remains intact, injects the previously observed wrong legacy values, and proves that effective normalization selects the explicit commercial evidence instead.
+
+### 1.8.12.3 — Persisted Commercial-Term Refresh Hotfix
+
+VED146 exposed a migration/wiring regression after 1.8.12.2. The corrected deterministic monetary discovery and normalization contract passed, but `Tekrar Yaz` still reproduced the old values (`1.657.456,20 EUR` and `533268`). The declaration normalization path was using `audit.commercialTermsCandidates ?? discoverInvoiceCommercialTermsFieldCandidates(...)`. Because the completed ProcessingRun already persisted an older commercial-term envelope, the corrected discovery code was never executed for that uploaded invoice. Rebuilding containers could therefore not change the result.
+
+1.8.12.3 removes that stale-envelope shadowing for commercial terms. Declaration normalization now re-derives commercial-term candidates from the ProcessingRun's already persisted canonical document every time normalization is performed. This does not rerun OCR, Qwen, Qwen-VL, or document parsing; it only reinterprets canonical evidence with the current deterministic discovery rules. The refreshed envelope is then fed through the existing human-review/effective-normalization path. Existing uploads therefore receive parser fixes on `Tekrar Yaz` without needing to upload/process the invoice again.
+
+The 1.8.12.2 monetary invariants remain unchanged: amount+currency stay a semantic pair, the largest-number heuristic remains removed, explicit exchange-rate evidence feeds `finance.exchangeRate`, Foundation 6/human-review authority remains intact, there are no supplier/invoice constants, and no direct normalized-value constant writes are introduced.

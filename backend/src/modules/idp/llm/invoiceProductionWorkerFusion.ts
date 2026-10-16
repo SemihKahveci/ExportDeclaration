@@ -48,11 +48,17 @@ function canonicalCommercialTermsCandidatesOf(data: Record<string, unknown> | un
     // The generic commercial-terms discovery predates the declaration/F6
     // vocabulary. Promote only the source-backed delivery term here; the
     // original shadow audit remains untouched.
-    if (field !== "trade.deliveryTerm") continue;
-    fields.deliveryTerm = candidates.map((candidate) => ({
+    const target = field === "trade.deliveryTerm" ? "deliveryTerm"
+      : field === "finance.bankInfo" ? "bankInfo"
+      : field === "header.totalAmount" ? "totalAmount"
+      : field === "header.currency" ? "currency"
+      : field === "finance.exchangeRate" ? "exchangeRate"
+      : undefined;
+    if (!target) continue;
+    fields[target] = candidates.map((candidate) => ({
       ...candidate,
-      field: "deliveryTerm",
-      candidateId: `${candidate.candidateId}:f6-delivery-term`
+      field: target,
+      candidateId: `${candidate.candidateId}:f6-${target}`
     }));
   }
   return { version: "1", fields };
@@ -83,6 +89,26 @@ export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> |
       candidateId: `${candidate.candidateId}:f6-header-party`
     }));
   }
+  return { version: "1", fields };
+}
+
+function canonicalText(canonicalDocument: CanonicalDocument): string {
+  return canonicalDocument.pages.flatMap(page => page.words.map(word => word.text)).join(" ")
+    .toLocaleUpperCase("tr-TR").replace(/İ/g, "I").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U");
+}
+
+export function enforceVisionDocumentRoleAuthority(
+  candidates: FieldCandidateEnvelope,
+  canonicalDocument: CanonicalDocument
+): FieldCandidateEnvelope {
+  const text = canonicalText(canonicalDocument);
+  const fields = { ...candidates.fields };
+  const keepOnlyWithRole = (field: string, role: RegExp) => {
+    if (fields[field]?.length && !role.test(text)) delete fields[field];
+  };
+  keepOnlyWithRole("originDocumentNo", /\b(?:MENSE\s*BELGESI|CERTIFICATE\s+OF\s+ORIGIN|ORIGIN\s+CERTIFICATE|COO)\b/);
+  keepOnlyWithRole("circulationDocumentNo", /\b(?:A\.?TR\.?|EUR\.?1|CIRCULATION\s+DOCUMENT|DOLASIM\s+BELGESI)\b/);
+  keepOnlyWithRole("previousDocumentNo", /\b(?:ONCEKI\s+BELGE|PREVIOUS\s+DOCUMENT)\b/);
   return { version: "1", fields };
 }
 
@@ -225,9 +251,10 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalCommercialTermsCandidatesOf(result.data),
       canonicalHeaderPartyCandidatesOf(result.data)
     );
+    const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(execution.candidates, params.canonicalDocument);
     const fusedCandidates = plan.route === "LLM_VISION_PRIMARY"
-      ? mergeInvoicePrimaryWithFallback(execution.candidates, deterministicFallback)
-      : mergeInvoiceCandidateSources(deterministicFallback, execution.candidates);
+      ? mergeInvoicePrimaryWithFallback(guardedVisionCandidates, deterministicFallback)
+      : mergeInvoiceCandidateSources(deterministicFallback, guardedVisionCandidates);
 
     const associatedCandidates = associateExplicitGoodsUnitsFromQuantity({
       canonicalDocument: params.canonicalDocument,
