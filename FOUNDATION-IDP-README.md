@@ -3512,3 +3512,19 @@ Focused contract: `backend/scripts/idp/verifyProductE2E1821ValidatedNativeGoodsR
 - Reports all 56 logical goods rows across GTIP, product code, description, quantity, unit, unit price and line total, including unresolved/review fields and the selected candidate IDs.
 - The checkpoint is diagnostic/read-only: MongoDB is not mutated, normalized data is not written, and no supplier/invoice constants are introduced.
 - A clean result requires 56 fully resolved rows, zero unresolved core goods fields and zero Foundation 6 review-required goods fields before the next full VED146 model/browser run.
+
+### 1.8.23 — Persisted Header Authority Replay
+
+- Adds `replayLatestInvoice1823HeaderAuthority.ts`, a model-free diagnostic replay for the remaining document-owned invoice header/party/shipment fields.
+- Re-discovers current deterministic `headerParty`, `shipment`, and `commercialTerms` candidates from the already persisted canonical document and compares them with both the persisted generic audit and Foundation 6 resolution state.
+- Reports three actionable classes: source-present-but-unresolved fields, fields with no current deterministic candidate, and stale persisted candidates that differ from current deterministic discovery.
+- The replay is read-only: no OCR, no Qwen/model inference, no database mutation, and no direct normalized-data write.
+- Adds `verifyProductE2E1823PersistedHeaderAuthorityReplayContract.ts` to lock the replay guardrails before using its output to choose the next production fix.
+
+### 1.8.24 — Role-bound native header authority
+
+- Persisted 1.8.23 replay showed a clean separation: 7 header/party fields are discoverable deterministically from canonical evidence, yet the persisted Foundation 6 snapshot remained `REVIEW_REQUIRED` because conflicting page-image candidates had no explicit authority rule. The replay reported 7 source-present-but-unresolved fields, 19 fields with no deterministic candidate, and 0 stale deterministic fields.
+- `selectDirectSourceEvidenceAuthority()` now recognizes only the exact production candidate ids emitted by the deterministic header/party bridge (`*:f6-header-party`) and only when they carry direct `NATIVE_TEXT` evidence plus a narrow field-shape check. This gives canonical invoice geometry explicit Foundation 6 authority over conflicting page-image interpretations without granting generic native text blanket precedence.
+- Covered authority fields are invoice number/date and deterministic seller/buyer name/address/country candidates when present. Missing deterministic fields remain fail-closed; this checkpoint does not invent seller country, weights, totals, transport metadata, or any other absent source candidate.
+- The synthetic 1.8.24 contract proves that conflicting vision party/date values cannot outrank the role-bound native candidate and that an arbitrary native-looking candidate with a non-production id cannot opt into the authority path.
+- No OCR/Qwen rerun, supplier-specific rule, or direct normalized-data write is introduced. Foundation 6 remains the final write authority.

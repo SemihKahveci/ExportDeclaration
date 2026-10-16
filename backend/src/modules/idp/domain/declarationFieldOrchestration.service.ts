@@ -253,6 +253,47 @@ export function selectDirectSourceEvidenceAuthority(
     roleBoundFields.add(field);
   }
 
+  /*
+   * 1.8.24: deterministic header/party discovery is itself role-bound by the
+   * canonical invoice geometry (invoice labels and the SAYIN party boundary).
+   * When such a candidate is backed by NATIVE_TEXT, allow it to select authority
+   * over conflicting page-image interpretations.  We deliberately key this to
+   * the production candidate ids emitted by canonicalHeaderPartyCandidatesOf;
+   * arbitrary native text or a model value cannot opt into this authority path.
+   */
+  const roleBoundHeaderCandidateIds: Record<string, string> = {
+    invoiceNo: "header-invoice-no:f6-header-party",
+    invoiceDate: "header-invoice-date:f6-header-party",
+    "parties.seller.name": "party-seller-name:f6-header-party",
+    "parties.seller.address": "party-seller-address:f6-header-party",
+    "parties.seller.country": "party-seller-country:f6-header-party",
+    "parties.buyer.name": "party-buyer-name:f6-header-party",
+    "parties.buyer.address": "party-buyer-address:f6-header-party",
+    "parties.buyer.country": "party-buyer-country:f6-header-party"
+  };
+  const headerValueValid = (field: string, value: unknown): boolean => {
+    if (typeof value !== "string") return false;
+    const compact = value.trim().replace(/\s+/g, " ");
+    if (!compact) return false;
+    if (field === "invoiceNo") return exactTurkishInvoiceNumber(compact) !== undefined;
+    if (field === "invoiceDate") return /^20\d{2}-\d{2}-\d{2}$/.test(compact);
+    if (field.endsWith(".country")) return compact.length >= 2 && compact.length <= 40 && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(compact);
+    if (field.endsWith(".name")) return compact.length >= 3 && compact.length <= 160 && /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(compact);
+    if (field.endsWith(".address")) return compact.length >= 6 && compact.length <= 500;
+    return false;
+  };
+  for (const [field, candidateId] of Object.entries(roleBoundHeaderCandidateIds)) {
+    const candidate = (candidates.fields[field] ?? []).find((item) =>
+      item.candidateId === candidateId &&
+      !item.derived &&
+      headerValueValid(field, item.value) &&
+      item.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (!candidate) continue;
+    selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+    roleBoundFields.add(field);
+  }
+
   for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
     if (roleBoundFields.has(field)) continue;
     const canonicalValue = /^goodsLines\.\d+\.hsCode$/.test(field)
