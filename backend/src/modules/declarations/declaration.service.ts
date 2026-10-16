@@ -276,8 +276,18 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       segmentId,
       audit.candidates
     );
-    const shipmentFields = audit.shipmentCandidates ?? discoverInvoiceShipmentFieldCandidates(run.canonicalDocument as any, segmentId);
-    const headerPartyFields = audit.headerPartyCandidates ?? discoverInvoiceHeaderPartyFieldCandidates(run.canonicalDocument as any, segmentId);
+    // 1.8.13: header/party and shipment metadata are deterministic canonical-document
+    // evidence just like commercial terms. Re-derive them during normalization so
+    // completed runs do not stay pinned to an older/missing persisted envelope after
+    // parser improvements. This is OCR/LLM-free and remains evidence-bounded.
+    const shipmentFields = discoverInvoiceShipmentFieldCandidates(
+      run.canonicalDocument as any,
+      segmentId
+    );
+    const headerPartyFields = discoverInvoiceHeaderPartyFieldCandidates(
+      run.canonicalDocument as any,
+      segmentId
+    );
     // 1.8.12.3: commercial terms are deterministic canonical-document evidence.
     // Re-derive them on normalization instead of trusting a persisted audit from
     // an older processing run. This is intentionally different from the other

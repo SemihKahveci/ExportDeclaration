@@ -92,23 +92,77 @@ export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> |
   return { version: "1", fields };
 }
 
-function canonicalText(canonicalDocument: CanonicalDocument): string {
-  return canonicalDocument.pages.flatMap(page => page.words.map(word => word.text)).join(" ")
-    .toLocaleUpperCase("tr-TR").replace(/İ/g, "I").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U");
+function canonicalPageText(canonicalDocument: CanonicalDocument, pageNumber: number): string {
+  const page = canonicalDocument.pages.find((item) => item.pageNumber === pageNumber);
+  if (!page) return "";
+  const source = [page.nativeText ?? "", page.ocrText ?? "", ...page.words.map((word) => word.text)].join(" ");
+  return source.toLocaleUpperCase("tr-TR")
+    .replace(/İ/g, "I").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U");
 }
 
+/**
+ * 1.8.15 semantic authority is candidate-local, not document-global. A role
+ * label elsewhere in a multi-page invoice must not authorize a hallucinated
+ * PAGE_IMAGE value on the current page. Non-image evidence is left untouched:
+ * this guard only limits the semantic-primary vision source before F6 sees it.
+ */
 export function enforceVisionDocumentRoleAuthority(
   candidates: FieldCandidateEnvelope,
   canonicalDocument: CanonicalDocument
 ): FieldCandidateEnvelope {
-  const text = canonicalText(canonicalDocument);
+  const pageText = new Map(canonicalDocument.pages.map((page) => [page.pageNumber, canonicalPageText(canonicalDocument, page.pageNumber)]));
   const fields = { ...candidates.fields };
+
   const keepOnlyWithRole = (field: string, role: RegExp) => {
-    if (fields[field]?.length && !role.test(text)) delete fields[field];
+    const source = fields[field];
+    if (!source?.length) return;
+    const retained = source.filter((candidate) => {
+      const imageEvidence = candidate.evidence.filter((evidence) => evidence.contentSource === "PAGE_IMAGE");
+      if (imageEvidence.length === 0) return true;
+      return imageEvidence.some((evidence) => role.test(pageText.get(evidence.pageNumber) ?? ""));
+    });
+    if (retained.length > 0) fields[field] = retained;
+    else delete fields[field];
   };
+
+  // Document identifiers remain role-bound. The role must be present on the
+  // same evidence page; a certificate label on another page cannot authorize
+  // an unrelated invoice-table token.
   keepOnlyWithRole("originDocumentNo", /\b(?:MENSE\s*BELGESI|CERTIFICATE\s+OF\s+ORIGIN|ORIGIN\s+CERTIFICATE|COO)\b/);
   keepOnlyWithRole("circulationDocumentNo", /\b(?:A\.?TR\.?|EUR\.?1|CIRCULATION\s+DOCUMENT|DOLASIM\s+BELGESI)\b/);
   keepOnlyWithRole("previousDocumentNo", /\b(?:ONCEKI\s+BELGE|PREVIOUS\s+DOCUMENT)\b/);
+
+  // Parties: repeated logos, addresses, shipment words and table text on later
+  // pages are not party authority. Require an explicit seller/buyer semantic
+  // role on the page that produced the vision candidate.
+  const sellerRole = /\b(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER)\b/;
+  const buyerRole = /\b(?:ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO)\b/;
+  for (const field of ["parties.seller.name", "parties.seller.address", "parties.seller.country"]) keepOnlyWithRole(field, sellerRole);
+  for (const field of ["parties.buyer.name", "parties.buyer.address", "parties.buyer.country"]) keepOnlyWithRole(field, buyerRole);
+
+  // Header/shipment scalars that are especially prone to numeric-role
+  // collisions. Quantity/price values must not become invoice totals or
+  // weights merely because the VLM returned the requested JSON key.
+  keepOnlyWithRole("totalAmount", /\b(?:FATURA\s+TOPLAMI|GENEL\s+TOPLAM|ODENECEK\s+TUTAR|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+AMOUNT|AMOUNT\s+DUE)\b/);
+  keepOnlyWithRole("grossWeight", /\b(?:BRUT|BRUTTO|GROSS)\s*(?:AGIRLIK|WEIGHT|KG)?\b|\b(?:GROSS\s+WEIGHT|BRUT\s+AGIRLIK)\b/);
+  keepOnlyWithRole("netWeight", /\b(?:NET)\s*(?:AGIRLIK|WEIGHT|KG)\b|\b(?:NET\s+WEIGHT|NET\s+AGIRLIK)\b/);
+  keepOnlyWithRole("packageType", /\b(?:AMBALAJ|KAP\s+CINSI|PAKET\s+TIPI|PACKAGE\s+TYPE|PACKAGING|PACKING\s+TYPE)\b/);
+  keepOnlyWithRole("totalPackage", /\b(?:TOPLAM\s+KAP|KAP\s+ADEDI|PAKET\s+ADEDI|TOTAL\s+PACKAGES?|PACKAGE\s+COUNT|NUMBER\s+OF\s+PACKAGES?)\b/);
+
+  // Transport/document identifiers are high-risk scalars. Dense invoice tables
+  // contain many short numeric tokens (for example quantity=2) that a VLM can
+  // otherwise repeat into every transport slot. Explicit same-page role proof
+  // is required; absence means fail closed, never "single candidate = truth".
+  keepOnlyWithRole("transportMode", /\b(?:TASIMA\s+SEKLI|NAKLIYE\s+SEKLI|TRANSPORT(?:ATION)?\s+MODE|MODE\s+OF\s+TRANSPORT)\b/);
+  keepOnlyWithRole("carrier", /\b(?:TASIYICI|NAKLIYECI|CARRIER|FORWARDER|FREIGHT\s+FORWARDER)\b/);
+  keepOnlyWithRole("departureVehicleId", /\b(?:CIKIS\s+ARACI|DEPARTURE\s+VEHICLE|VEHICLE\s+AT\s+DEPARTURE)\b/);
+  keepOnlyWithRole("borderVehicleId", /\b(?:SINIR\s+GECIS\s+ARACI|BORDER\s+(?:CROSSING\s+)?VEHICLE)\b/);
+  keepOnlyWithRole("vehiclePlate", /\b(?:PLAKA|VEHICLE\s+(?:PLATE|REGISTRATION)|LICENSE\s+PLATE)\b/);
+  keepOnlyWithRole("containerNo", /\b(?:KONTEYNER\s*(?:NO|NUMARASI)|CONTAINER\s*(?:NO|NUMBER|#))\b/);
+  keepOnlyWithRole("billOfLadingNo", /\b(?:KONSIMENTO\s*(?:NO|NUMARASI)|BILL\s+OF\s+LADING|B\/?L\s*(?:NO|NUMBER|#))\b/);
+  keepOnlyWithRole("cmrNo", /\bCMR\s*(?:NO|NUMBER|#)\b/);
+  keepOnlyWithRole("awbNo", /\b(?:AWB|AIR\s+WAYBILL)\s*(?:NO|NUMBER|#)\b/);
+  keepOnlyWithRole("transportDocumentNo", /\b(?:TASIMA\s+SENEDI|TRANSPORT\s+DOCUMENT|WAYBILL)\s*(?:NO|NUMBER|#)?\b/);
   return { version: "1", fields };
 }
 

@@ -197,7 +197,9 @@ function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDeclarati
     "Ticaret Yapılan Ülke": norm.trade.tradeCountry ?? text(evrim.ticaretYapilanUlke),
     "Teslim Şekli": norm.trade.deliveryTerm ?? "",
 
-    "Taşıma Şekli": norm.transport.mode ?? op?.transportMode ?? "",
+    // Document-owned writing field: operation metadata must not fabricate a value
+    // when the invoice did not promote transport evidence.
+    "Taşıma Şekli": norm.transport.mode ?? "",
     "Taşıyıcı / Nakliyeci": norm.transport.carrier ?? "",
     "Çıkış Aracı": norm.transport.departureVehicleId ?? "",
     "Sınır Geçiş Aracı": norm.transport.borderVehicleId ?? "",
