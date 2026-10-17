@@ -283,3 +283,18 @@ Foundation 8.2 adds the model-independent semantic object that the portable skil
 
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation820InvoiceUnderstandingContract.ts`
+
+### Foundation 8.3 — Bounded specialist orchestration
+
+Foundation 8.3 introduces a model-independent manager plan for four bounded semantic specialists without changing the current production extraction path.
+
+- The manager plans `PARTIES`, `COMMERCIAL`, `GOODS`, and `LOGISTICS` work from one shared canonical evidence bundle.
+- Each specialist loads its portable `SKILL.md` through the Foundation 8.1 registry; orchestration contains no supplier/invoice-specific prompt or expected answer.
+- Semantic ownership is explicit and disjoint: Goods owns `goodsTable`; Logistics owns `logistics` + `packageSummary`; Commercial owns `documentIdentity` + `commercialTerms`; Parties owns `parties`.
+- Goods is explicitly forbidden from owning package summary, and Logistics is forbidden from owning goods rows. This establishes the architectural boundary needed to prevent package-count → commercial-quantity role theft.
+- Domain-specific specialist result types prevent one specialist payload from structurally overwriting another domain during assembly.
+- Assembly is intentionally not reconciliation. Any missing specialist makes the document `PARTIAL`; any specialist `REVIEW_REQUIRED` status propagates upward. Conflict judging and targeted recovery remain Foundation 8.4 work.
+- No production Qwen/VL execution, candidate fusion, Foundation 6 promotion, OCR, database mutation, or normalized declaration write changes in this checkpoint.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation830SpecialistOrchestrationContract.ts`
