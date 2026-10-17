@@ -2,6 +2,7 @@ import { env } from "../../../config/env.js";
 import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
 import { runFoundation8ShadowRuntime } from "../understanding/invoiceUnderstandingShadowRuntime.js";
 import { executeFoundation8SpecialistModelShadow } from "../understanding/invoiceUnderstandingSpecialistModelExecution.js";
+import { reconcileFoundation8SpecialistModelShadow } from "../understanding/invoiceUnderstandingSpecialistReconciliation.js";
 import type { CandidateExtractionEnvelope } from "../domain/candidateExtraction.types.js";
 import type { DocumentSegment } from "../domain/documentSegment.types.js";
 import type { SegmentClassification } from "../domain/segmentClassification.types.js";
@@ -870,12 +871,16 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const foundation8SpecialistModelAudit = env.foundation8ShadowModelEnabled
       ? await executeFoundation8SpecialistModelShadow({ bundle: foundation8EvidenceBundle, provider })
       : undefined;
+    const foundation8SpecialistReconciliationAudit = foundation8SpecialistModelAudit
+      ? reconcileFoundation8SpecialistModelShadow({ documentId: result.segmentId, audit: foundation8SpecialistModelAudit })
+      : undefined;
 
     result.data = {
       ...result.data,
       fieldCandidates: finalRoleGuardedCandidates,
       foundation8ShadowAudit,
       ...(foundation8SpecialistModelAudit ? { foundation8SpecialistModelAudit } : {}),
+      ...(foundation8SpecialistReconciliationAudit ? { foundation8SpecialistReconciliationAudit } : {}),
       adaptiveRecoveryAudit: adaptiveRecoveryPlan,
       adaptiveRecoveryExecutionAudit: adaptiveRecoveryExecution.audit,
       adaptiveGoodsDescriptionExecutionAudit: adaptiveGoodsDescriptionExecution.audit,

@@ -5,3 +5,5 @@ export * from "./invoiceAuthorityPolicy.js";
 export * from "./invoiceUnderstandingShadowRuntime.js";
 
 export * from "./invoiceUnderstandingSpecialistProjection.js";
+
+export * from "./invoiceUnderstandingSpecialistReconciliation.js";

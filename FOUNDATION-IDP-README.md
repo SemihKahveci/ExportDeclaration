@@ -374,3 +374,7 @@ This checkpoint intentionally separates **model execution** from **semantic cuto
 ### Foundation 8.11 — Specialist Output → Atomic InvoiceUnderstanding Projection
 
 Foundation 8 specialist model responses can now be projected into the shared `InvoiceUnderstanding` schema in shadow mode. Projection preserves specialist ownership, source evidence, package-vs-commercial quantity separation, and atomic goods-row semantics. HS-only skeletons may remain visible as incomplete evidence-bearing rows, but they cannot satisfy complete commercial-row requirements. This checkpoint does not write FieldCandidates, Foundation 6 resolution, or `normalizedData`.
+
+### Foundation 8.12 — Shadow Reconciliation Runtime Wiring
+
+Foundation 8 specialist model output is now projected into the atomic `InvoiceUnderstanding` contract and passed through the reconciliation policy inside the real invoice production worker, while remaining shadow-only. Healthy atomic rows can be accepted, incomplete/HS-only goods rows request GOODS-only targeted recovery, and specialist ambiguity/failure fails closed to review. The audit cannot replace production `fieldCandidates`, execute recovery, promote through Foundation 6, or write `normalizedData`.
