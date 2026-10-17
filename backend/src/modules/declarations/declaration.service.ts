@@ -24,6 +24,7 @@ import { discoverInvoiceCommercialTermsFieldCandidates } from "../idp/candidates
 import { discoverInvoiceOriginFieldCandidates } from "../idp/candidates/invoiceOriginCandidateDiscovery.js";
 import type { GenericInvoiceCandidateAudit } from "../idp/domain/genericCandidateIntegration.types.js";
 import { ProcessingStatus } from "../idp/domain/idp.types.js";
+import { preserveFoundation6ResolvedPaths } from "../idp/normalization/documentOwnedWriteBoundary.js";
 import { toDeclarationDto, type DeclarationDto } from "./declaration.mapper.js";
 import type { OperationTypeValue } from "../../common/enums/operationMeta.js";
 
@@ -396,8 +397,17 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
     };
   }
 
-  dec.normalizedData = normalized as DeclarationDoc["normalizedData"];
-  dec.sourceTrace = sourceTrace;
+  // Foundation 8.6: legacy normalization may rebuild non-F6 concerns, but it
+  // cannot overwrite document-owned paths already promoted by Foundation 6.
+  const writeBoundary = preserveFoundation6ResolvedPaths({
+    currentNormalizedData: dec.toObject().normalizedData,
+    currentSourceTrace: dec.toObject().sourceTrace,
+    rebuiltNormalizedData: normalized,
+    rebuiltSourceTrace: sourceTrace
+  });
+
+  dec.normalizedData = writeBoundary.normalizedData as DeclarationDoc["normalizedData"];
+  dec.sourceTrace = writeBoundary.sourceTrace;
   dec.status = DeclarationStatus.READY;
   await dec.save();
   return dec.toObject();

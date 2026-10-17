@@ -284,44 +284,24 @@ Foundation 8.2 adds the model-independent semantic object that the portable skil
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation820InvoiceUnderstandingContract.ts`
 
-### Foundation 8.3 — Bounded specialist orchestration
+### Foundation 8.6 — Foundation 6 write-authority boundary
 
-Foundation 8.3 turns the portable skill packages into a model-independent orchestration plan without changing production extraction.
+Foundation 8.6 closes the second-writer hole for document-owned fields already promoted by Foundation 6.
 
-- The manager plans four bounded specialists: `PARTIES`, `COMMERCIAL`, `GOODS`, and `LOGISTICS`.
-- Each specialist loads its own portable `SKILL.md` through the shared skill registry and receives the same canonical evidence bundle without mutating it.
-- Semantic ownership is disjoint: parties own `parties`; commercial owns `documentIdentity` and `commercialTerms`; goods owns `goodsTable`; logistics owns `logistics` and `packageSummary`.
-- Domain payload types and assembly boundaries prevent a goods result from owning package summary or a logistics result from owning goods rows.
-- Missing specialist output makes the assembled understanding partial; specialist review propagates to document review.
-- No production model execution, reconciliation/judge, Foundation 6 promotion, database mutation, supplier-specific rule, invoice-specific constant, or direct normalized-data write is introduced.
-
-Contract:
-`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation830SpecialistOrchestrationContract.ts`
-
-### Foundation 8.4 — Reconciliation and bounded targeted recovery
-
-Foundation 8.4 adds the decision boundary after bounded specialist assembly. It remains model-independent and is not wired into production extraction yet.
-
-- Reconciliation returns exactly one action: `ACCEPT`, `TARGETED_RECOVERY`, or `REVIEW_REQUIRED`.
-- Incomplete atomic goods rows request a bounded `GOODS` re-read instead of manufacturing missing fields or rerunning unrelated domains.
-- Arithmetic can identify a conflict and request a source re-read, but it never replaces grounded quantity, unit price, or line total.
-- Genuine source ambiguity fails closed to review.
-- Targeted recovery application is ownership-bound: a GOODS retry cannot rewrite parties, logistics, or package summary even if a malformed payload contains those sections.
-- This checkpoint adds no model/judge execution, production cutover, Foundation 6 promotion changes, database mutation, supplier-specific rule, or invoice-specific constant.
+- `runNormalize()` may continue rebuilding compatibility/non-F6 data during migration.
+- Before save, paths whose persisted `sourceTrace` provenance is `DECLARATION_FIELD_RESOLUTION` are restored from the current declaration.
+- Ownership is provenance-driven rather than supplier-, invoice-, or hard-coded field-value driven.
+- This protects F6-resolved scalar, party, package and per-row goods values from a later legacy normalize rewrite.
+- Non-F6/user/settings/calculated data is not blanket-frozen by this boundary.
+- Foundation 8 itself still does not write directly to `normalizedData`.
 
 Contract:
-`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation840ReconciliationContract.ts`
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation860F6WriteAuthorityBoundaryContract.ts`
 
-### Foundation 8.5 — Deterministic authority demotion
+#### Foundation 8.6.1 — SourceTrace typing correction
 
-Foundation 8.5 freezes the authority policy for the upcoming production cutover. It changes no production fusion yet.
+The 8.6 ownership behavior is unchanged. The write boundary now returns the declaration model-compatible concrete `sourceTrace` record shape instead of `Record<string, unknown>`, so TypeScript enforces the save boundary without an `any` cast.
 
-- Bounded specialist `InvoiceUnderstanding` is the semantic-primary authority inside the new architecture.
-- Role-bound native evidence, validated native goods rows, and exact native HS/GTIP tokens are demoted to corroboration: they may challenge a semantic result and trigger targeted recovery, but cannot overwrite grounded semantic truth.
-- A validated deterministic goods row cannot define atomic row identity; an isolated HS/GTIP token can never materialize a commercial row.
-- Raw OCR/Vision observations are recovery evidence, not direct normalized declaration authority.
-- Legacy field-index deterministic extraction is explicitly classified as migration fallback rather than a peer semantic parser.
-- Production candidate fusion, Foundation 6 promotion and the legacy `runNormalize()` writer are intentionally unchanged here; those boundaries are handled in the next cutover checkpoints.
+#### Foundation 8.6.2 — Flat sourceTrace ownership lookup
 
-Contract:
-`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation850DeterministicAuthorityDemotionContract.ts`
+The F6 ownership boundary now reads persisted `sourceTrace` using its real flat path-keyed representation (for example `header.invoiceNo`) while continuing to traverse nested `normalizedData` by path. This fixes the contract failure where F6-owned paths were detected but skipped during restoration.
