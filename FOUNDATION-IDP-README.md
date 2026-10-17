@@ -390,3 +390,15 @@ Foundation 8 specialist model output is now projected into the atomic `InvoiceUn
 
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8130RealPdfShadowCanaryHarnessContract.ts`
+
+### Foundation 8.14 — Specialist Text Provider Split
+
+Foundation 8 shadow specialists now use a dedicated text-only Ollama provider and an explicit `FOUNDATION8_SPECIALIST_MODEL` configuration. Primary page-image extraction remains on `LLM_VISION_MODEL`; the four bounded PARTIES / COMMERCIAL / GOODS / LOGISTICS specialists no longer reuse `QwenVisionInvoiceProvider` merely because they implement the same invoice extraction interface.
+
+The split remains shadow-only and opt-in through `FOUNDATION8_SHADOW_MODEL_ENABLED=false` by default. The real-PDF canary preflight now requires both configured models to be advertised by Ollama and reports their roles separately. This establishes the intended Spark topology: a vision-capable model for page-image understanding and a text reasoning model for skill-driven specialist interpretation.
+
+Contract: `backend/scripts/idp/verifyFoundation8140SpecialistTextProviderSplitContract.ts`.
+
+#### Foundation 8.14.1 — Container-safe provider split contract
+
+The 8.14 runtime/provider behavior is unchanged. The verification contract now locates the repository root explicitly and treats `compose.dev.yaml` as a host-only assertion when it is not mounted into the backend container. Runtime source assertions remain mandatory inside Docker; the compose wiring is still validated when the file is available.

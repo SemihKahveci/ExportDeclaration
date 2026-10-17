@@ -29,14 +29,16 @@ async function preflight(): Promise<{ baseUrl: string; availableModels: string[]
   assert.equal(env.foundation8ShadowModelEnabled, true, "FOUNDATION8_SHADOW_MODEL_ENABLED=true required for a real canary.");
   assert.ok(env.llmBaseUrl.trim(), "LLM_BASE_URL is required.");
   assert.ok(env.llmVisionModel.trim(), "LLM_VISION_MODEL is required.");
+  assert.ok(env.foundation8SpecialistModel.trim(), "FOUNDATION8_SPECIALIST_MODEL is required.");
 
   const baseUrl = ollamaRoot(env.llmBaseUrl);
   const response = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(10_000) });
   assert.ok(response.ok, `Ollama preflight failed: HTTP ${response.status}`);
   const payload = await response.json() as { models?: Array<{ name?: string; model?: string }> };
   const availableModels = (payload.models ?? []).flatMap(item => [item.name, item.model]).filter((value): value is string => Boolean(value));
-  assert.ok(availableModels.some(model => model === env.llmVisionModel || model.startsWith(`${env.llmVisionModel}:`) || env.llmVisionModel.startsWith(`${model}:`)),
-    `Configured LLM_VISION_MODEL '${env.llmVisionModel}' not present in Ollama model list.`);
+  const hasModel = (configured: string) => availableModels.some(model => model === configured || model.startsWith(`${configured}:`) || configured.startsWith(`${model}:`));
+  assert.ok(hasModel(env.llmVisionModel), `Configured LLM_VISION_MODEL '${env.llmVisionModel}' not present in Ollama model list.`);
+  assert.ok(hasModel(env.foundation8SpecialistModel), `Configured FOUNDATION8_SPECIALIST_MODEL '${env.foundation8SpecialistModel}' not present in Ollama model list.`);
   return { baseUrl, availableModels: [...new Set(availableModels)].sort() };
 }
 
@@ -91,8 +93,8 @@ async function main(): Promise<void> {
         elapsedMs: Date.now() - startedAt,
         llmBaseUrl: modelPreflight.baseUrl,
         primaryVisionModel: env.llmVisionModel,
-        specialistModel: env.llmVisionModel,
-        specialistProviderNote: "8.13 specialists currently share QwenVisionInvoiceProvider; text-model split is not yet wired.",
+        specialistModel: env.foundation8SpecialistModel,
+        specialistProviderNote: "Foundation 8 specialists use the dedicated text-only Qwen provider; primary page-image extraction remains on LLM_VISION_MODEL.",
         availableModelCount: modelPreflight.availableModels.length
       },
       shadow,

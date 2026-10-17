@@ -9,6 +9,7 @@ import type { SegmentClassification } from "../domain/segmentClassification.type
 import { ClassifiedDocumentType } from "../domain/segmentClassification.types.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 import { QwenVisionInvoiceProvider, sanitizeVisionBankInfo, sanitizeVisionPaymentType } from "./qwenVisionInvoiceProvider.js";
+import { createFoundation8SpecialistProvider } from "./qwenTextInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
 import { renderInvoicePagesForVision } from "./renderInvoicePagesForVision.js";
@@ -869,7 +870,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       evidenceBundle: foundation8EvidenceBundle
     });
     const foundation8SpecialistModelAudit = env.foundation8ShadowModelEnabled
-      ? await executeFoundation8SpecialistModelShadow({ bundle: foundation8EvidenceBundle, provider })
+      ? await executeFoundation8SpecialistModelShadow({ bundle: foundation8EvidenceBundle, provider: createFoundation8SpecialistProvider() })
       : undefined;
     const foundation8SpecialistReconciliationAudit = foundation8SpecialistModelAudit
       ? reconcileFoundation8SpecialistModelShadow({ documentId: result.segmentId, audit: foundation8SpecialistModelAudit })
