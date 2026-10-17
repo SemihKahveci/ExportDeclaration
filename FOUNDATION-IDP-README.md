@@ -370,3 +370,7 @@ The 8.9 production shadow wiring is unchanged. The verification script now perfo
 Foundation 8 specialist requests can now be executed against the configured invoice LLM provider in production worker shadow mode. `FOUNDATION8_SHADOW_MODEL_ENABLED` is disabled by default. When explicitly enabled, PARTIES, COMMERCIAL, GOODS and LOGISTICS each receive their portable `SKILL.md` context plus the same canonical source evidence. Returned fields are filtered by specialist ownership before they enter the shadow audit. This path does not mutate production `fieldCandidates`, Foundation 6 promotion, or `normalizedData`.
 
 This checkpoint intentionally separates **model execution** from **semantic cutover**. It makes Spark/Qwen canaries possible without allowing experimental specialist output to become declaration truth. A later checkpoint projects accepted specialist output into atomic `InvoiceUnderstanding` and compares it against the legacy shadow projection before any production authority change.
+
+### Foundation 8.11 — Specialist Output → Atomic InvoiceUnderstanding Projection
+
+Foundation 8 specialist model responses can now be projected into the shared `InvoiceUnderstanding` schema in shadow mode. Projection preserves specialist ownership, source evidence, package-vs-commercial quantity separation, and atomic goods-row semantics. HS-only skeletons may remain visible as incomplete evidence-bearing rows, but they cannot satisfy complete commercial-row requirements. This checkpoint does not write FieldCandidates, Foundation 6 resolution, or `normalizedData`.
