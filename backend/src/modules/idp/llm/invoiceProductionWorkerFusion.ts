@@ -859,6 +859,13 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
           source: page.hasNativeText ? "NATIVE_TEXT" as const : "OCR" as const,
           quote: (page.nativeText || page.ocrText || "").slice(0, 240) || undefined
         })),
+      canonicalPages: params.canonicalDocument.pages
+        .filter((page) => segment.pageNumbers.includes(page.pageNumber))
+        .map((page) => ({
+          pageNumber: page.pageNumber,
+          source: page.hasNativeText ? "NATIVE_TEXT" as const : "OCR" as const,
+          text: page.nativeText || page.ocrText || ""
+        })),
       canonicalText: params.canonicalDocument.pages
         .filter((page) => segment.pageNumbers.includes(page.pageNumber))
         .map((page) => page.nativeText || page.ocrText || "")

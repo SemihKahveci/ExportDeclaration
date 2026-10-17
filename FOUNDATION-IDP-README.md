@@ -399,6 +399,6 @@ The split remains shadow-only and opt-in through `FOUNDATION8_SHADOW_MODEL_ENABL
 
 Contract: `backend/scripts/idp/verifyFoundation8140SpecialistTextProviderSplitContract.ts`.
 
-#### Foundation 8.14.1 — Container-safe provider split contract
+### Foundation 8.15 — Page-Grounded Specialist Evidence Packet
 
-The 8.14 runtime/provider behavior is unchanged. The verification contract now locates the repository root explicitly and treats `compose.dev.yaml` as a host-only assertion when it is not mounted into the backend container. Runtime source assertions remain mandatory inside Docker; the compose wiring is still validated when the file is available.
+Foundation 8 specialist model execution now receives canonical invoice text as deterministic page-delimited evidence instead of an unlabelled flattened document string. Each page keeps its real page number and native/OCR source identity; blank pages are omitted and the legacy flat text remains only as a compatibility fallback. This is shadow-only and does not change production candidates, Foundation 6 promotion, or normalized declaration writes.

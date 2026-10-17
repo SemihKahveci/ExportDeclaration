@@ -14,9 +14,18 @@ export const INVOICE_SPECIALIST_DOMAINS = [
 
 export type InvoiceSpecialistDomain = (typeof INVOICE_SPECIALIST_DOMAINS)[number];
 
+export type InvoiceUnderstandingCanonicalPage = {
+  pageNumber: number;
+  source: "NATIVE_TEXT" | "OCR";
+  text: string;
+};
+
 export type InvoiceUnderstandingEvidenceBundle = {
   documentId: string;
   evidence: InvoiceUnderstandingEvidenceRef[];
+  /** Page-preserving canonical evidence for model specialists. */
+  canonicalPages?: InvoiceUnderstandingCanonicalPage[];
+  /** Legacy flat text remains available for non-model/shadow compatibility. */
   canonicalText?: string;
 };
 
@@ -36,6 +45,7 @@ export type InvoiceSpecialistRequest = {
   owns: readonly string[];
   forbidden: readonly string[];
   evidence: InvoiceUnderstandingEvidenceRef[];
+  canonicalPages?: InvoiceUnderstandingCanonicalPage[];
   canonicalText?: string;
 };
 
@@ -91,6 +101,7 @@ export function buildInvoiceSpecialistRequest(
     owns: definition.owns,
     forbidden: definition.forbidden,
     evidence: bundle.evidence,
+    canonicalPages: bundle.canonicalPages,
     canonicalText: bundle.canonicalText
   };
 }

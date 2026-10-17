@@ -9,7 +9,7 @@ import {
   type InvoiceUnderstandingEvidenceBundle
 } from "./invoiceUnderstandingOrchestration.js";
 
-export const FOUNDATION8_SPECIALIST_MODEL_EXECUTION_VERSION = "8.10.0" as const;
+export const FOUNDATION8_SPECIALIST_MODEL_EXECUTION_VERSION = "8.15.0" as const;
 
 const REQUESTED_FIELDS: Record<InvoiceSpecialistDomain, readonly string[]> = {
   PARTIES: [
@@ -26,6 +26,22 @@ function fieldOwnedBy(domain: InvoiceSpecialistDomain, field: string): boolean {
   if (domain === "COMMERCIAL") return /^(invoiceNo|invoiceDate|currency|totalAmount|exchangeRate|paymentTerm|bankDetails)$/.test(field);
   if (domain === "GOODS") return /^goodsLines\.\d+\.(productCode|description|hsCode|quantity|unit|unitPrice|lineTotal|origin)$/.test(field);
   return /^(deliveryTerm|transportMode|grossWeight|netWeight|totalPackage|packageType)$/.test(field);
+}
+
+
+export function renderFoundation8PageGroundedEvidencePacket(request: {
+  canonicalPages?: readonly { pageNumber: number; source: "NATIVE_TEXT" | "OCR"; text: string }[];
+  canonicalText?: string;
+}): string | undefined {
+  const pages = [...(request.canonicalPages ?? [])]
+    .filter(page => Number.isInteger(page.pageNumber) && page.pageNumber > 0 && page.text.trim())
+    .sort((a, b) => a.pageNumber - b.pageNumber);
+  if (!pages.length) return request.canonicalText?.trim() || undefined;
+  return pages.map(page => [
+    `<<<PAGE ${page.pageNumber} | SOURCE ${page.source}>>>`,
+    page.text.trim(),
+    `<<<END PAGE ${page.pageNumber}>>>`
+  ].join("\n")).join("\n\n");
 }
 
 export interface Foundation8SpecialistModelAuditItem {
@@ -74,7 +90,7 @@ export async function executeFoundation8SpecialistModelShadow(params: {
         documentId: request.documentId,
         evidenceMode: InvoiceLlmEvidenceMode.TEXT,
         requestedFields: [...requestedFields],
-        nativeText: request.canonicalText,
+        nativeText: renderFoundation8PageGroundedEvidencePacket(request),
         verifiedKnowledge: [{
           label: `foundation8-skill:${request.skillName}@${request.skillVersion}`,
           content: request.skillContext
@@ -84,6 +100,7 @@ export async function executeFoundation8SpecialistModelShadow(params: {
           `You may return only these owned semantic sections: ${request.owns.join(", ")}.`,
           `Never infer or repair forbidden sections: ${request.forbidden.join(", ")}.`,
           "Use only source-grounded evidence. Missing or ambiguous values must remain absent/review-required.",
+          "Canonical evidence is page-delimited. Every returned evidence.pageNumber must match the page containing the cited value; never move evidence across page boundaries.",
           request.skillContext
         ].join("\n\n")
       });
