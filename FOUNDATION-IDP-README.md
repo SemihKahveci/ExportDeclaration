@@ -268,3 +268,18 @@ Persisted semantic coverage replay now gives the freshly rebuilt deterministic e
 - Goods knowledge makes row identity atomic: an isolated HS/GTIP token cannot materialize a row, packaging quantity is distinct from commercial quantity, and arithmetic validates rather than manufactures extraction.
 - Portable skills contain no golden-corpus invoice/supplier identities or expected answers. Foundation 8 evaluation fixtures remain test-only and are not loaded by the skill registry or runtime extraction.
 - No current Qwen/VL extraction, candidate fusion, resolver, database, OCR, or normalized declaration behavior changes in this checkpoint.
+
+### Foundation 8.2 — Atomic InvoiceUnderstanding contract
+
+Foundation 8.2 adds the model-independent semantic object that the portable skills will eventually produce. It is deliberately **not wired into production extraction yet**.
+
+- Added `InvoiceUnderstanding` v1 with document identity, parties, commercial terms, logistics, package summary and an atomic goods table.
+- Goods rows have their own `rowId`, `rowEvidence` and `pageNumbers`; field index alone is not row identity.
+- A HS/GTIP-only skeleton may exist as partial evidence, but it cannot satisfy goods-row completeness.
+- `expectedRowCount` is optional metadata and cannot be manufactured from the number of HS/GTIP tokens.
+- Every populated goods field must carry evidence and must overlap the row evidence neighborhood at minimum.
+- Arithmetic is a corroboration check only. It never fills a missing quantity, unit price or line total.
+- This checkpoint changes no production extraction, candidate projection, Foundation 6 promotion, OCR/model execution or database writes.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation820InvoiceUnderstandingContract.ts`
