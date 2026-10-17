@@ -32,7 +32,15 @@ function parseNumber(raw: string): number | undefined {
   return Number.isFinite(value) ? value : undefined;
 }
 function pageText(page: CanonicalPage): string {
-  return page.words.slice().sort((a,b) => centerY(a)-centerY(b) || a.bbox.x0-b.bbox.x0).map(w => w.text).join(" ");
+  const wordText = page.words.slice().sort((a,b) => centerY(a)-centerY(b) || a.bbox.x0-b.bbox.x0).map(w => w.text).join(" ");
+  return [page.nativeText ?? "", page.ocrText ?? "", wordText].filter(Boolean).join(" ");
+}
+
+function makeTextCandidate(field: string, value: unknown, id: string, segmentId: string, page: CanonicalPage, text: string, confidence: number): FieldCandidate {
+  return {
+    candidateId: id, field, value, confidence, extractor: EXTRACTOR,
+    evidence: [{ segmentId, pageNumber: page.pageNumber, text, contentSource: page.nativeText?.includes(text) ? "NATIVE_TEXT" : "OCR" }]
+  };
 }
 
 function wordsForMatch(
@@ -161,9 +169,23 @@ function addLabeledNumber(fields: Record<string, FieldCandidate[]>, canonical: C
     if (value === undefined) continue;
     const evidenceText = match[0];
     const evidence = wordsForMatch(page, evidenceText);
-    if (!evidence.length) continue;
-    fields[field] = [makeCandidate(field, value, `${segmentId}:shipment:${field}`, segmentId, page, evidence, unitRequired ? 0.99 : 0.98)];
-    return;
+    if (evidence.length) {
+      fields[field] = [makeCandidate(field, value, `${segmentId}:shipment:${field}`, segmentId, page, evidence, unitRequired ? 0.99 : 0.98)];
+      return;
+    }
+    // Some digital PDFs expose the footer/general-notes block in nativeText
+    // without stable word geometry. The exact label+value match is still
+    // direct source evidence and must not be discarded merely for lacking bbox.
+    const native = norm(page.nativeText ?? "");
+    if (native.includes(norm(evidenceText))) {
+      fields[field] = [makeTextCandidate(field, value, `${segmentId}:shipment:${field}`, segmentId, page, evidenceText, unitRequired ? 0.99 : 0.98)];
+      return;
+    }
+    const ocr = norm(page.ocrText ?? "");
+    if (ocr.includes(norm(evidenceText))) {
+      fields[field] = [makeTextCandidate(field, value, `${segmentId}:shipment:${field}`, segmentId, page, evidenceText, unitRequired ? 0.99 : 0.98)];
+      return;
+    }
   }
 }
 

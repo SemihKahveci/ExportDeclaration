@@ -17,6 +17,11 @@ import {
 import { executeInvoiceVisionByPage } from "./invoiceProductionVisionExecution.js";
 import { prepareInvoiceVisionCheckpoint, type PersistedInvoiceVisionCheckpoint } from "./invoiceVisionCheckpoint.js";
 import { associateExplicitGoodsUnitsFromQuantity } from "./invoiceGoodsUnitAssociation.js";
+import { discoverGenericInvoiceFieldCandidates } from "../candidates/genericInvoiceCandidateDiscovery.js";
+import { discoverInvoiceHeaderPartyFieldCandidates } from "../candidates/invoiceHeaderPartyCandidateDiscovery.js";
+import { discoverInvoiceCommercialTermsFieldCandidates } from "../candidates/invoiceCommercialTermsCandidateDiscovery.js";
+import { discoverInvoiceShipmentFieldCandidates } from "../candidates/invoiceShipmentCandidateDiscovery.js";
+import { validateGenericInvoiceEvidence } from "../validator/genericInvoiceEvidenceValidator.js";
 import { planInvoiceAdaptiveRecovery } from "./invoiceAdaptiveRecoveryOrchestrator.js";
 import {
   executeInvoiceAdaptiveGoodsCodeRecovery,
@@ -38,7 +43,7 @@ const REQUESTED_FIELDS = [
   "goodsLines[].lineTotal", "goodsLines[].origin"
 ];
 
-function canonicalCommercialTermsCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
+export function canonicalCommercialTermsCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
   const audit = data?.genericCandidateAudit as { commercialTermsCandidates?: FieldCandidateEnvelope } | undefined;
   const source = audit?.commercialTermsCandidates;
   if (source?.version !== "1" || !source.fields) return { version: "1", fields: {} };
@@ -53,6 +58,7 @@ function canonicalCommercialTermsCandidatesOf(data: Record<string, unknown> | un
       : field === "header.totalAmount" ? "totalAmount"
       : field === "header.currency" ? "currency"
       : field === "finance.exchangeRate" ? "exchangeRate"
+      : field === "transport.mode" ? "transportMode"
       : undefined;
     if (!target) continue;
     fields[target] = candidates.map((candidate) => ({
@@ -185,6 +191,58 @@ export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> |
   return { version: "1", fields };
 }
 
+export function canonicalNativeShipmentCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
+  const audit = data?.genericCandidateAudit as { shipmentCandidates?: FieldCandidateEnvelope } | undefined;
+  const source = audit?.shipmentCandidates;
+  if (source?.version !== "1" || !source.fields) return { version: "1", fields: {} };
+
+  const fieldMap: Readonly<Record<string, string>> = {
+    "packageInfo.totalPackage": "totalPackage",
+    "packageInfo.packageType": "packageType",
+    "packageInfo.grossKg": "grossWeight",
+    "packageInfo.netKg": "netWeight"
+  };
+  const fields: Record<string, FieldCandidateEnvelope["fields"][string]> = {};
+  for (const [field, candidates] of Object.entries(source.fields)) {
+    const target = fieldMap[field];
+    if (!target) continue;
+    const eligible = candidates.filter((candidate) =>
+      !candidate.derived && candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (!eligible.length) continue;
+    fields[target] = eligible.map((candidate) => ({
+      ...candidate,
+      field: target,
+      candidateId: `${candidate.candidateId}:f6-native-shipment`
+    }));
+  }
+  return { version: "1", fields };
+}
+
+/**
+ * 1.8.28: rebuild the deterministic authority audit from the canonical
+ * document immediately before Vision fusion. This keeps source-backed fields
+ * independent of model size/provider behavior: a stronger Vision model can
+ * compete with native evidence, but cannot make that evidence disappear.
+ */
+function currentCanonicalAuthorityData(
+  data: Record<string, unknown> | undefined,
+  canonicalDocument: CanonicalDocument,
+  segmentId: string
+): Record<string, unknown> {
+  const candidates = discoverGenericInvoiceFieldCandidates(canonicalDocument, segmentId);
+  return {
+    ...(data ?? {}),
+    genericCandidateAudit: {
+      candidates,
+      validation: validateGenericInvoiceEvidence(canonicalDocument, candidates),
+      headerPartyCandidates: discoverInvoiceHeaderPartyFieldCandidates(canonicalDocument, segmentId),
+      commercialTermsCandidates: discoverInvoiceCommercialTermsFieldCandidates(canonicalDocument, segmentId),
+      shipmentCandidates: discoverInvoiceShipmentFieldCandidates(canonicalDocument, segmentId)
+    }
+  };
+}
+
 function canonicalPageText(canonicalDocument: CanonicalDocument, pageNumber: number): string {
   const page = canonicalDocument.pages.find((item) => item.pageNumber === pageNumber);
   if (!page) return "";
@@ -229,6 +287,31 @@ export function enforceVisionDocumentRoleAuthority(
     return text.length >= 8 && /\d/.test(text) && /\b(?:CADDE|SOKAK|MAHALLE|MAAKOND|STREET|ROAD|AVENUE|NO|TALLINN|ISTANBUL|TUZLA)\b/.test(text);
   };
 
+  const roleAndValueNearOnPage = (
+    candidate: FieldCandidateEnvelope["fields"][string][number],
+    evidencePage: number,
+    role: RegExp,
+    maxGap = 16
+  ) => {
+    const page = normalized(pageText.get(evidencePage) ?? "");
+    const value = normalized(candidate.value);
+    if (!page || !value) return false;
+    const roleFlags = role.flags.replace(/g/g, "");
+    const localRole = new RegExp(role.source, roleFlags);
+    const match = localRole.exec(page);
+    if (!match) return false;
+    const roleStart = match.index;
+    const roleEnd = roleStart + match[0].length;
+    let valueStart = page.indexOf(value);
+    while (valueStart >= 0) {
+      const valueEnd = valueStart + value.length;
+      const gap = valueStart > roleEnd ? valueStart - roleEnd : roleStart > valueEnd ? roleStart - valueEnd : 0;
+      if (gap <= maxGap) return true;
+      valueStart = page.indexOf(value, valueStart + 1);
+    }
+    return false;
+  };
+
   const keepOnlyWithRole = (field: string, role: RegExp, corroboration?: (candidate: FieldCandidateEnvelope["fields"][string][number], pageNumber: number) => boolean) => {
     const source = fields[field];
     if (!source?.length) return;
@@ -266,8 +349,26 @@ export function enforceVisionDocumentRoleAuthority(
   keepOnlyWithRole("totalAmount", /\b(?:FATURA\s+TOPLAMI|GENEL\s+TOPLAM|ODENECEK\s+TUTAR|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+AMOUNT|AMOUNT\s+DUE)\b/);
   keepOnlyWithRole("grossWeight", /\b(?:BRUT|BRUTTO|GROSS)\s*(?:AGIRLIK|WEIGHT|KG)?\b|\b(?:GROSS\s+WEIGHT|BRUT\s+AGIRLIK)\b/);
   keepOnlyWithRole("netWeight", /\b(?:NET)\s*(?:AGIRLIK|WEIGHT|KG)\b|\b(?:NET\s+WEIGHT|NET\s+AGIRLIK)\b/);
-  keepOnlyWithRole("packageType", /\b(?:AMBALAJ|KAP\s+CINSI|PAKET\s+TIPI|PACKAGE\s+TYPE|PACKAGING|PACKING\s+TYPE)\b/);
-  keepOnlyWithRole("totalPackage", /\b(?:TOPLAM\s+KAP|KAP\s+ADEDI|PAKET\s+ADEDI|TOTAL\s+PACKAGES?|PACKAGE\s+COUNT|NUMBER\s+OF\s+PACKAGES?)\b/);
+  const packageTypeRole = /\b(?:AMBALAJ|KAP\s+CINSI|PAKET\s+TIPI|PACKAGE\s+TYPE|PACKAGING|PACKING\s+TYPE)\b/;
+  const totalPackageRole = /\b(?:TOPLAM\s+KAP|KAP\s+ADEDI|PAKET\s+ADEDI|TOTAL\s+PACKAGES?|PACKAGE\s+COUNT|NUMBER\s+OF\s+PACKAGES?)\b/;
+  // 1.8.26: a package label somewhere on a dense page is not enough to
+  // authorize an arbitrary VLM value from that page. The value itself must be
+  // visible close to the semantic role. This remains document-generic and also
+  // works for short legitimate values such as BOX/BAG because proximity, not
+  // string length or a supplier vocabulary, is the authority condition.
+  const keepOnlyWithRoleLocalValue = (field: string, role: RegExp) => {
+    const source = fields[field];
+    if (!source?.length) return;
+    const retained = source.filter((candidate) => {
+      const imageEvidence = candidate.evidence.filter((evidence) => evidence.contentSource === "PAGE_IMAGE");
+      if (imageEvidence.length === 0) return true;
+      return imageEvidence.some((evidence) => roleAndValueNearOnPage(candidate, evidence.pageNumber, role));
+    });
+    if (retained.length > 0) fields[field] = retained;
+    else delete fields[field];
+  };
+  keepOnlyWithRoleLocalValue("packageType", packageTypeRole);
+  keepOnlyWithRoleLocalValue("totalPackage", totalPackageRole);
 
   // Transport/document identifiers are high-risk scalars. Dense invoice tables
   // contain many short numeric tokens (for example quantity=2) that a VLM can
@@ -427,11 +528,13 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     // designed to authorize. Legacy/general deterministic extraction remains a
     // true fallback; role-bound evidence is merged after primary selection.
     const deterministicFallback = fieldCandidatesOf(result.data);
+    const currentAuthorityData = currentCanonicalAuthorityData(result.data, params.canonicalDocument, result.segmentId);
     const roleBoundDeterministic = mergeInvoiceCandidateSources(
-      canonicalCommercialTermsCandidatesOf(result.data),
-      canonicalHeaderPartyCandidatesOf(result.data),
-      canonicalNativeGoodsCodeCandidatesOf(result.data),
-      canonicalValidatedNativeGoodsRowCandidatesOf(result.data)
+      canonicalCommercialTermsCandidatesOf(currentAuthorityData),
+      canonicalHeaderPartyCandidatesOf(currentAuthorityData),
+      canonicalNativeShipmentCandidatesOf(currentAuthorityData),
+      canonicalNativeGoodsCodeCandidatesOf(currentAuthorityData),
+      canonicalValidatedNativeGoodsRowCandidatesOf(currentAuthorityData)
     );
     const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(execution.candidates, params.canonicalDocument);
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"

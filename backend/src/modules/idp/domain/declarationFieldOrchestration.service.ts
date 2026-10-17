@@ -235,7 +235,8 @@ export function selectDirectSourceEvidenceAuthority(
   const roleBoundCommercialCandidateIds: Record<string, string> = {
     totalAmount: "header-total-amount:f6-totalAmount",
     exchangeRate: "finance-exchange-rate:f6-exchangeRate",
-    currency: "header-currency-from-total:f6-currency"
+    currency: "header-currency-from-total:f6-currency",
+    transportMode: "transport-mode:f6-transportMode"
   };
   const roleBoundFields = new Set<string>();
   for (const [field, candidateId] of Object.entries(roleBoundCommercialCandidateIds)) {
@@ -247,7 +248,9 @@ export function selectDirectSourceEvidenceAuthority(
     if (!candidate) continue;
     const valid = field === "currency"
       ? canonicalCurrency(candidate.value) !== undefined
-      : canonicalPositiveNumber(candidate.value) !== undefined;
+      : field === "transportMode"
+        ? typeof candidate.value === "string" && candidate.value.trim().length >= 3 && candidate.value.trim().length <= 80
+        : canonicalPositiveNumber(candidate.value) !== undefined;
     if (!valid) continue;
     selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
     roleBoundFields.add(field);
@@ -290,6 +293,25 @@ export function selectDirectSourceEvidenceAuthority(
       item.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
     );
     if (!candidate) continue;
+    selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+    roleBoundFields.add(field);
+  }
+
+  // 1.8.28: shipment totals/weights/package type discovered from explicit
+  // canonical labels are direct source evidence. Keep this path model-neutral:
+  // Vision may corroborate it, but cannot outrank the role-bound native value.
+  for (const field of ["totalPackage", "packageType", "grossWeight", "netWeight"]) {
+    const eligible = (candidates.fields[field] ?? []).filter((item) =>
+      String(item.candidateId).endsWith(":f6-native-shipment") &&
+      !item.derived &&
+      item.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (eligible.length !== 1) continue;
+    const candidate = eligible[0]!;
+    const valid = field === "packageType"
+      ? typeof candidate.value === "string" && candidate.value.trim().length >= 2 && candidate.value.trim().length <= 80
+      : canonicalPositiveNumber(candidate.value) !== undefined;
+    if (!valid) continue;
     selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
     roleBoundFields.add(field);
   }
