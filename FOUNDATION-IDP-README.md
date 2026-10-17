@@ -261,3 +261,10 @@ Persisted semantic coverage replay now gives the freshly rebuilt deterministic e
 - Adds explicit regression contracts for the three fresh-production failure classes that exposed the old metric gap: VED GTIP-only skeleton rows, YEM package-count→quantity swap, and Volta amount→quantity/product-code swap.
 - Adds a human-reviewed current-proof baseline plus an impact manifest. Future corpus growth must use layered regression: cheap contracts/cached canonical replay broadly, impacted-skill subsets for focused inference, small fresh canaries, and full fresh corpus only for release/model/major-skill gates—not every new invoice.
 - No production extraction, candidate discovery, resolver, OCR/Qwen runtime, database, or normalized declaration behavior changes in this checkpoint.
+
+### Foundation 8.1 — Portable skill layer
+- Adds model-independent `backend/idp-skills/*/SKILL.md` packages for invoice understanding, goods tables, parties, commercial terms, logistics and reconciliation, with progressive reference material for domain/evidence/row semantics.
+- Adds a generic filesystem skill registry/loader under production source. The loader validates skill metadata and can render a bounded skill context for any future model/agent adapter; Foundation 8.1 intentionally does **not** replace the current production extraction prompt yet.
+- Goods knowledge makes row identity atomic: an isolated HS/GTIP token cannot materialize a row, packaging quantity is distinct from commercial quantity, and arithmetic validates rather than manufactures extraction.
+- Portable skills contain no golden-corpus invoice/supplier identities or expected answers. Foundation 8 evaluation fixtures remain test-only and are not loaded by the skill registry or runtime extraction.
+- No current Qwen/VL extraction, candidate fusion, resolver, database, OCR, or normalized declaration behavior changes in this checkpoint.
