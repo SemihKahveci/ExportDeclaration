@@ -40,6 +40,7 @@ export interface Foundation8SpecialistModelAuditItem {
   rejectedOutOfDomainFields: string[];
   response?: InvoiceLlmExtractionResponse;
   error?: string;
+  elapsedMs?: number;
 }
 
 export interface Foundation8SpecialistModelExecutionAudit {
@@ -47,6 +48,7 @@ export interface Foundation8SpecialistModelExecutionAudit {
   mode: "SHADOW_ONLY";
   productionCandidateMutation: false;
   modelCallsAttempted: number;
+  totalElapsedMs: number;
   specialists: Foundation8SpecialistModelAuditItem[];
 }
 
@@ -60,10 +62,12 @@ export async function executeFoundation8SpecialistModelShadow(params: {
   provider: InvoiceLlmExtractionProvider;
 }): Promise<Foundation8SpecialistModelExecutionAudit> {
   const requests = planInvoiceUnderstandingSpecialists(params.bundle);
+  const executionStartedAt = Date.now();
   const specialists: Foundation8SpecialistModelAuditItem[] = [];
 
   for (const request of requests) {
     const requestedFields = REQUESTED_FIELDS[request.domain];
+    const specialistStartedAt = Date.now();
     try {
       const response = await params.provider.extractInvoice({
         version: "1",
@@ -94,6 +98,7 @@ export async function executeFoundation8SpecialistModelShadow(params: {
         returnedFieldCount: response.fields.length,
         acceptedOwnedFieldCount: response.fields.length - rejected.length,
         rejectedOutOfDomainFields: rejected,
+        elapsedMs: Date.now() - specialistStartedAt,
         response: {
           ...response,
           fields: response.fields.filter(field => fieldOwnedBy(request.domain, field.field))
@@ -109,7 +114,8 @@ export async function executeFoundation8SpecialistModelShadow(params: {
         returnedFieldCount: 0,
         acceptedOwnedFieldCount: 0,
         rejectedOutOfDomainFields: [],
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
+        elapsedMs: Date.now() - specialistStartedAt
       });
     }
   }
@@ -119,6 +125,7 @@ export async function executeFoundation8SpecialistModelShadow(params: {
     mode: "SHADOW_ONLY",
     productionCandidateMutation: false,
     modelCallsAttempted: requests.length,
+    totalElapsedMs: Date.now() - executionStartedAt,
     specialists
   };
 }

@@ -378,3 +378,15 @@ Foundation 8 specialist model responses can now be projected into the shared `In
 ### Foundation 8.12 — Shadow Reconciliation Runtime Wiring
 
 Foundation 8 specialist model output is now projected into the atomic `InvoiceUnderstanding` contract and passed through the reconciliation policy inside the real invoice production worker, while remaining shadow-only. Healthy atomic rows can be accepted, incomplete/HS-only goods rows request GOODS-only targeted recovery, and specialist ambiguity/failure fails closed to review. The audit cannot replace production `fieldCandidates`, execute recovery, promote through Foundation 6, or write `normalizedData`.
+
+### Foundation 8.13 — Real PDF Shadow Canary Harness
+
+- Adds an opt-in real-PDF canary runner that executes the existing production `processIdpJob` boundary against a temporary declaration/file/run and cleans all temporary database records after the run.
+- Requires `LLM_ENABLED=true`, `LLM_VISION_ENABLED=true` and `FOUNDATION8_SHADOW_MODEL_ENABLED=true`; it performs an Ollama `/api/tags` preflight before starting expensive inference.
+- Produces a machine-readable JSON report containing per-specialist timing, accepted/rejected field counts, atomic goods-row completeness and reconciliation action/recovery domains.
+- Golden expected answers are deliberately not imported by the runtime canary. Ground-truth scoring remains a separate evaluation step.
+- Foundation 8 remains shadow-only and cannot replace production candidates, Foundation 6 resolution or `normalizedData`.
+- The report explicitly records that, at 8.13, specialist TEXT requests still share `QwenVisionInvoiceProvider` and therefore use `LLM_VISION_MODEL`. The intended Spark 32B text + VL30B split is not claimed until a dedicated provider split is wired and tested.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8130RealPdfShadowCanaryHarnessContract.ts`
