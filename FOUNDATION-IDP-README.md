@@ -305,3 +305,20 @@ The 8.6 ownership behavior is unchanged. The write boundary now returns the decl
 #### Foundation 8.6.2 — Flat sourceTrace ownership lookup
 
 The F6 ownership boundary now reads persisted `sourceTrace` using its real flat path-keyed representation (for example `header.invoiceNo`) while continuing to traverse nested `normalizedData` by path. This fixes the contract failure where F6-owned paths were detected but skipped during restoration.
+
+### Foundation 8.7 — Seven-invoice zero-regression gate
+
+Foundation 8.7 turns the frozen seven-invoice corpus into a release gate for the failure classes that motivated Foundation 8.
+
+- All seven golden cases are mandatory: Çelikel, Dermeternal, Ningbo, PML, VED146, Volta and YEM.
+- VED146 requires 56 atomic complete goods rows; 56 isolated HS/GTIP tokens cannot pass row completeness.
+- YEM rejects package-count/commercial-quantity swaps and the resulting arithmetically coherent wrong amount.
+- Volta rejects amount-as-quantity and description-token-as-product-code swaps.
+- PML requires the source-backed 281.50 EUR total and rejects fabricated HS/GTIP values.
+- Dermeternal and Ningbo enforce fail-closed unsupported HS; Ningbo also enforces fail-closed unsupported unit.
+- Çelikel rejects unsupported Hungary origin promotion.
+- The scorer now enforces row-level `expectedAbsentOrReview` paths, including wildcard goods paths, instead of silently skipping them.
+- This checkpoint is cached/contract-only: no Qwen/VL/OCR execution, database mutation or production normalized-data write occurs.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation870SevenInvoiceZeroRegressionGate.ts`

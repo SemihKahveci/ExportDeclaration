@@ -56,7 +56,25 @@ export function scoreGoldenInvoice(golden: GoldenInvoiceCase, actual: Foundation
   }
 
   for (const field of golden.expected.expectedAbsentOrReview ?? []) {
-    if (field.includes("*")) continue; // row-level unsupported fields are enforced by requiredGoodsFields/row assertions, not guessed.
+    const wildcard = field.match(/^goodsLines\.\*\.(productCode|description|hsCode|quantity|unit|unitPrice|lineTotal|origin)$/);
+    if (wildcard) {
+      const rowField = wildcard[1] as keyof ActualGoodsRow;
+      actual.goodsRows.forEach((row, index) => {
+        const value = row[rowField];
+        checks.push({ path: `goodsRows.${index + 1}.${String(rowField)}`, expected: "ABSENT_OR_REVIEW", actual: value, pass: !present(value), kind: "FORBIDDEN" });
+      });
+      continue;
+    }
+
+    const indexed = field.match(/^goodsLines\.(\d+)\.(productCode|description|hsCode|quantity|unit|unitPrice|lineTotal|origin)$/);
+    if (indexed) {
+      const index = Number(indexed[1]);
+      const rowField = indexed[2] as keyof ActualGoodsRow;
+      const value = actual.goodsRows[index]?.[rowField];
+      checks.push({ path: `goodsRows.${index + 1}.${String(rowField)}`, expected: "ABSENT_OR_REVIEW", actual: value, pass: !present(value), kind: "FORBIDDEN" });
+      continue;
+    }
+
     const value = actual.scalars[field];
     checks.push({ path: field, expected: "ABSENT_OR_REVIEW", actual: value, pass: !present(value), kind: "FORBIDDEN" });
   }
