@@ -284,6 +284,23 @@ Foundation 8.2 adds the model-independent semantic object that the portable skil
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation820InvoiceUnderstandingContract.ts`
 
+### Foundation 8.3 — Bounded specialist orchestration
+- Adds bounded PARTIES, COMMERCIAL, GOODS and LOGISTICS specialist contracts over the same source evidence.
+- Each specialist has explicit ownership and forbidden domains; the manager assembles specialist results structurally rather than allowing cross-domain rewrites.
+- No production model call, normalized-data write, database mutation or Foundation 6 behavior change is introduced.
+
+### Foundation 8.4 — Reconciliation and targeted recovery
+- Adds reconciliation decisions for ACCEPT, TARGETED_RECOVERY and REVIEW_REQUIRED.
+- Incomplete goods or arithmetic conflicts can request narrowly scoped rereads without manufacturing or repairing values; genuine source ambiguity fails closed to review.
+- Recovery scope cannot rewrite unrelated party/logistics/package domains.
+- No production model/recovery cutover, database mutation or direct normalized-data write is introduced.
+
+### Foundation 8.5 — Deterministic authority demotion
+- Defines specialist understanding as semantic primary authority.
+- Role-bound native evidence, validated native goods rows and native HS tokens are corroboration only; OCR/Vision are recovery evidence and legacy deterministic extraction is fallback-only.
+- Deterministic evidence cannot create/overwrite atomic semantic rows; conflicts may trigger recovery instead.
+- This checkpoint changes no production fusion or Foundation 6 promotion behavior.
+
 ### Foundation 8.6 — Foundation 6 write-authority boundary
 
 Foundation 8.6 closes the second-writer hole for document-owned fields already promoted by Foundation 6.
@@ -322,3 +339,13 @@ Foundation 8.7 turns the frozen seven-invoice corpus into a release gate for the
 
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation870SevenInvoiceZeroRegressionGate.ts`
+
+### Foundation 8.8 — Capability-impact corpus scaling
+- Adds a typed impact selector over the Foundation 8 capability manifest so focused regression runs select the deterministic union of only the golden cases affected by changed capabilities.
+- Unknown capability tags are surfaced explicitly and never silently widened to the full corpus.
+- Adds a corpus-admission rule: a production invoice does not enter the golden corpus merely because it exists; admission is justified when it contributes a novel capability or failure-class tag.
+- Existing covered behavior stays protected by the representative golden cases and cheap broad contracts; fresh model inference can remain limited to impacted canaries/release gates.
+- This checkpoint does not add supplier/invoice-specific runtime knowledge, call Qwen/VL/OCR, mutate the database, or change production extraction.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation880CapabilityImpactCorpusScalingContract.ts`
