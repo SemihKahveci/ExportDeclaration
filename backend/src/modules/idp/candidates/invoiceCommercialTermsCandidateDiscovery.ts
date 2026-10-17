@@ -186,7 +186,7 @@ function bankInfo(lines: EvidenceLine[]) {
 }
 
 function exchangeRate(lines: EvidenceLine[]) {
-  const labels=lines.filter(l=>/\b(?:DOVIZ\s*KURU|EXCHANGE\s*RATE|FX\s*RATE)\b/.test(norm(l.text)));
+  const labels=lines.filter(l=>/\b(?:DOVIZ\s*KURU|KUR\s*BILGISI|EXCHANGE\s*RATE|FX\s*RATE)\b/.test(norm(l.text)));
   for(const label of labels){
     const same=lines.filter(l=>l.pageNumber===label.pageNumber && sameRow(l,label) && l.bbox.x0>=label.bbox.x0-.02);
     const nums=same.flatMap(l=>Array.from(l.text.matchAll(/-?\d[\d.,]*\d|\d/g)).map(m=>({n:parseMoney(m[0]),line:l})))
@@ -209,7 +209,7 @@ function monetaryPairs(line: EvidenceLine): Array<{ n: number; currency: string;
 }
 
 function totalAmount(lines:EvidenceLine[]) {
-  const labels=lines.filter(l=>/\b(ODENECEK\s*TUTAR|GENEL\s*TOPLAM|MAL\s*HIZMET\s*TOPLAM\s*TUTARI|TOPLAM\s*TUTAR)\b/.test(norm(l.text)));
+  const labels=lines.filter(l=>/\b(ODENECEK\s*TUTAR|GENEL\s*TOPLAM|MAL\s*HIZMET\s*TOPLAM\s*TUTARI|TOPLAM\s*TUTAR|GRAND\s*TOTAL|INVOICE\s*TOTAL|TOTAL\s*INVOICE|GESAMTBETRAG)\b/.test(norm(l.text)));
   for(const label of labels){
     const same=lines.filter(l=>l.pageNumber===label.pageNumber && sameRow(l,label) && l.bbox.x0>=label.bbox.x0-.02)
       .sort((a,b)=>a.bbox.x0-b.bbox.x0);

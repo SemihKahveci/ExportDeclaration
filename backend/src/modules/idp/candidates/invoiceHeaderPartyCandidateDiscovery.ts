@@ -195,7 +195,17 @@ function invoiceDate(
     if (/(IRSALIYE|ETTN)/.test(norm(line.text))) continue;
 
     const match = line.text.match(/\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}/);
-    const value = match?.[0] ? cleanDate(match[0]) : undefined;
+    let value = match?.[0] ? cleanDate(match[0]) : undefined;
+    if (!value) {
+      const monthNames: Record<string, string> = { JAN: "01", JANUARY: "01", FEB: "02", FEBRUARY: "02", MAR: "03", MARCH: "03", APR: "04", APRIL: "04", MAY: "05", JUN: "06", JUNE: "06", JUL: "07", JULY: "07", AUG: "08", AUGUST: "08", SEP: "09", SEPT: "09", SEPTEMBER: "09", OCT: "10", OCTOBER: "10", NOV: "11", NOVEMBER: "11", DEC: "12", DECEMBER: "12" };
+      const english = norm(line.text).match(/\b(\d{1,2})(?:ST|ND|RD|TH)?[\s-]+([A-Z]+)[,\s-]+(20\d{2})\b|\b([A-Z]+)[\s-]+(\d{1,2})(?:ST|ND|RD|TH)?[,]?[\s-]+(20\d{2})\b/);
+      if (english) {
+        const day = english[1] ?? english[5];
+        const month = monthNames[english[2] ?? english[4] ?? ""];
+        const year = english[3] ?? english[6];
+        if (day && month && year) value = `${year}-${month}-${day.padStart(2, "0")}`;
+      }
+    }
     if (value) values.push({ value, line });
   }
 

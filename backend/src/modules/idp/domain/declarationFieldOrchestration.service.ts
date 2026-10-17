@@ -239,7 +239,8 @@ export function selectDirectSourceEvidenceAuthority(
     transportMode: "transport-mode:f6-transportMode",
     paymentType: "trade-payment-type:f6-paymentType",
     freight: "finance-freight:f6-freight",
-    insurance: "finance-insurance:f6-insurance"
+    insurance: "finance-insurance:f6-insurance",
+    bankInfo: "finance-bank-info:f6-bankInfo"
   };
   const roleBoundFields = new Set<string>();
   for (const [field, candidateId] of Object.entries(roleBoundCommercialCandidateIds)) {
@@ -253,6 +254,8 @@ export function selectDirectSourceEvidenceAuthority(
       ? canonicalCurrency(candidate.value) !== undefined
       : field === "transportMode" || field === "paymentType"
         ? typeof candidate.value === "string" && candidate.value.trim().length >= 3 && candidate.value.trim().length <= 120
+        : field === "bankInfo"
+          ? typeof candidate.value === "string" && candidate.value.trim().length >= 4 && candidate.value.trim().length <= 2000 && /(?:BANK|BANKA|IBAN|SWIFT|BIC|ACCOUNT|HESAP)/i.test(candidate.value)
         : field === "freight" || field === "insurance"
           ? finiteNumber(candidate.value) !== undefined && finiteNumber(candidate.value)! >= 0
           : canonicalPositiveNumber(candidate.value) !== undefined;

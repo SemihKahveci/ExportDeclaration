@@ -106,3 +106,48 @@ Contract: `verifyProductE2E1845AdaptiveRecoveryPersistenceBoundaryContract.ts` p
 - Verifies mixed candidate behavior: monetary payment/bank poison is removed while valid payment/bank semantics and unrelated candidates survive unchanged.
 - Verifies sanitizer idempotence and statically gates both production persistence ingresses (primary Vision and final adaptive-recovery output) so a later refactor cannot silently bypass the boundary.
 - This is contract-only: no OCR/Qwen call, database mutation, supplier-specific rule, invoice-specific production constant, or direct normalized write.
+
+### 1.8.48 — Goods semantic boundary
+
+- Hardens GTIP discovery so a bare 12-digit token is no longer sufficient authority. Native GTIP anchors now require an explicit HS/HSN/GTIP/tariff/customs semantic role on the same visual line or a document-local customs-code header aligned with that column.
+- Prevents 12-digit phone, registry, EPCG/LUT and similar identifiers from becoming goods GTIP solely because their shape matches the Turkish 12-digit declaration format.
+- Adds a final PAGE_IMAGE goods-row boundary: when canonical native evidence proves a contiguous goods table, Vision/adaptive recovery cannot append synthetic rows after the proven native table. This closes the Çelikel-style amount-in-words / package-summary phantom row without inventing or deleting rows on invoices where native evidence proves no goods table.
+- Keeps short HS/HSN documents fail-closed for declaration GTIP; an 8-digit HSN is not padded/fabricated into 12 digits, while the rest of a legitimate Vision goods row may remain available.
+- Regression intent is explicitly conservative: VED-style native GTIP columns remain authoritative; no supplier/invoice-specific rule, fixed supplier coordinate, direct normalized write, or model-only authority is introduced.
+- Contract: `verifyProductE2E1848GoodsSemanticBoundaryContract.ts` covers semantic GTIP-column preservation, 12-digit phone/EPCG rejection, phantom fourth-row rejection, and non-destructive behavior when no native goods table is proven.
+
+
+#### 1.8.48.1 — Conflicting identifier locality hardening
+
+The goods semantic boundary now rejects a PAGE_IMAGE 12-digit HS/GTIP candidate when the same value is locally bound to an explicit non-customs identifier role (for example telephone, EPCG/LUT, IBAN/SWIFT, tax or registry identifiers), even if an HSN/GTIP label exists elsewhere on the same dense page. This keeps the rule document-generic and value-local: a 12-digit shape alone never becomes customs-code authority, while legitimate native GTIP authority remains unchanged. The 1.8.48 contract covers the PML-style HSN/EPCG collision and the existing native-row phantom-row boundary.
+
+#### 1.8.48.2 — Validated native goods-field authority regression
+
+- Makes validated row-local Native/OCR goods evidence authoritative for the exact goods field it proves (`hsCode`, description, quantity, unit, unit price, line total and origin). PAGE_IMAGE candidates remain available only where deterministic row evidence does not prove that field.
+- Prevents package counts, monetary amounts and neighbouring numeric columns from replacing a proven goods quantity/amount, covering the general YEM/Volta class without supplier names, invoice IDs or fixed coordinates.
+- Keeps the 1.8.48 fail-closed behavior for short-HSN documents: an 8-digit HSN is never padded/fabricated into a 12-digit declaration GTIP, and unproven invoices are not destructively trimmed.
+- Adds a cheap regression suite that preserves a 56-row VED-style native goods table, rejects a trailing PAGE_IMAGE summary row, protects proven quantity/amount fields, and leaves source-unproven rows untouched.
+- No OCR/Qwen invocation, database mutation, supplier-specific rule, invoice-specific production constant, fixed column coordinate or direct normalized write is introduced.
+
+### 1.8.49 — Scalar semantic authority
+
+- Extended deterministic, role-bound scalar discovery without supplier/invoice constants: `Kur Bilgisi` is accepted as exchange-rate evidence; explicit English invoice-total labels bind amount+currency; English month-name invoice dates are supported.
+- Shipment summaries now accept explicit `BRUT KG` / `GROSS WT`, `NET KG` / `NET WT` labels and can recover package type from combined summaries such as `TOPLAM KAP: 66 PALET`.
+- Payment semantics stay field-local: customs/reference-value phrases cannot become payment terms, while combined Incoterm/payment values such as `DAP-30 DAYS` are split so the Incoterm does not pollute payment type.
+- Existing explicit payment terms, bank semantics, goods authority and Foundation 6 promotion remain unchanged. No supplier-specific rules, invoice-specific constants, fixed coordinates, or direct normalized writes were added.
+- Contract: `backend/scripts/idp/verifyProductE2E1849ScalarSemanticAuthorityContract.ts`.
+
+### 1.8.49.1 — Source-absent scalar fail-closed
+
+- High-risk numeric commercial scalars (`exchangeRate`, `freight`, `insurance`) now require role-bound canonical native/OCR corroboration before PAGE_IMAGE-only evidence can enter Foundation 6.
+- A bare unit price can no longer become an exchange rate merely because it is numeric, and unrelated zero amounts can no longer fabricate zero freight/insurance when the document does not state those roles.
+- Explicit source-backed zero freight/insurance remains valid, and explicit exchange-rate evidence remains eligible; the boundary compares semantic numeric values rather than supplier/layout constants.
+- The same boundary is applied to both primary Vision fusion and the final adaptive-recovery persistence path.
+- No supplier-specific rules, invoice constants, fixed coordinates, direct normalized-data writes, OCR/model reruns, or model-size assumptions are introduced.
+
+### 1.8.49.2 — Bank semantic authority
+
+- Explicit native-text bank semantics (`BANK/BANKA`, `IBAN`, `SWIFT/BIC`, `ACCOUNT/HESAP`) now receive narrow Foundation 6 direct-source authority through the existing commercial candidate bridge.
+- A conflicting PAGE_IMAGE interpretation cannot outrank a role-bound native bank block.
+- Pure monetary text such as `0,00 EUR` cannot opt into bank authority.
+- The rule is document-generic and adds no supplier/invoice-specific constants or direct normalized-data writes.

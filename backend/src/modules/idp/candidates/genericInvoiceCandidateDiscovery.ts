@@ -73,6 +73,40 @@ function isBusinessIdentifierContext(page: CanonicalPage, word: CanonicalWord): 
 }
 function height(word: CanonicalWord): number { return Math.max(0.001, word.bbox.y1 - word.bbox.y0); }
 
+
+const HS_SEMANTIC_ROLE_RE = /(?:\bGT[Iİ]P\b|\bG\.?T\.?[Iİ]\.?P\b|\bHSN\b|\bHS\s*(?:CODE|KODU|NO|NUMBER)?\b|\bTARIFF\s*(?:CODE|NO|NUMBER)?\b|\bCUSTOMS\s*(?:CODE|TARIFF)?\b)/i;
+
+/**
+ * 1.8.48: a 12-digit token is only a GTIP anchor when the document gives it
+ * customs-code semantics. Shape alone is unsafe: phone, registry, EPCG/LUT and
+ * other business identifiers can also be exactly 12 digits.
+ *
+ * Authority is document-local and layout-generic:
+ * - an explicit HS/HSN/GTIP/tariff/customs role on the token's visual line; or
+ * - a HS/HSN/GTIP header vertically above the token in the same document-local
+ *   column. No supplier names, invoice IDs or fixed x coordinates are used.
+ */
+function isHsSemanticContext(page: CanonicalPage, word: CanonicalWord): boolean {
+  const y = centerY(word);
+  const sameLine = page.lines.some((line) => {
+    const lineY = (line.bbox.y0 + line.bbox.y1) / 2;
+    const tolerance = Math.max(0.006, (line.bbox.y1 - line.bbox.y0) * 1.5, height(word) * 1.5);
+    return Math.abs(lineY - y) <= tolerance && HS_SEMANTIC_ROLE_RE.test(line.text);
+  });
+  if (sameLine) return true;
+
+  const wordCenterX = (word.bbox.x0 + word.bbox.x1) / 2;
+  const headerCandidates = page.words.filter((candidate) => {
+    if (!HS_SEMANTIC_ROLE_RE.test(candidate.text)) return false;
+    const candidateY = centerY(candidate);
+    if (candidateY >= y) return false;
+    const candidateCenterX = (candidate.bbox.x0 + candidate.bbox.x1) / 2;
+    const columnTolerance = Math.max(0.025, (candidate.bbox.x1 - candidate.bbox.x0) * 2.5, (word.bbox.x1 - word.bbox.x0) * 1.25);
+    return Math.abs(candidateCenterX - wordCenterX) <= columnTolerance;
+  });
+  return headerCandidates.length > 0;
+}
+
 function unionBox(words: CanonicalWord[]): CanonicalBBox {
   return { x0: Math.min(...words.map(w => w.bbox.x0)), y0: Math.min(...words.map(w => w.bbox.y0)), x1: Math.max(...words.map(w => w.bbox.x1)), y1: Math.max(...words.map(w => w.bbox.y1)) };
 }
@@ -411,7 +445,7 @@ export function discoverGenericInvoiceFieldCandidates(canonicalDocument: Canonic
 
   for (const page of canonicalDocument.pages) for (const word of page.words) {
     const hsCode = hsCodeFromText(word.text);
-    if (hsCode && !isBusinessIdentifierContext(page, word)) anchors.push({ page, word, hsCode });
+    if (hsCode && !isBusinessIdentifierContext(page, word) && isHsSemanticContext(page, word)) anchors.push({ page, word, hsCode });
   }
   anchors.sort((a, b) => a.page.pageNumber - b.page.pageNumber || centerY(a.word) - centerY(b.word));
 

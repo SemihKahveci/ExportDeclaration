@@ -197,9 +197,13 @@ export function sanitizeVisionPaymentType(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   if (!trimmed) return value;
-  // Customs/tax incentive phrases are not payment terms even when printed
+  // Customs/tax/reference-value phrases are not payment terms even when printed
   // below a combined "Delivery and Payment" heading.
-  if (/\b(?:DUTY\s*DRAWBACK|RODTEP|EPCG|IGST|VAT|KDV|TAX\s*EXEMPT)\b/i.test(trimmed)) return undefined;
+  if (/\b(?:DUTY\s*DRAWBACK|RODTEP|EPCG|IGST|VAT|KDV|TAX\s*EXEMPT|ZOLLREFERENZWERT|CUSTOMS\s*REFERENCE\s*VALUE)\b/i.test(trimmed)) return undefined;
+  // Combined delivery/payment cells such as "DAP-30 DAYS" contain two semantic
+  // roles. Keep only the payment tail; the Incoterm is resolved independently.
+  const combined = trimmed.match(/^(?:EXW|FCA|FAS|FOB|CFR|CIF|CPT|CIP|DAP|DPU|DDP)\s*[-/|]\s*(.+)$/i);
+  if (combined?.[1]?.trim()) return combined[1].trim();
   // A monetary amount is not a payment method/term (for example "0,00 EUR").
   if (/^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)$/i.test(trimmed)) return undefined;
   return trimmed;

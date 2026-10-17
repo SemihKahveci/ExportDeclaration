@@ -497,7 +497,7 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     canonical,
     segmentId,
     GROSS_FIELD,
-    /TOPLAM\s+BRUT\s+AGIRLIK\s*[:：]?\s*([\d.,]+)\s*KG/,
+    /(?:TOPLAM\s+)?(?:BRUT\s+(?:AGIRLIK|KG)|GROSS\s+(?:WEIGHT|WT\.?|KG))\s*[:：]?\s*([\d.,]+)\s*(?:KG|KGS)?/,
     true,
   );
   
@@ -506,7 +506,7 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     canonical,
     segmentId,
     NET_FIELD,
-    /TOPLAM\s+NET\s+AGIRLIK\s*[:：]?\s*([\d.,]+)\s*KG/,
+    /(?:TOPLAM\s+)?(?:NET\s+(?:AGIRLIK|KG)|NET\s+(?:WEIGHT|WT\.?))\s*[:：]?\s*([\d.,]+)\s*(?:KG|KGS)?/,
     true,
   );
   
@@ -534,6 +534,23 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     );
   }
   
-  discoverPackageType(fields, canonical, segmentId);
+  // Explicit summary labels such as "TOPLAM KAP: 66 PALET" carry both
+  // package count and package type. Prefer this role-bound evidence before the
+  // table-column heuristic; it is layout/supplier independent.
+  if (!fields[PACKAGE_FIELD]?.length) {
+    for (const page of canonical.pages) {
+      const text = norm(pageText(page));
+      const match = text.match(/(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*[\d.,]+\s+(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)\b/);
+      if (!match?.[1]) continue;
+      const evidenceText = match[0];
+      const evidence = wordsForMatch(page, evidenceText);
+      const value = match[1];
+      fields[PACKAGE_FIELD] = [evidence.length
+        ? makeCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidence, 0.99)
+        : makeTextCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidenceText, 0.98)];
+      break;
+    }
+  }
+  if (!fields[PACKAGE_FIELD]?.length) discoverPackageType(fields, canonical, segmentId);
   return { version: "1", fields };
 }

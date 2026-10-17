@@ -304,6 +304,75 @@ function canonicalPageText(canonicalDocument: CanonicalDocument, pageNumber: num
  * PAGE_IMAGE value on the current page. Non-image evidence is left untouched:
  * this guard only limits the semantic-primary vision source before F6 sees it.
  */
+function semanticNumericValue(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  const raw = String(value ?? "").trim();
+  if (!raw) return undefined;
+  const token = raw.match(/[-+]?\d[\d.,]*/)?.[0];
+  if (!token) return undefined;
+  const lastComma = token.lastIndexOf(",");
+  const lastDot = token.lastIndexOf(".");
+  let normalized = token;
+  if (lastComma >= 0 && lastDot >= 0) {
+    const decimal = lastComma > lastDot ? "," : ".";
+    const thousands = decimal === "," ? "." : ",";
+    normalized = token.split(thousands).join("").replace(decimal, ".");
+  } else if (lastComma >= 0) {
+    const decimals = token.length - lastComma - 1;
+    normalized = decimals > 0 && decimals <= 6
+      ? token.replace(/\./g, "").replace(",", ".")
+      : token.replace(/,/g, "");
+  } else if (lastDot >= 0) {
+    const decimals = token.length - lastDot - 1;
+    normalized = decimals > 0 && decimals <= 6
+      ? token.replace(/,/g, "")
+      : token.replace(/\./g, "");
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/**
+ * 1.8.49.1: high-risk numeric commercial scalars need source-backed semantic
+ * corroboration before PAGE_IMAGE evidence can enter Foundation 6. A bare
+ * numeric value is not enough to prove exchange-rate, freight, or insurance
+ * role: unit prices and unrelated zero totals are common invoice numbers.
+ *
+ * Deterministic role-bound discovery is built from canonical native/OCR text.
+ * Vision remains useful when it agrees with that evidence, while source-absent
+ * values fail closed instead of silently becoming declaration facts.
+ */
+export function enforceVisionSourceBackedCommercialNumericAuthority(
+  candidates: FieldCandidateEnvelope,
+  roleBoundDeterministic: FieldCandidateEnvelope
+): FieldCandidateEnvelope {
+  const fields: FieldCandidateEnvelope["fields"] = { ...candidates.fields };
+  const protectedFields = ["exchangeRate", "freight", "insurance"] as const;
+
+  for (const field of protectedFields) {
+    const source = fields[field] ?? [];
+    if (source.length === 0) continue;
+    const authorities = roleBoundDeterministic.fields[field] ?? [];
+    const authorityNumbers = authorities
+      .map((candidate) => semanticNumericValue(candidate.value))
+      .filter((value): value is number => value !== undefined);
+
+    const retained = source.filter((candidate) => {
+      const isVisionOnly = candidate.evidence.length > 0
+        && candidate.evidence.every((evidence) => evidence.contentSource === "PAGE_IMAGE");
+      if (!isVisionOnly) return true;
+      const numeric = semanticNumericValue(candidate.value);
+      if (numeric === undefined || authorityNumbers.length === 0) return false;
+      return authorityNumbers.some((authority) => Math.abs(authority - numeric) <= 1e-9);
+    });
+
+    if (retained.length > 0) fields[field] = retained;
+    else delete fields[field];
+  }
+
+  return { version: "1", fields };
+}
+
 export function sanitizeVisionCommercialSemanticCandidates(
   candidates: FieldCandidateEnvelope
 ): FieldCandidateEnvelope {
@@ -450,6 +519,100 @@ export function enforceVisionDocumentRoleAuthority(
   keepOnlyWithRole("cmrNo", /\bCMR\s*(?:NO|NUMBER|#)\b/);
   keepOnlyWithRole("awbNo", /\b(?:AWB|AIR\s+WAYBILL)\s*(?:NO|NUMBER|#)\b/);
   keepOnlyWithRole("transportDocumentNo", /\b(?:TASIMA\s+SENEDI|TRANSPORT\s+DOCUMENT|WAYBILL)\s*(?:NO|NUMBER|#)?\b/);
+
+  // 1.8.48: 12 digits are a shape, not a semantic role. A phone/EPCG/registry
+  // number returned by Vision must not become a GTIP merely because it has the
+  // right length. Native deterministic GTIP authority is handled separately;
+  // PAGE_IMAGE HS candidates require an explicit customs-code role on their
+  // evidence page.
+  for (const [field, source] of Object.entries(fields)) {
+    if (!/^goodsLines\.\d+\.hsCode$/.test(field) || !source?.length) continue;
+    const retained = source.filter((candidate) => {
+      const imageEvidence = candidate.evidence.filter((evidence) => evidence.contentSource === "PAGE_IMAGE");
+      if (imageEvidence.length === 0) return true;
+      return imageEvidence.some((evidence) => {
+        // A nearby customs label is not sufficient when the value itself is
+        // explicitly bound to another identifier role. Dense invoices often
+        // place HSN/GTIP, EPCG/LUT, telephone, IBAN and registry numbers on the
+        // same page. Prefer the role local to the value and fail closed on a
+        // conflicting explicit role.
+        const conflictingIdentifierRole = /\b(?:TEL(?:EPHONE)?|PHONE|FAX|EPCG|LUT|IBAN|SWIFT|BIC|ACCOUNT|HESAP|VKN|TCKN|MERSIS|TICARET\s+SICIL|REGISTRY|TAX\s+(?:NO|NUMBER|ID))\b/;
+        if (roleAndValueNearOnPage(candidate, evidence.pageNumber, conflictingIdentifierRole, 16)) return false;
+        return roleAndValueNearOnPage(
+          candidate,
+          evidence.pageNumber,
+          /\b(?:GTIP|G\.?T\.?I\.?P|HSN|HS\s*(?:CODE|NO|NUMBER)?|TARIFF\s*(?:CODE|NO|NUMBER)?|CUSTOMS\s*(?:CODE|TARIFF)?)\b/,
+          48
+        );
+      });
+    });
+    if (retained.length) fields[field] = retained;
+    else delete fields[field];
+  }
+  return { version: "1", fields };
+}
+
+/**
+ * 1.8.48: when canonical native evidence proves a contiguous goods table, do
+ * not let PAGE_IMAGE recovery append synthetic rows after that table. This is
+ * deliberately one-way: it never invents a missing row and it does not trim
+ * invoices for which native evidence proves no goods rows at all.
+ */
+/**
+ * 1.8.48.2: validated native goods-row evidence is authoritative for the
+ * numeric/core field it actually proves. Vision remains available for fields
+ * that native evidence cannot prove, but it cannot replace a proven row-local
+ * quantity/price/amount/unit/description/GTIP/origin with a PAGE_IMAGE value
+ * from a neighbouring package/summary/amount column.
+ *
+ * This is field-local and document-generic: no supplier/layout constants and
+ * no row is invented.
+ */
+export function enforceValidatedNativeGoodsFieldAuthority(
+  candidates: FieldCandidateEnvelope,
+  nativeAuthority: FieldCandidateEnvelope
+): FieldCandidateEnvelope {
+  const fields: FieldCandidateEnvelope["fields"] = { ...candidates.fields };
+  const authoritativeField = /^goodsLines\.\d+\.(?:hsCode|description|quantity|unit|unitPrice|lineTotal|origin)$/;
+  for (const [field, nativeCandidates] of Object.entries(nativeAuthority.fields)) {
+    if (!authoritativeField.test(field) || !nativeCandidates?.length) continue;
+    const provenNative = nativeCandidates.filter((candidate) =>
+      candidate.evidence?.some((evidence) => evidence.contentSource === "NATIVE_TEXT" || evidence.contentSource === "OCR")
+    );
+    if (!provenNative.length) continue;
+    const current = fields[field] ?? [];
+    const nonImage = current.filter((candidate) =>
+      candidate.evidence?.some((evidence) => evidence.contentSource !== "PAGE_IMAGE")
+    );
+    const merged = [...nonImage];
+    for (const candidate of provenNative) {
+      if (!merged.some((existing) => existing.candidateId === candidate.candidateId)) merged.push(candidate);
+    }
+    fields[field] = merged;
+  }
+  return { version: "1", fields };
+}
+
+export function enforceVisionGoodsRowBoundary(
+  candidates: FieldCandidateEnvelope,
+  nativeAuthority: FieldCandidateEnvelope
+): FieldCandidateEnvelope {
+  const nativeRows = [...new Set(Object.keys(nativeAuthority.fields).flatMap((field) => {
+    const match = /^goodsLines\.(\d+)\.hsCode$/.exec(field);
+    return match ? [Number(match[1])] : [];
+  }))].sort((a, b) => a - b);
+  if (!nativeRows.length || nativeRows.some((row, index) => row !== index)) return candidates;
+  const maxNativeRow = nativeRows[nativeRows.length - 1]!;
+  const fields: FieldCandidateEnvelope["fields"] = { ...candidates.fields };
+  for (const [field, source] of Object.entries(fields)) {
+    const match = /^goodsLines\.(\d+)\./.exec(field);
+    if (!match || Number(match[1]) <= maxNativeRow || !source?.length) continue;
+    const retained = source.filter((candidate) =>
+      candidate.evidence.some((evidence) => evidence.contentSource !== "PAGE_IMAGE")
+    );
+    if (retained.length) fields[field] = retained;
+    else delete fields[field];
+  }
   return { version: "1", fields };
 }
 
@@ -603,9 +766,12 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalValidatedNativeGoodsRowCandidatesOf(currentAuthorityData),
       canonicalValidatedNativeGoodsOriginCandidatesOf(currentAuthorityData)
     );
-    const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(
-      sanitizeVisionCommercialSemanticCandidates(execution.candidates),
-      params.canonicalDocument
+    const guardedVisionCandidates = enforceVisionSourceBackedCommercialNumericAuthority(
+      enforceVisionDocumentRoleAuthority(
+        sanitizeVisionCommercialSemanticCandidates(execution.candidates),
+        params.canonicalDocument
+      ),
+      roleBoundDeterministic
     );
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"
       ? mergeInvoicePrimaryWithFallback(guardedVisionCandidates, deterministicFallback)
@@ -666,9 +832,18 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     // semantic-role guard must therefore be the final Vision boundary, not only
     // a pre-recovery filter; otherwise a focused recovery call can reintroduce
     // the same unsupported scalar that the primary pass correctly rejected.
-    const finalRoleGuardedCandidates = enforceVisionDocumentRoleAuthority(
-      sanitizeVisionCommercialSemanticCandidates(adaptiveGoodsNumericExecution.candidates),
-      params.canonicalDocument
+    const finalRoleGuardedCandidates = enforceValidatedNativeGoodsFieldAuthority(
+      enforceVisionGoodsRowBoundary(
+        enforceVisionSourceBackedCommercialNumericAuthority(
+          enforceVisionDocumentRoleAuthority(
+            sanitizeVisionCommercialSemanticCandidates(adaptiveGoodsNumericExecution.candidates),
+            params.canonicalDocument
+          ),
+          roleBoundDeterministic
+        ),
+        roleBoundDeterministic
+      ),
+      roleBoundDeterministic
     );
 
     result.data = {
