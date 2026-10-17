@@ -284,6 +284,20 @@ Foundation 8.2 adds the model-independent semantic object that the portable skil
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation820InvoiceUnderstandingContract.ts`
 
+### Foundation 8.3 — Bounded specialist orchestration
+
+Foundation 8.3 turns the portable skill packages into a model-independent orchestration plan without changing production extraction.
+
+- The manager plans four bounded specialists: `PARTIES`, `COMMERCIAL`, `GOODS`, and `LOGISTICS`.
+- Each specialist loads its own portable `SKILL.md` through the shared skill registry and receives the same canonical evidence bundle without mutating it.
+- Semantic ownership is disjoint: parties own `parties`; commercial owns `documentIdentity` and `commercialTerms`; goods owns `goodsTable`; logistics owns `logistics` and `packageSummary`.
+- Domain payload types and assembly boundaries prevent a goods result from owning package summary or a logistics result from owning goods rows.
+- Missing specialist output makes the assembled understanding partial; specialist review propagates to document review.
+- No production model execution, reconciliation/judge, Foundation 6 promotion, database mutation, supplier-specific rule, invoice-specific constant, or direct normalized-data write is introduced.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation830SpecialistOrchestrationContract.ts`
+
 ### Foundation 8.4 — Reconciliation and bounded targeted recovery
 
 Foundation 8.4 adds the decision boundary after bounded specialist assembly. It remains model-independent and is not wired into production extraction yet.
@@ -297,3 +311,17 @@ Foundation 8.4 adds the decision boundary after bounded specialist assembly. It 
 
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation840ReconciliationContract.ts`
+
+### Foundation 8.5 — Deterministic authority demotion
+
+Foundation 8.5 freezes the authority policy for the upcoming production cutover. It changes no production fusion yet.
+
+- Bounded specialist `InvoiceUnderstanding` is the semantic-primary authority inside the new architecture.
+- Role-bound native evidence, validated native goods rows, and exact native HS/GTIP tokens are demoted to corroboration: they may challenge a semantic result and trigger targeted recovery, but cannot overwrite grounded semantic truth.
+- A validated deterministic goods row cannot define atomic row identity; an isolated HS/GTIP token can never materialize a commercial row.
+- Raw OCR/Vision observations are recovery evidence, not direct normalized declaration authority.
+- Legacy field-index deterministic extraction is explicitly classified as migration fallback rather than a peer semantic parser.
+- Production candidate fusion, Foundation 6 promotion and the legacy `runNormalize()` writer are intentionally unchanged here; those boundaries are handled in the next cutover checkpoints.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation850DeterministicAuthorityDemotionContract.ts`
