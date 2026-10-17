@@ -93,3 +93,16 @@ After the pre-full-run persisted replay gate, a fresh 32B + VL30B production run
 ### 1.8.44 — Fresh-boundary replay acceptance
 
 Replays the latest persisted invoice from canonical evidence with the current production semantic boundary and deterministic authority bridges, without OCR/model inference or database mutation. The gate requires the standalone explicit payment term to resolve through current native authority, monetary Vision poison to disappear from payment/bank semantics, all 56 goods rows and row-local origins to remain resolved, and ambiguous declaration-wide customs-country roles to remain fail-closed. This checkpoint intentionally validates the current interpretation against the already persisted fresh run before paying for another full 32B/VL30B production execution.
+
+### 1.8.45 — Adaptive recovery persistence boundary
+
+Fresh 32B/VL30B production exposed a second commercial-semantic ingress after the 1.8.43 primary Vision guard: adaptive recovery could reintroduce a monetary PAGE_IMAGE value as `paymentType` / `bankInfo`, and the final worker boundary applied document-role authority without reapplying the commercial semantic sanitizer. The final adaptive-recovery envelope is now sanitized immediately before the last role guard and F6 persistence. This is provider/model/supplier agnostic and does not write normalized declaration data directly.
+
+Contract: `verifyProductE2E1845AdaptiveRecoveryPersistenceBoundaryContract.ts` proves both the primary Vision boundary and the final adaptive-recovery persistence boundary apply the monetary semantic sanitizer, while unrelated candidates remain intact.
+
+### 1.8.46 — Commercial persistence boundary closure
+
+- Closes the cheap pre-Spark regression gate for the commercial semantic persistence boundary after the adaptive-recovery ingress fixed in 1.8.45.
+- Verifies mixed candidate behavior: monetary payment/bank poison is removed while valid payment/bank semantics and unrelated candidates survive unchanged.
+- Verifies sanitizer idempotence and statically gates both production persistence ingresses (primary Vision and final adaptive-recovery output) so a later refactor cannot silently bypass the boundary.
+- This is contract-only: no OCR/Qwen call, database mutation, supplier-specific rule, invoice-specific production constant, or direct normalized write.

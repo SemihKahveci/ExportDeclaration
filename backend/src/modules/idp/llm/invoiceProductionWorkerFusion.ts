@@ -667,7 +667,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     // a pre-recovery filter; otherwise a focused recovery call can reintroduce
     // the same unsupported scalar that the primary pass correctly rejected.
     const finalRoleGuardedCandidates = enforceVisionDocumentRoleAuthority(
-      adaptiveGoodsNumericExecution.candidates,
+      sanitizeVisionCommercialSemanticCandidates(adaptiveGoodsNumericExecution.candidates),
       params.canonicalDocument
     );
 
