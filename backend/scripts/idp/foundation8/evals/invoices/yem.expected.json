@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "foundation8-golden-v1",
+  "id": "yem",
+  "pdf": "yem_5646309988.xml.pdf",
+  "sourceSha256": "c281bbb9ee1a61928ad6502ba646cbb3fdc16c6cbc17a1b1822974e34fac2a87",
+  "frozenOn": "2026-10-17",
+  "evidenceBasis": [
+    "source invoice PDF/XML rendering",
+    "Proofs/yem UI captures",
+    "pre-existing frozen generalization ground truth"
+  ],
+  "expected": {
+    "scalars": {
+      "invoiceNumber": "YEM2026000000037",
+      "invoiceDate": "2026-09-23",
+      "currency": "USD",
+      "totalAmount": 17500,
+      "deliveryTerm": "EXW",
+      "grossWeight": 26020,
+      "totalPackage": 21
+    },
+    "exactGoodsRowCount": 1,
+    "requiredGoodsFields": [
+      "productCode",
+      "description",
+      "hsCode",
+      "quantity",
+      "unit",
+      "unitPrice",
+      "lineTotal",
+      "origin"
+    ],
+    "goodsRows": [
+      {
+        "rowNo": 1,
+        "productCode": "91101",
+        "descriptionContains": "Tavuk İşlenmiş Ayak A Kalite",
+        "hsCode": "020714990012",
+        "quantity": 25000,
+        "unit": "KG",
+        "unitPrice": 0.7,
+        "lineTotal": 17500,
+        "origin": "TR"
+      }
+    ]
+  }
+}

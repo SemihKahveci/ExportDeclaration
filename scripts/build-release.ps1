@@ -23,6 +23,7 @@ $DataDir = Join-Path $ReleaseDir "data"
 
 $BackendImage = "export-declaration-backend:$Version"
 $FrontendImage = "export-declaration-frontend:$Version"
+$RedisImage = "redis:7-alpine"
 
 Write-Host ""
 Write-Host "Export Declaration release build" -ForegroundColor Cyan
@@ -64,7 +65,7 @@ docker buildx build `
     --platform $Platform `
     --load `
     -f "$Root\Dockerfile.frontend" `
-    --build-arg "VITE_API_BASE=" `
+    --build-arg "VITE_API_BASE_URL=" `
     --build-arg "VITE_COMPANY_ID=$env:VITE_COMPANY_ID" `
     -t $FrontendImage `
     $Root
@@ -82,6 +83,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "Mongo image indirilemedi."
 }
 
+Write-Host "Redis image kontrol ediliyor..." -ForegroundColor Yellow
+
+docker pull --platform $Platform $RedisImage
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Redis image indirilemedi."
+}
+
 Write-Host ""
 Write-Host "Docker image'ları export ediliyor..." -ForegroundColor Yellow
 
@@ -92,7 +101,8 @@ docker image save `
     -o $ImageTar `
     $BackendImage `
     $FrontendImage `
-    mongo:8.0
+    mongo:8.0 `
+    $RedisImage
 
 if ($LASTEXITCODE -ne 0) {
     throw "Docker image export başarısız."
@@ -105,14 +115,94 @@ Copy-Item `
     "$Root\compose.release.yaml" `
     "$ReleaseDir\compose.yaml"
 
-"APP_VERSION=$Version" |
-    Set-Content "$ReleaseDir\.env"
+# Release, mevcut veritabanını taşımaz; ancak aynı admin ve aynı Spark/Ollama
+# ayarlarıyla açılabilmesi için runtime config proje .env dosyasından alınır.
+$ProjectEnvPath = Join-Path $Root ".env"
+$ProjectEnv = @{}
+if (Test-Path $ProjectEnvPath) {
+    foreach ($rawLine in Get-Content $ProjectEnvPath) {
+        $line = $rawLine.Trim()
+        if (-not $line -or $line.StartsWith("#")) { continue }
+        $separator = $line.IndexOf("=")
+        if ($separator -lt 1) { continue }
+        $ProjectEnv[$line.Substring(0, $separator).Trim()] = $line.Substring($separator + 1)
+    }
+}
+
+function ReleaseValue([string]$Name, [string]$Default = "") {
+    $processValue = [Environment]::GetEnvironmentVariable($Name)
+    if ($null -ne $processValue -and $processValue -ne "") { return $processValue }
+    if ($ProjectEnv.ContainsKey($Name)) { return [string]$ProjectEnv[$Name] }
+    return $Default
+}
+
+$RequiredReleaseKeys = @(
+    "AUTH_JWT_SECRET",
+    "SUPERADMIN_EMAIL",
+    "SUPERADMIN_PASSWORD",
+    "SUPERADMIN_NAME",
+    "INSTALLATION_COMPANY_ID"
+)
+foreach ($key in $RequiredReleaseKeys) {
+    if ([string]::IsNullOrWhiteSpace((ReleaseValue $key))) {
+        throw "Release için gerekli '$key' proje .env veya process environment içinde tanımlı değil."
+    }
+}
+
+$ReleaseEnvKeys = @(
+    "AUTH_JWT_SECRET", "SUPERADMIN_EMAIL", "SUPERADMIN_PASSWORD", "SUPERADMIN_NAME",
+    "INSTALLATION_COMPANY_ID",
+    "LLM_ENABLED", "LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL",
+    "LLM_VISION_ENABLED", "LLM_VISION_MODEL", "LLM_VISION_MAX_PAGES",
+    "LLM_VISION_MAX_IMAGE_BYTES", "LLM_TIMEOUT_MS",
+    "MAIL_ENABLED", "SMTP_HOST", "SMTP_PORT", "SMTP_SECURE", "SMTP_USER",
+    "SMTP_PASS", "MAIL_FROM", "MAIL_FROM_NAME", "NEW_USER_NOTIFY_EMAIL"
+)
+
+$ReleaseEnvLines = @("APP_VERSION=$Version", "SUPERADMIN_RESET_PASSWORD=false")
+foreach ($key in $ReleaseEnvKeys) {
+    $value = (ReleaseValue $key) -replace "`r", "" -replace "`n", ""
+    $ReleaseEnvLines += "$key=$value"
+}
+$ReleaseEnvLines | Set-Content "$ReleaseDir\\.env" -Encoding UTF8
 
 $Version |
     Set-Content "$ReleaseDir\VERSION"
 
 $Platform |
     Set-Content "$ReleaseDir\PLATFORM"
+
+@'
+#!/usr/bin/env sh
+set -eu
+docker load -i ./images/export-declaration-images.tar
+docker compose up -d
+docker compose ps
+'@ | Set-Content "$ReleaseDir\\start.sh" -Encoding UTF8
+
+@'
+$ErrorActionPreference = "Stop"
+docker load -i .\\images\\export-declaration-images.tar
+if ($LASTEXITCODE -ne 0) { throw "Docker image load başarısız." }
+docker compose up -d
+if ($LASTEXITCODE -ne 0) { throw "Docker compose başlatılamadı." }
+docker compose ps
+'@ | Set-Content "$ReleaseDir\\start.ps1" -Encoding UTF8
+
+@"
+ExportDeclaration $Version
+Platform: $Platform
+
+Bu paket yeni/boş Mongo ve Redis volume'ları ile açılır; mevcut uygulama verileri taşınmaz.
+Superadmin ve Spark/Ollama ayarları build anındaki proje .env/process environment değerlerinden alınmıştır.
+
+macOS / Linux:
+  chmod +x ./start.sh
+  ./start.sh
+
+Windows PowerShell:
+  .\\start.ps1
+"@ | Set-Content "$ReleaseDir\\START-HERE.txt" -Encoding UTF8
 
 Write-Host ""
 Write-Host "ZIP oluşturuluyor..." -ForegroundColor Yellow
@@ -124,7 +214,7 @@ if (Test-Path $ZipPath) {
 }
 
 Compress-Archive `
-    -Path "$ReleaseDir\*" `
+    -Path "$ReleaseDir" `
     -DestinationPath $ZipPath `
     -CompressionLevel Optimal
 
@@ -136,3 +226,4 @@ Write-Host $ReleaseDir
 Write-Host ""
 Write-Host "ZIP:"
 Write-Host $ZipPath
+Write-Host "NOT: Release .env admin/LLM/mail sırlarını içerir; paketi yalnız güvenilir alıcıyla paylaşın." -ForegroundColor Yellow

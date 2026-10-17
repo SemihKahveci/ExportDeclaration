@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "foundation8-proof-baseline-v1",
+  "capturedOn": "2026-10-17",
+  "note": "Human-reviewed snapshot from the seven fresh UI proof sets. This file is diagnostic metadata, never runtime knowledge.",
+  "cases": {
+    "celikel": {"approximateQualityPercent":88,"knownFailures":["product/material codes missing in UI","Hungary must not be promoted as goods origin/customs role without role evidence","bank text needs semantic cleanup"]},
+    "dermeternal": {"approximateQualityPercent":87,"knownFailures":["party addresses incomplete/review","6-digit source HS must remain unsupported for 12-digit GTIP"]},
+    "ningbo": {"approximateQualityPercent":91,"knownFailures":["unsupported HS/unit must remain blank","customs-country roles must not be inferred from unrelated country text"]},
+    "pml": {"approximateQualityPercent":78,"knownFailures":["invoice total 281.50 EUR missing","seller/buyer addresses incomplete","payment semantics should preserve DAP-30 DAYS"]},
+    "volta": {"approximateQualityPercent":72,"knownFailures":["goods quantity 560 instead of 1","product code PS4 instead of 4M717-9900A-07","bank info missing"]},
+    "yem": {"approximateQualityPercent":66,"knownFailures":["goods quantity 1250 Koli instead of 25000 KG","line total 875 instead of 17500"]},
+    "ved146": {"approximateQualityPercent":58,"knownFailures":["56 HS/GTIP tokens materialized but many rows are GTIP-only skeletons","fresh UI row completeness diverges from persisted 56/56 field-resolution replay"]}
+  }
+}

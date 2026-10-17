@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "foundation8-impact-v1",
+  "policy": "Run cheap cached/contract coverage broadly; run fresh model inference only for impacted tagged canaries or release-level gates.",
+  "tags": {
+    "goods-row-identity": ["ved146","yem","volta","celikel","pml","dermeternal","ningbo"],
+    "goods-numeric-semantics": ["yem","volta","pml","ved146","celikel"],
+    "multi-page-goods": ["ved146","celikel"],
+    "party-semantics": ["celikel","dermeternal","ningbo","pml","ved146"],
+    "commercial-terms": ["celikel","ningbo","pml","volta","yem","ved146"],
+    "unsupported-hs-fail-closed": ["pml","dermeternal","ningbo"],
+    "shipment-package": ["celikel","pml","volta","yem","ved146"]
+  }
+}

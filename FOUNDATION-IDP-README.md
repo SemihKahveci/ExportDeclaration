@@ -248,3 +248,16 @@ Persisted semantic coverage replay now gives the freshly rebuilt deterministic e
 - Canonical weight value fragments such as `: 20.190` / `: 24.000` are accepted by the existing role-and-geometry-bound weight resolver.
 - The colon remains only punctuation attached to the numeric value; the value still requires a recognized NET/GROSS label and the existing unique spatial binding.
 - Ambiguous spatial matches continue to fail closed; no supplier/invoice-specific constants or fixed coordinates were added.
+
+### 1.8.51 — Portable Docker release packaging
+- Release builder packages backend, frontend, MongoDB and Redis runtime images for offline/portable startup.
+- Release `.env` carries the current superadmin/installation identity and Spark/Ollama runtime configuration while MongoDB application data is intentionally not copied.
+- Release startup helpers load the bundled images before Docker Compose startup; ARM64 1.0.2 was prepared for the target Apple Silicon Mac.
+- This release-packaging checkpoint is operational only and does not change IDP extraction behavior.
+
+### Foundation 8.0 — Golden corpus baseline
+- Freezes the seven current invoice proofs as **evaluation-only** machine-readable ground truth under `backend/scripts/idp/foundation8/evals/`; these files are never runtime extraction knowledge and must not be supplied to Qwen/VL.
+- Adds a generic scorer for scalar correctness, exact goods-row count, source-grounded sentinel rows, and—critically—required-field **complete-row rate**. A document with 56 GTIP tokens but only a handful of complete commercial rows now fails even when the raw row count is 56.
+- Adds explicit regression contracts for the three fresh-production failure classes that exposed the old metric gap: VED GTIP-only skeleton rows, YEM package-count→quantity swap, and Volta amount→quantity/product-code swap.
+- Adds a human-reviewed current-proof baseline plus an impact manifest. Future corpus growth must use layered regression: cheap contracts/cached canonical replay broadly, impacted-skill subsets for focused inference, small fresh canaries, and full fresh corpus only for release/model/major-skill gates—not every new invoice.
+- No production extraction, candidate discovery, resolver, OCR/Qwen runtime, database, or normalized declaration behavior changes in this checkpoint.

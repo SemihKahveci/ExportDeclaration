@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "foundation8-golden-v1",
+  "id": "volta",
+  "pdf": "VXA2026000000035.pdf",
+  "sourceSha256": "38ccdae88231df83a828809c4d9c1dcceea70b4c796e7f2fe8c2f4d09619edf7",
+  "frozenOn": "2026-10-17",
+  "evidenceBasis": [
+    "source invoice PDF",
+    "Proofs/volta UI captures",
+    "pre-existing frozen generalization ground truth"
+  ],
+  "expected": {
+    "scalars": {
+      "invoiceNumber": "VXA2026000000035",
+      "invoiceDate": "2026-09-23",
+      "currency": "EUR",
+      "totalAmount": 560,
+      "deliveryTerm": "EXW",
+      "paymentType": "PESIN",
+      "transportMode": "Karayolu",
+      "grossWeight": 87,
+      "netWeight": 83,
+      "totalPackage": 1
+    },
+    "exactGoodsRowCount": 1,
+    "requiredGoodsFields": [
+      "productCode",
+      "description",
+      "hsCode",
+      "quantity",
+      "unit",
+      "unitPrice",
+      "lineTotal",
+      "origin"
+    ],
+    "goodsRows": [
+      {
+        "rowNo": 1,
+        "productCode": "4M717-9900A-07",
+        "descriptionContains": "PS4 GASOLINE SCOOTER (50CC) BLUE",
+        "hsCode": "871110000011",
+        "quantity": 1,
+        "unit": "ADET",
+        "unitPrice": 560,
+        "lineTotal": 560,
+        "origin": "TR"
+      }
+    ]
+  }
+}

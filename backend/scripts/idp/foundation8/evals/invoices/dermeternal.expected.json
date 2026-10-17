@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "foundation8-golden-v1",
+  "id": "dermeternal",
+  "pdf": "Rechnung-Dermeternal GmbH.pdf",
+  "sourceSha256": "c5583d0c71dded8ae6130dc6a270b625a968f09ee9199dcca16b77b0285d6b54",
+  "frozenOn": "2026-10-17",
+  "evidenceBasis": [
+    "source invoice PDF",
+    "Proofs/dermeternal UI captures",
+    "pre-existing frozen generalization ground truth"
+  ],
+  "expected": {
+    "scalars": {
+      "invoiceNumber": "2026/0001",
+      "invoiceDate": "2026-08-14",
+      "currency": "EUR",
+      "totalAmount": 21000,
+      "seller": "Dermeternal GmbH",
+      "buyer": "DERMESTA SAĞLIK KOZMETİK TİCARET LİMİTED ŞİRKETİ"
+    },
+    "exactGoodsRowCount": 4,
+    "requiredGoodsFields": [
+      "description",
+      "quantity",
+      "unit",
+      "unitPrice",
+      "lineTotal",
+      "origin"
+    ],
+    "goodsRows": [
+      {
+        "rowNo": 1,
+        "descriptionContains": "FORMULA 1 - FACE - ETERNAL E'CLAIR",
+        "quantity": 2000,
+        "unit": "PCS",
+        "unitPrice": 5.25,
+        "lineTotal": 10500,
+        "origin": "IT"
+      },
+      {
+        "rowNo": 2,
+        "descriptionContains": "FORMULA 2 - NECK & DÉCOLLETÉ - ETERNAL NADIN",
+        "quantity": 2000,
+        "unit": "PCS",
+        "unitPrice": 5.25,
+        "lineTotal": 10500,
+        "origin": "IT"
+      },
+      {
+        "rowNo": 3,
+        "descriptionContains": "FORMULA 1 - FACE - ETERNAL E'CLAIR - FOC",
+        "quantity": 200,
+        "unit": "PCS",
+        "unitPrice": 5.25,
+        "lineTotal": 0,
+        "origin": "IT"
+      },
+      {
+        "rowNo": 4,
+        "descriptionContains": "FORMULA 2 - NECK & DÉCOLLETÉ - ETERNAL NADIN - FOC",
+        "quantity": 200,
+        "unit": "PCS",
+        "unitPrice": 5.25,
+        "lineTotal": 0,
+        "origin": "IT"
+      }
+    ],
+    "expectedAbsentOrReview": [
+      "goodsLines.*.hsCode",
+      "buyerCountry"
+    ],
+    "forbiddenValues": {
+      "buyerCountry": [
+        "Handelsregister",
+        "Adalet Mah. Ma"
+      ]
+    }
+  }
+}
