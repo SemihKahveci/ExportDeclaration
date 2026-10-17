@@ -166,6 +166,50 @@ export function canonicalValidatedNativeGoodsRowCandidatesOf(data: Record<string
   return { version: "1", fields };
 }
 
+/**
+ * 1.8.34: Row-local origin is distinct from declaration-wide originCountry.
+ * The generic origin discovery already binds a compact native-text origin cell
+ * to a proven goods row.  Allow that evidence into Foundation 6 only when the
+ * corresponding generic goods row itself passed validation.  This preserves
+ * row locality and never promotes a line origin into a customs-country scalar.
+ */
+export function canonicalValidatedNativeGoodsOriginCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
+  const audit = data?.genericCandidateAudit as {
+    originCandidates?: FieldCandidateEnvelope;
+    validation?: { rows?: Array<{ rowIndex: number; status?: string; issues?: unknown[] }> };
+  } | undefined;
+  const source = audit?.originCandidates;
+  if (source?.version !== "1" || !source.fields) return { version: "1", fields: {} };
+
+  const validRows = new Set(
+    (audit?.validation?.rows ?? [])
+      .filter((row) => row.status === "VALID" && (row.issues?.length ?? 0) === 0)
+      .map((row) => row.rowIndex)
+  );
+  if (validRows.size === 0) return { version: "1", fields: {} };
+
+  const fields: Record<string, FieldCandidateEnvelope["fields"][string]> = {};
+  for (const [field, candidates] of Object.entries(source.fields)) {
+    const match = /^goodsLines\.(\d+)\.origin$/.exec(field);
+    if (!match || !validRows.has(Number(match[1]))) continue;
+    const eligible = candidates.filter((candidate) =>
+      !candidate.derived &&
+      candidate.evidence.some((evidence) =>
+        evidence.contentSource === "NATIVE_TEXT" &&
+        typeof evidence.text === "string" &&
+        evidence.text.trim().length > 0
+      )
+    );
+    if (eligible.length !== 1) continue;
+    fields[field] = eligible.map((candidate) => ({
+      ...candidate,
+      field,
+      candidateId: `${candidate.candidateId}:f6-native-origin`
+    }));
+  }
+  return { version: "1", fields };
+}
+
 export function canonicalHeaderPartyCandidatesOf(data: Record<string, unknown> | undefined): FieldCandidateEnvelope {
   const audit = data?.genericCandidateAudit as { headerPartyCandidates?: FieldCandidateEnvelope } | undefined;
   const source = audit?.headerPartyCandidates;
@@ -537,7 +581,8 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalHeaderPartyCandidatesOf(currentAuthorityData),
       canonicalNativeShipmentCandidatesOf(currentAuthorityData),
       canonicalNativeGoodsCodeCandidatesOf(currentAuthorityData),
-      canonicalValidatedNativeGoodsRowCandidatesOf(currentAuthorityData)
+      canonicalValidatedNativeGoodsRowCandidatesOf(currentAuthorityData),
+      canonicalValidatedNativeGoodsOriginCandidatesOf(currentAuthorityData)
     );
     const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(execution.candidates, params.canonicalDocument);
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"

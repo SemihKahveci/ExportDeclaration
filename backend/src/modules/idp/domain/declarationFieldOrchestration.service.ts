@@ -364,6 +364,20 @@ export function selectDirectSourceEvidenceAuthority(
     selections.push({ field, candidateId: nativeRow[0]!.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
   }
 
+  // 1.8.34: validated native row-origin evidence may resolve only the
+  // matching goodsLines.N.origin field.  It must never authorize the
+  // declaration-wide originCountry/customs role.
+  for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
+    if (!/^goodsLines\.\d+\.origin$/.test(field)) continue;
+    const nativeOrigin = fieldCandidates.filter((candidate) =>
+      candidate.candidateId.endsWith(":f6-native-origin") &&
+      !candidate.derived &&
+      candidate.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+    );
+    if (nativeOrigin.length !== 1) continue;
+    selections.push({ field, candidateId: nativeOrigin[0]!.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+  }
+
   selections.push(...selectArithmeticCorroboratedUnitPrices(candidates));
   selections.push(...selectRowCorroboratedDescriptions(candidates));
   const unique = new Map(selections.map((selection) => [selection.field, selection]));
