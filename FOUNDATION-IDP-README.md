@@ -284,17 +284,16 @@ Foundation 8.2 adds the model-independent semantic object that the portable skil
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation820InvoiceUnderstandingContract.ts`
 
-### Foundation 8.3 — Bounded specialist orchestration
+### Foundation 8.4 — Reconciliation and bounded targeted recovery
 
-Foundation 8.3 introduces a model-independent manager plan for four bounded semantic specialists without changing the current production extraction path.
+Foundation 8.4 adds the decision boundary after bounded specialist assembly. It remains model-independent and is not wired into production extraction yet.
 
-- The manager plans `PARTIES`, `COMMERCIAL`, `GOODS`, and `LOGISTICS` work from one shared canonical evidence bundle.
-- Each specialist loads its portable `SKILL.md` through the Foundation 8.1 registry; orchestration contains no supplier/invoice-specific prompt or expected answer.
-- Semantic ownership is explicit and disjoint: Goods owns `goodsTable`; Logistics owns `logistics` + `packageSummary`; Commercial owns `documentIdentity` + `commercialTerms`; Parties owns `parties`.
-- Goods is explicitly forbidden from owning package summary, and Logistics is forbidden from owning goods rows. This establishes the architectural boundary needed to prevent package-count → commercial-quantity role theft.
-- Domain-specific specialist result types prevent one specialist payload from structurally overwriting another domain during assembly.
-- Assembly is intentionally not reconciliation. Any missing specialist makes the document `PARTIAL`; any specialist `REVIEW_REQUIRED` status propagates upward. Conflict judging and targeted recovery remain Foundation 8.4 work.
-- No production Qwen/VL execution, candidate fusion, Foundation 6 promotion, OCR, database mutation, or normalized declaration write changes in this checkpoint.
+- Reconciliation returns exactly one action: `ACCEPT`, `TARGETED_RECOVERY`, or `REVIEW_REQUIRED`.
+- Incomplete atomic goods rows request a bounded `GOODS` re-read instead of manufacturing missing fields or rerunning unrelated domains.
+- Arithmetic can identify a conflict and request a source re-read, but it never replaces grounded quantity, unit price, or line total.
+- Genuine source ambiguity fails closed to review.
+- Targeted recovery application is ownership-bound: a GOODS retry cannot rewrite parties, logistics, or package summary even if a malformed payload contains those sections.
+- This checkpoint adds no model/judge execution, production cutover, Foundation 6 promotion changes, database mutation, supplier-specific rule, or invoice-specific constant.
 
 Contract:
-`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation830SpecialistOrchestrationContract.ts`
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation840ReconciliationContract.ts`
