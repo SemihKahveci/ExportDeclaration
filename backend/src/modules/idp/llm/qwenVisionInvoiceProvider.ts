@@ -200,6 +200,19 @@ export function sanitizeVisionPaymentType(value: unknown): unknown {
   // Customs/tax incentive phrases are not payment terms even when printed
   // below a combined "Delivery and Payment" heading.
   if (/\b(?:DUTY\s*DRAWBACK|RODTEP|EPCG|IGST|VAT|KDV|TAX\s*EXEMPT)\b/i.test(trimmed)) return undefined;
+  // A monetary amount is not a payment method/term (for example "0,00 EUR").
+  if (/^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)$/i.test(trimmed)) return undefined;
+  return trimmed;
+}
+
+export function sanitizeVisionBankInfo(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  // Bank information needs bank/account semantics. Monetary totals/charges are
+  // not bank evidence even if the model projects them into bankInfo.
+  if (/^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)$/i.test(trimmed)) return undefined;
+  if (!/\b(?:BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT|HESAP)\b/i.test(trimmed)) return undefined;
   return trimmed;
 }
 
@@ -301,6 +314,7 @@ export function adaptNaturalInvoiceResponse(
       if (requestedField === "invoiceNumber") value = canonicalizeVisionInvoiceNumber(value);
       if (requestedField === "sellerAddress" || requestedField === "buyerAddress") value = sanitizeVisionPartyAddress(value);
       if (requestedField === "paymentType") value = sanitizeVisionPaymentType(value);
+      if (requestedField === "bankInfo") value = sanitizeVisionBankInfo(value);
       if (requestedField === "carrier") value = sanitizeVisionCarrier(value);
       if (requestedField === "totalPackage" && typeof value === "number") {
         const gross = naturalScalar(parsed.grossKg);

@@ -3489,96 +3489,27 @@ Guardrails: supplier-specific rules `false`; invoice-specific constants `false`;
 - Regression contract: `verifyProductE2E1819NativeGtipAuthorityContract.ts` covers conflicting product-code/short-HS vision values, exact native GTIP authority, invalid/mismatched evidence rejection, and the 12-digit fail-closed boundary.
 - Guardrails: supplier-specific rules `false`; model inference required `false`; OCR rerun required `false`; direct normalized write `false`; Foundation 6 remains final write authority.
 
-### 1.8.20 — Persisted goods-row integrity replay
+### 1.8.30 — Commercial Semantic Authority & Source-Absent Country Guardrail
 
-- Added `replayLatestInvoice1820GoodsRowIntegrity.ts` as a model-free diagnostic over the latest persisted invoice canonical document.
-- Re-runs only the production generic geometry discovery and evidence validator; it does not call OCR/Qwen and does not mutate MongoDB.
-- Audits every logical goods row as a unit instead of validating GTIP alone: exact 12-digit GTIP, description, quantity, unit, unit price and line total are checked for presence and page alignment.
-- Reconciles `quantity × unitPrice = lineTotal` with the same production tolerance and reports page-boundary/row-shift suspects explicitly.
-- Emits compact summary counters plus `suspiciousRows`, followed by full per-row evidence so the next production fix can be based on persisted evidence rather than another full document run.
-- This checkpoint is diagnostic-only: no supplier-specific rule and no direct normalized-data write were introduced.
+- Full Spark 32B + VL30B production regression confirmed the 1.8.28 canonical authority hardening: native party/address, transport, shipment totals/weights and 56/56 GTIP values survive model competition into Foundation 6 and normalized declaration output.
+- Country semantics remain fail-closed: buyer country may be promoted from explicit buyer-country evidence, while seller/exit/arrival/destination/trade/origin country fields are not inferred merely from party addresses, delivery-place text or row-level goods origins.
+- `invoiceCommercialTermsCandidateDiscovery` now recognizes explicit payment-term labels (`Ödeme Koşulu`, `Ödeme Şekli`, `Payment Terms/Method/Type`) and explicit freight/insurance charge labels as role-bound canonical evidence. Zero freight/insurance is a valid explicit charge value and is not discarded by positive-number validation.
+- Commercial native authority maps payment type, freight and insurance into Foundation 6, preserving the same model-independent source-authority rule used by total/currency/exchange-rate/transport.
+- Vision payment/bank sanitation rejects bare monetary amounts such as `0,00 EUR`; bank information additionally requires bank/account semantics (BANK/IBAN/SWIFT/BIC/ACCOUNT/HESAP). This prevents invoice charge/total values from polluting payment/bank fields.
+- No supplier-specific rules, invoice-specific constants, direct normalized writes or country guessing were introduced.
 
-### 1.8.21 — Validated native goods-row authority
+### 1.8.31 — Persisted Commercial Semantic Authority Replay
 
-Persisted replay 1.8.20 proved that all 56 VED146 goods rows are complete, same-page, arithmetic-consistent and evidence-clean. Production fusion now projects the non-GTIP fields of a generic goods row as peer Foundation 6 candidates only when the canonical generic evidence validator marks that entire row `VALID`. Invalid/review rows remain shadow-only. Foundation 6 remains the only resolution/promotion authority; no direct `normalizedData` write was added. Existing stricter description and arithmetic unit-price selectors remain in force.
+- Replays the latest persisted invoice canonical document without OCR/Qwen or database mutation.
+- Re-runs the general commercial semantic parser and current Foundation 6 authority bridge in memory.
+- Applies the current payment/bank Vision sanitizers to legacy persisted candidates so pre-1.8.30 `0,00 EUR` poison can be regression-tested without another model run.
+- Acceptance covers explicit payment terms, zero freight/insurance, absent unsupported bank info, and total/currency/exchange-rate/delivery-term regression safety.
+- No supplier-specific rule, invoice-specific production constant, or direct normalized write is introduced.
 
-Focused contract: `backend/scripts/idp/verifyProductE2E1821ValidatedNativeGoodsRowAuthorityContract.ts`.
 
+### 1.8.31.1 — Persisted Commercial Semantic Replay Acceptance Fix
 
-### 1.8.22 — Persisted Foundation 6 goods-resolution replay
-
-- Added `replayLatestInvoice1822Foundation6GoodsResolution.ts` to verify the complete goods-row authority path after 1.8.19/1.8.21 without rerunning OCR or Qwen.
-- Rebuilds generic goods evidence only from the persisted canonical document, applies the production exact-12 native GTIP bridge and VALID-row native peer bridge, merges them with the persisted declaration candidates, then runs the current Foundation 6 direct-source authority selector and resolver entirely in memory.
-- Reports all 56 logical goods rows across GTIP, product code, description, quantity, unit, unit price and line total, including unresolved/review fields and the selected candidate IDs.
-- The checkpoint is diagnostic/read-only: MongoDB is not mutated, normalized data is not written, and no supplier/invoice constants are introduced.
-- A clean result requires 56 fully resolved rows, zero unresolved core goods fields and zero Foundation 6 review-required goods fields before the next full VED146 model/browser run.
-
-### 1.8.23 — Persisted Header Authority Replay
-
-- Adds `replayLatestInvoice1823HeaderAuthority.ts`, a model-free diagnostic replay for the remaining document-owned invoice header/party/shipment fields.
-- Re-discovers current deterministic `headerParty`, `shipment`, and `commercialTerms` candidates from the already persisted canonical document and compares them with both the persisted generic audit and Foundation 6 resolution state.
-- Reports three actionable classes: source-present-but-unresolved fields, fields with no current deterministic candidate, and stale persisted candidates that differ from current deterministic discovery.
-- The replay is read-only: no OCR, no Qwen/model inference, no database mutation, and no direct normalized-data write.
-- Adds `verifyProductE2E1823PersistedHeaderAuthorityReplayContract.ts` to lock the replay guardrails before using its output to choose the next production fix.
-
-### 1.8.24 — Role-bound native header authority
-
-- Persisted 1.8.23 replay showed a clean separation: 7 header/party fields are discoverable deterministically from canonical evidence, yet the persisted Foundation 6 snapshot remained `REVIEW_REQUIRED` because conflicting page-image candidates had no explicit authority rule. The replay reported 7 source-present-but-unresolved fields, 19 fields with no deterministic candidate, and 0 stale deterministic fields.
-- `selectDirectSourceEvidenceAuthority()` now recognizes only the exact production candidate ids emitted by the deterministic header/party bridge (`*:f6-header-party`) and only when they carry direct `NATIVE_TEXT` evidence plus a narrow field-shape check. This gives canonical invoice geometry explicit Foundation 6 authority over conflicting page-image interpretations without granting generic native text blanket precedence.
-- Covered authority fields are invoice number/date and deterministic seller/buyer name/address/country candidates when present. Missing deterministic fields remain fail-closed; this checkpoint does not invent seller country, weights, totals, transport metadata, or any other absent source candidate.
-- The synthetic 1.8.24 contract proves that conflicting vision party/date values cannot outrank the role-bound native candidate and that an arbitrary native-looking candidate with a non-production id cannot opt into the authority path.
-- No OCR/Qwen rerun, supplier-specific rule, or direct normalized-data write is introduced. Foundation 6 remains the final write authority.
-
-### 1.8.25 — Persisted post-header authority classification replay
-
-- Added a model-free persisted replay after the 1.8.24 role-bound native header authority checkpoint. It reuses only the latest invoice's persisted canonical document and declaration candidates, recomputes the current generic header/commercial parsers, applies the current page-local vision role guard, and resolves everything in memory through Foundation 6.
-- The replay hard-fails if any general deterministic header candidate that qualifies for the 1.8.24 production authority path remains unresolved. This verifies the real persisted invoice path rather than only the synthetic contract.
-- Remaining document/header fields are classified into deterministic-authority resolved, role-guarded vision resolved/unresolved, or no-current-source-candidate buckets. This gives the next checkpoint a field-by-field cause map without another OCR/Qwen run.
-- The replay contains no supplier/file-name checks, invoice-specific values, model inference, database mutation, or direct normalized writes. Supplier knowledge remains advisory/general; final writes continue through Foundation 6 authority and promotion.
-
-### 1.8.25.1 — Replay candidate idempotency
-
-- Fixed the persisted post-header authority replay so deterministic header/commercial candidates are merged by `candidateId` instead of appended blindly.
-- This matters when the persisted envelope already contains the same production bridge candidate (for example `header-invoice-date:f6-header-party`): replay is now idempotent and does not manufacture duplicate declaration candidate ids.
-- Diagnostic-only correction; production extraction, authority, resolver behavior, OCR/model execution and normalized writes are unchanged.
-
-### 1.8.26 — Role-local package authority
-
-Persisted 1.8.25 replay separated current document-owned scalar coverage into 11 deterministic-authority fields, 3 role-guarded Vision fields and 12 fields with no current source candidate. The replay also exposed a remaining generic semantic-authority risk: `packageType=Bin` could survive when a package role label existed somewhere on the same page, even though the value was not local to that role.
-
-1.8.26 tightens only package semantics. PAGE_IMAGE `packageType` and `totalPackage` candidates now require the candidate value itself to occur near the explicit package role on the same canonical page. This is supplier/invoice agnostic, does not use a package vocabulary, keeps short legitimate values possible, and prevents unrelated dense-page text or goods quantities from borrowing page-wide package authority. Missing source evidence still fails closed; Foundation 6 remains the only promotion/write authority.
-
-Contract: `backend/scripts/idp/verifyProductE2E1826RoleLocalPackageAuthorityContract.ts`.
-
-### 1.8.26.1 — Strict role-local package authority
-
-- Fixed the 1.8.26 contract finding where the generic `keepOnlyWithRole` helper used `role OR corroboration`, so a page-wide package label could still authorize an unrelated value.
-- Package type/count now use a strict role-local path: PAGE_IMAGE candidates survive only when the candidate value itself is found within the bounded semantic-role neighborhood on the evidence page.
-- Tightened the generic role/value neighborhood to 16 normalized characters so nearby goods-row values cannot borrow a package label.
-- No supplier/invoice constants, no direct normalized write; Foundation 6 remains final authority.
-
-### 1.8.27 — Source-Present UI Gap Diagnosis + Native Transport Bridge
-
-- Promotes the generic commercial-terms parser's semantic `transport.mode` candidate into the Foundation 6 `transportMode` vocabulary instead of leaving that already-discovered native evidence in shadow audit only.
-- The bridge is generic and source-bound: no supplier name, invoice number, `Karayolu`, country, GTIP, or other invoice-specific constant is used by production logic.
-- Adds `verifyProductE2E1827NativeTransportAuthorityContract.ts` to lock the vocabulary bridge and preserve native evidence/provenance.
-- Adds `diagnoseLatestInvoice1827SourcePresentUiGaps.ts`, a persisted-canonical, model-free diagnostic that traces exact-12 GTIP rows through deterministic discovery -> persisted audit -> worker/F6 native authority -> Foundation 6 resolution -> normalizedData, and reports party-address plus transport/package evidence at the same time.
-- The diagnostic performs no OCR/Qwen inference, no database mutation, and no direct normalized write. It is intended to distinguish extraction failure from authority/promotion/UI propagation before the next production fix.
-
-### 1.8.28 — Canonical Authority Bridge Hardening
-
-- Rebuilds deterministic goods/header/commercial/shipment authority candidates from the current canonical document immediately before Vision fusion. This makes source-backed authority independent of Qwen model size/provider output and prevents a stronger model from suppressing native evidence.
-- Keeps exact 12-digit native GTIP and validated native goods-row bridges in Foundation 6; no direct normalized-data writes.
-- Adds role-bound native shipment bridging for total package, package type, gross weight and net weight.
-- Shipment label discovery now also accepts exact `nativeText` / OCR label-value evidence when a digital PDF exposes text without stable word geometry/bboxes.
-- Adds direct native authority for semantic transport mode and native shipment totals/weights/package type; conflicting Vision remains audit evidence but cannot outrank the role-bound native source.
-- No supplier-specific rules, invoice-specific constants or model-specific values are introduced.
-- Contract: `backend/scripts/idp/verifyProductE2E1828CanonicalAuthorityBridgeContract.ts`.
-
-### 1.8.29 — Persisted Canonical Authority End-to-End Replay
-
-- Replays the latest completed invoice from persisted canonical evidence only; no OCR, Qwen/VL inference, or database mutation.
-- Rebuilds the current generic goods, header/party, commercial/transport, and shipment audits exactly from canonical evidence, then applies the current Foundation 6 authority bridges and resolver in memory.
-- Requires every source-backed native GTIP, header/party, shipment, and commercial authority field produced by the general deterministic parsers to resolve through Foundation 6.
-- This checkpoint is deliberately model-size independent: Qwen/VL candidates remain competing evidence, but changing 8B/32B/VL8B/VL30B cannot remove canonical native authority.
-- No supplier-specific rules, invoice-specific constants, or direct normalized writes are introduced.
+- Replay acceptance now compares payment terms using the same normalized semantic form emitted by the deterministic commercial parser (`PESIN ODEME`), while remaining tolerant of Turkish diacritics.
+- This is a replay/test correction only; production commercial authority behavior is unchanged.
+- The replay now emits its `.passed` event only after all acceptance assertions succeed.
+- No supplier-specific or invoice-specific production rule is introduced.

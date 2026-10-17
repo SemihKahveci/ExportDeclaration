@@ -236,7 +236,10 @@ export function selectDirectSourceEvidenceAuthority(
     totalAmount: "header-total-amount:f6-totalAmount",
     exchangeRate: "finance-exchange-rate:f6-exchangeRate",
     currency: "header-currency-from-total:f6-currency",
-    transportMode: "transport-mode:f6-transportMode"
+    transportMode: "transport-mode:f6-transportMode",
+    paymentType: "trade-payment-type:f6-paymentType",
+    freight: "finance-freight:f6-freight",
+    insurance: "finance-insurance:f6-insurance"
   };
   const roleBoundFields = new Set<string>();
   for (const [field, candidateId] of Object.entries(roleBoundCommercialCandidateIds)) {
@@ -248,9 +251,11 @@ export function selectDirectSourceEvidenceAuthority(
     if (!candidate) continue;
     const valid = field === "currency"
       ? canonicalCurrency(candidate.value) !== undefined
-      : field === "transportMode"
-        ? typeof candidate.value === "string" && candidate.value.trim().length >= 3 && candidate.value.trim().length <= 80
-        : canonicalPositiveNumber(candidate.value) !== undefined;
+      : field === "transportMode" || field === "paymentType"
+        ? typeof candidate.value === "string" && candidate.value.trim().length >= 3 && candidate.value.trim().length <= 120
+        : field === "freight" || field === "insurance"
+          ? finiteNumber(candidate.value) !== undefined && finiteNumber(candidate.value)! >= 0
+          : canonicalPositiveNumber(candidate.value) !== undefined;
     if (!valid) continue;
     selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
     roleBoundFields.add(field);

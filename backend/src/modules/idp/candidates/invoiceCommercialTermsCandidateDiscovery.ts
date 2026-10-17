@@ -135,6 +135,28 @@ function parseMoney(raw:string):number|undefined{
   }
   const n=Number(s); return Number.isFinite(n)&&n>=0?n:undefined;
 }
+
+function paymentType(lines: EvidenceLine[]) {
+  for (const line of lines) {
+    const normalized = norm(line.text);
+    const match = normalized.match(/\b(?:ODEME\s*KOSULU|ODEME\s*SEKLI|PAYMENT\s*(?:TERMS?|METHOD|TYPE))\s*[:#-]?\s*(.+)$/);
+    if (!match?.[1]) continue;
+    const value = match[1].trim();
+    if (!value || /^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)?$/i.test(value)) continue;
+    return { value, line };
+  }
+  return undefined;
+}
+
+function labelledMoney(lines: EvidenceLine[], labelRe: RegExp) {
+  for (const line of lines) {
+    if (!labelRe.test(norm(line.text))) continue;
+    const pairs = monetaryPairs(line);
+    if (pairs.length) return pairs[0];
+  }
+  return undefined;
+}
+
 function bankInfo(lines: EvidenceLine[]) {
   const bankish = lines.filter(line => /\b(?:BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT\s*NO|BENEFICIAL\s*BANK|BENEFICIARY)\b/.test(norm(line.text)));
   if (!bankish.length) return undefined;
@@ -212,6 +234,12 @@ export function discoverInvoiceCommercialTermsFieldCandidates(
   if(d)add(fields,candidate("trade.deliveryTerm",d.value,"trade-delivery-term",segmentId,d.line,.98));
   const t=transportMode(lines);
   if(t)add(fields,candidate("transport.mode",t.value,"transport-mode",segmentId,t.line,.98));
+  const payment=paymentType(lines);
+  if(payment)add(fields,candidate("trade.paymentType",payment.value,"trade-payment-type",segmentId,payment.line,.99));
+  const freight=labelledMoney(lines,/^NAVLUN\b|\bFREIGHT\b/);
+  if(freight)add(fields,candidate("finance.freight",freight.n,"finance-freight",segmentId,freight.line,.99));
+  const insurance=labelledMoney(lines,/^SIGORTA\b|\bINSURANCE\b/);
+  if(insurance)add(fields,candidate("finance.insurance",insurance.n,"finance-insurance",segmentId,insurance.line,.99));
   const bank=bankInfo(lines);
   if(bank)add(fields,candidate("finance.bankInfo",bank.value,"finance-bank-info",segmentId,bank.line,.97));
   const rate=exchangeRate(lines);

@@ -55,6 +55,9 @@ export function canonicalCommercialTermsCandidatesOf(data: Record<string, unknow
     // original shadow audit remains untouched.
     const target = field === "trade.deliveryTerm" ? "deliveryTerm"
       : field === "finance.bankInfo" ? "bankInfo"
+      : field === "trade.paymentType" ? "paymentType"
+      : field === "finance.freight" ? "freight"
+      : field === "finance.insurance" ? "insurance"
       : field === "header.totalAmount" ? "totalAmount"
       : field === "header.currency" ? "currency"
       : field === "finance.exchangeRate" ? "exchangeRate"
