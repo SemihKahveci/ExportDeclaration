@@ -1,5 +1,6 @@
 import { env } from "../../../config/env.js";
 import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
+import { runFoundation8ShadowRuntime } from "../understanding/invoiceUnderstandingShadowRuntime.js";
 import type { CandidateExtractionEnvelope } from "../domain/candidateExtraction.types.js";
 import type { DocumentSegment } from "../domain/documentSegment.types.js";
 import type { SegmentClassification } from "../domain/segmentClassification.types.js";
@@ -846,9 +847,29 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       roleBoundDeterministic
     );
 
+    const foundation8ShadowAudit = runFoundation8ShadowRuntime({
+      documentId: result.segmentId,
+      candidates: finalRoleGuardedCandidates,
+      evidenceBundle: {
+        documentId: result.segmentId,
+        evidence: params.canonicalDocument.pages
+          .filter((page) => segment.pageNumbers.includes(page.pageNumber))
+          .map((page) => ({
+            pageNumber: page.pageNumber,
+            source: page.hasNativeText ? "NATIVE_TEXT" as const : "OCR" as const,
+            quote: (page.nativeText || page.ocrText || "").slice(0, 240) || undefined
+          })),
+        canonicalText: params.canonicalDocument.pages
+          .filter((page) => segment.pageNumbers.includes(page.pageNumber))
+          .map((page) => page.nativeText || page.ocrText || "")
+          .join("\n")
+      }
+    });
+
     result.data = {
       ...result.data,
       fieldCandidates: finalRoleGuardedCandidates,
+      foundation8ShadowAudit,
       adaptiveRecoveryAudit: adaptiveRecoveryPlan,
       adaptiveRecoveryExecutionAudit: adaptiveRecoveryExecution.audit,
       adaptiveGoodsDescriptionExecutionAudit: adaptiveGoodsDescriptionExecution.audit,

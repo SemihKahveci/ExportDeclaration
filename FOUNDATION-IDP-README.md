@@ -349,3 +349,18 @@ Contract:
 
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation880CapabilityImpactCorpusScalingContract.ts`
+
+### Foundation 8.9 — Production shadow runtime wiring
+- Wires Foundation 8 into the real invoice worker **after** the existing Vision/adaptive-recovery candidate boundary, but keeps it strictly shadow-only: the production `fieldCandidates` returned to Foundation 6 are unchanged.
+- Loads the portable specialist plan (PARTIES, COMMERCIAL, GOODS, LOGISTICS) in the production path and records only bounded plan metadata in the shadow audit; this checkpoint does not add a second model/OCR call yet.
+- Projects source-backed final candidates into the atomic `InvoiceUnderstanding` contract and runs Foundation 8 reconciliation, making GTIP-only skeleton rows and row arithmetic/completeness problems visible as shadow recovery/review decisions.
+- Package summary and commercial goods quantity remain separate semantic sections; shadow projection never repairs values with arithmetic or copies package counts into goods rows.
+- Persists the shadow artifact inside the existing processing result data as `foundation8ShadowAudit` for later real-PDF/Spark comparison. It does not write `normalizedData`, alter Foundation 6 promotion, or import golden expected answers into runtime.
+- This is the migration bridge before specialist model execution/cutover: production truth remains the existing candidate→F6 path until shadow evaluation proves the new path safe.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation890ShadowRuntimeWiringContract.ts`
+
+#### Foundation 8.9.1 — CJS-compatible shadow contract runner
+
+The 8.9 production shadow wiring is unchanged. The verification script now performs its asynchronous source check inside an explicit `async main()` entry point so `tsx` can execute the contract under the project's CommonJS output mode without top-level `await`.
