@@ -145,6 +145,16 @@ function paymentType(lines: EvidenceLine[]) {
     if (!value || /^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)?$/i.test(value)) continue;
     return { value, line };
   }
+
+  // Some invoices print the payment term itself as a standalone semantic
+  // value without an adjacent "Payment Type" label. Accept only a bounded
+  // vocabulary of explicit payment-term phrases; arbitrary prose and monetary
+  // values remain fail-closed. This is document-generic, not supplier-specific.
+  const explicitTerm = /^(?:PESIN\s+ODEME|ADVANCE(?:D)?\s+PAYMENT|PAYMENT\s+IN\s+ADVANCE|CASH\s+IN\s+ADVANCE|OPEN\s+ACCOUNT|LETTER\s+OF\s+CREDIT|DOCUMENTARY\s+CREDIT|CASH\s+AGAINST\s+DOCUMENTS)$/;
+  for (const line of lines) {
+    const normalized = norm(line.text).replace(/\s+/g, " ").trim();
+    if (explicitTerm.test(normalized)) return { value: normalized, line };
+  }
   return undefined;
 }
 

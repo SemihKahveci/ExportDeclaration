@@ -5,7 +5,7 @@ import type { DocumentSegment } from "../domain/documentSegment.types.js";
 import type { SegmentClassification } from "../domain/segmentClassification.types.js";
 import { ClassifiedDocumentType } from "../domain/segmentClassification.types.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
-import { QwenVisionInvoiceProvider } from "./qwenVisionInvoiceProvider.js";
+import { QwenVisionInvoiceProvider, sanitizeVisionBankInfo, sanitizeVisionPaymentType } from "./qwenVisionInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
 import { renderInvoicePagesForVision } from "./renderInvoicePagesForVision.js";
@@ -304,6 +304,25 @@ function canonicalPageText(canonicalDocument: CanonicalDocument, pageNumber: num
  * PAGE_IMAGE value on the current page. Non-image evidence is left untouched:
  * this guard only limits the semantic-primary vision source before F6 sees it.
  */
+export function sanitizeVisionCommercialSemanticCandidates(
+  candidates: FieldCandidateEnvelope
+): FieldCandidateEnvelope {
+  const fields: FieldCandidateEnvelope["fields"] = { ...candidates.fields };
+  const sanitize = (field: "paymentType" | "bankInfo", fn: (value: unknown) => unknown) => {
+    const source = fields[field] ?? [];
+    const retained = source.filter((candidate) => fn(candidate.value) !== undefined);
+    if (retained.length > 0) fields[field] = retained;
+    else delete fields[field];
+  };
+  // Defense in depth at the worker/F6 persistence boundary. Provider-level
+  // sanitization is still useful, but resumed checkpoints and any alternate
+  // Vision provider must not be able to persist a monetary amount as a
+  // payment term or bank identity.
+  sanitize("paymentType", sanitizeVisionPaymentType);
+  sanitize("bankInfo", sanitizeVisionBankInfo);
+  return { version: "1", fields };
+}
+
 export function enforceVisionDocumentRoleAuthority(
   candidates: FieldCandidateEnvelope,
   canonicalDocument: CanonicalDocument
@@ -584,7 +603,10 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalValidatedNativeGoodsRowCandidatesOf(currentAuthorityData),
       canonicalValidatedNativeGoodsOriginCandidatesOf(currentAuthorityData)
     );
-    const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(execution.candidates, params.canonicalDocument);
+    const guardedVisionCandidates = enforceVisionDocumentRoleAuthority(
+      sanitizeVisionCommercialSemanticCandidates(execution.candidates),
+      params.canonicalDocument
+    );
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"
       ? mergeInvoicePrimaryWithFallback(guardedVisionCandidates, deterministicFallback)
       : mergeInvoiceCandidateSources(deterministicFallback, guardedVisionCandidates);

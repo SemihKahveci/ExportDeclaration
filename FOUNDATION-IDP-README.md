@@ -77,3 +77,19 @@ The 1.8.33 persisted acceptance proved that all 56 goods rows have deterministic
 - Requires current deterministic authority for seller/buyer, commercial totals/currency/rate/payment/delivery/transport, package/weights, all 56 x 7 goods-core fields, and all 56 row-local origins.
 - Requires stale Vision payment/bank poison to remain rejected and source-absent customs-country, vehicle and container roles to remain fail-closed.
 - This is an acceptance replay only: no OCR/Qwen call, database mutation, supplier-specific production rule, invoice-specific production constant, or direct normalized write.
+
+### 1.8.42 — Fresh production boundary diagnostic
+
+After the pre-full-run persisted replay gate, a fresh 32B + VL30B production run is inspected at the persisted worker-candidate, Foundation 6 resolution, and final normalized declaration boundaries. The diagnostic is intentionally read-only and determines whether monetary Vision poison (`0,00 EUR`) is still persisted for payment/bank fields or whether corruption occurs later during F6 selection/promotion. It also records the fresh goods/GTIP/origin counts without invoking OCR or model inference.
+
+### 1.8.43 — Fresh production commercial persistence boundary
+
+- Fixes the fresh 32B + VL30B production regression isolated by 1.8.42: Vision monetary values such as `0,00 EUR` are removed from `paymentType` and `bankInfo` at the worker/F6 candidate boundary, including resumed persisted page checkpoints and alternate Vision-provider paths.
+- Provider-level sanitization remains in place as the first defense; the new fusion-boundary sanitizer is defense-in-depth immediately before candidate persistence/resolution.
+- Extends generic native payment-term discovery to explicit standalone payment phrases such as `PEŞİN ÖDEME`, so a source-backed term does not require an adjacent `Ödeme Şekli` label to enter Foundation 6 authority.
+- Monetary values still cannot become payment/bank semantics, and bank information still requires bank/account/IBAN/SWIFT/BIC evidence.
+- No supplier-specific rule, invoice-specific production constant, model-derived authority, or direct normalized write is introduced.
+
+### 1.8.44 — Fresh-boundary replay acceptance
+
+Replays the latest persisted invoice from canonical evidence with the current production semantic boundary and deterministic authority bridges, without OCR/model inference or database mutation. The gate requires the standalone explicit payment term to resolve through current native authority, monetary Vision poison to disappear from payment/bank semantics, all 56 goods rows and row-local origins to remain resolved, and ambiguous declaration-wide customs-country roles to remain fail-closed. This checkpoint intentionally validates the current interpretation against the already persisted fresh run before paying for another full 32B/VL30B production execution.
