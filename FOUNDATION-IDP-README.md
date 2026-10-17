@@ -36,3 +36,22 @@ The 1.8.33 persisted acceptance proved that all 56 goods rows have deterministic
 - Reclassifies stale persisted Vision-only bank poison as non-actionable when the current sanitizer leaves no current source candidate.
 - Retains the 56x7 core goods acceptance and current commercial/header/shipment acceptance.
 - No supplier-specific rule, invoice-specific production constant, or direct normalized write is introduced.
+
+### 1.8.36 — Declaration Goods Ownership Coverage Diagnostic
+- Expands acceptance from the existing 56x7 goods core plus row-origin to the document-owned goods fields in the supplied Beyanname Alanlari specification.
+- Distinguishes **candidate-schema unsupported** from **source-present parser miss**; declaration ownership alone never authorizes inventing a value when an invoice omits that field.
+- Reports canonical semantic-label presence for regime, row weights, package and supplementary measure before any new production authority is added.
+- Persisted canonical evidence only; no OCR/model inference, DB mutation, supplier rule, invoice constant or direct normalized write.
+
+### 1.8.37 — Row-local Declaration Evidence Diagnostic
+- Resolves the ambiguity left by 1.8.36: a semantic label existing somewhere in the invoice is not proof that a declaration goods-row value exists.
+- Uses persisted canonical geometry and existing generic HS anchors to classify regime, gross weight, net weight, package and supplementary-measure labels as row-local, goods-header/nearby, or outside the goods table.
+- Only a row-local semantic anchor can justify a later production row parser; invoice-level totals are never divided/copied across goods rows.
+- `packageUnit` remains dependent on proven row-local package evidence.
+- Diagnostic only: no OCR/Qwen, DB mutation, supplier/invoice-specific rule, derived distribution, authority change or normalized write.
+
+### 1.8.38 — Declaration goods fail-closed acceptance
+- Converts the 1.8.37 geometry diagnostic into a persisted-evidence acceptance gate for this invoice without adding production parsing behavior.
+- Requires regime and supplementary measure to remain source-absent, gross/net weight to remain invoice-summary-only, and package/package-unit to remain non-row-local unless row-local evidence actually exists.
+- Prevents declaration ownership from becoming permission to distribute invoice totals or package counts across goods rows.
+- No OCR/Qwen, DB mutation, supplier rule, invoice-specific production constant, derived distribution, authority change or direct normalized write.
