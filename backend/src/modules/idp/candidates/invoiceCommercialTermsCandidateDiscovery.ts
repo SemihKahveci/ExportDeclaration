@@ -26,6 +26,9 @@ function norm(text: string): string {
     .replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U")
     .replace(/\s+/g, " ").trim();
 }
+function semanticWords(text: string): string {
+  return norm(text).replace(/[^A-Z0-9%]+/g, " ").replace(/\s+/g, " ").trim();
+}
 
 function unionBox(words: CanonicalWord[]): CanonicalBBox {
   return {
@@ -113,6 +116,7 @@ function currencyToken(text:string):string|undefined {
   for(const raw of text.split(/\s+/)){
     let t=raw.replace(/[^A-Za-z₺€$£]/g,"").toUpperCase();
     if(t==="€")t="EUR"; else if(t==="$")t="USD"; else if(t==="£")t="GBP"; else if(t==="₺")t="TRY";
+    if(t==="EURO") t="EUR";
     if(CURRENCIES.has(t)) return t==="TL" ? "TRY" : t;
   }
   return undefined;
@@ -139,11 +143,21 @@ function parseMoney(raw:string):number|undefined{
 function paymentType(lines: EvidenceLine[]) {
   for (const line of lines) {
     const normalized = norm(line.text);
-    const match = normalized.match(/\b(?:ODEME\s*KOSULU|ODEME\s*SEKLI|PAYMENT\s*(?:TERMS?|METHOD|TYPE))\s*[:#-]?\s*(.+)$/);
+    const match = normalized.match(/\b(?:ODEME\s*KOSULU|ODEME\s*SEKLI|PAYMENT\s*(?:TERMS?|METHOD|TYPE)|TERM\s+OF\s+PAYMENT)\s*[:#-]?\s*(.+)$/);
     if (!match?.[1]) continue;
     const value = match[1].trim();
-    if (!value || /^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)?$/i.test(value)) continue;
+    if (!value || !/[A-Z0-9]/i.test(value) || /^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)?$/i.test(value)) continue;
     return { value, line };
+  }
+
+  const paymentLabels = lines.filter(line => /\b(?:ODEME KOSULU|ODEME SEKLI|PAYMENT TERMS?|PAYMENT METHOD|PAYMENT TYPE|TERM OF PAYMENT)\b/.test(semanticWords(line.text)));
+  for (const label of paymentLabels) {
+    const values = lines
+      .filter(line => line !== label && line.pageNumber === label.pageNumber && sameRow(line, label))
+      .filter(line => line.bbox.x0 >= label.bbox.x1 - 0.01 && line.bbox.x0 - label.bbox.x1 <= 0.20)
+      .filter(line => /[A-Z0-9]/i.test(line.text) && !/^[:#-]+$/.test(line.text.trim()))
+      .sort((a,b) => a.bbox.x0 - b.bbox.x0);
+    if (values.length === 1) return { value: values[0]!.text.trim(), line: values[0]! };
   }
 
   // Some invoices print the payment term itself as a standalone semantic
@@ -168,14 +182,14 @@ function labelledMoney(lines: EvidenceLine[], labelRe: RegExp) {
 }
 
 function bankInfo(lines: EvidenceLine[]) {
-  const bankish = lines.filter(line => /\b(?:BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT\s*NO|BENEFICIAL\s*BANK|BENEFICIARY)\b/.test(norm(line.text)));
+  const bankish = lines.filter(line => /\b(?:BANKASI|BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT\s*NO|BENEFICIAL\s*BANK|BENEFICIARY)\b/.test(norm(line.text)));
   if (!bankish.length) return undefined;
   const pageCounts = new Map<number, number>();
   for (const line of bankish) pageCounts.set(line.pageNumber, (pageCounts.get(line.pageNumber) ?? 0) + 1);
   const pageNumber = [...pageCounts.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0];
   if (!pageNumber) return undefined;
   const pageLines = lines.filter(line => line.pageNumber === pageNumber);
-  const selected = pageLines.filter(line => /\b(?:BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT\s*NO|BENEFICIAL\s*BANK|BENEFICIARY)\b/.test(norm(line.text)));
+  const selected = pageLines.filter(line => /\b(?:BANKASI|BANKA|BANK|IBAN|SWIFT|BIC|ACCOUNT\s*NO|BENEFICIAL\s*BANK|BENEFICIARY)\b/.test(norm(line.text)));
   if (!selected.length) return undefined;
   const value = selected.map(line => line.text.trim()).filter(Boolean).join(" | ");
   const box: CanonicalBBox = {
@@ -198,10 +212,17 @@ function exchangeRate(lines: EvidenceLine[]) {
 
 function monetaryPairs(line: EvidenceLine): Array<{ n: number; currency: string; line: EvidenceLine; index: number }> {
   const out: Array<{ n: number; currency: string; line: EvidenceLine; index: number }> = [];
-  const re = /(-?\d[\d.,]*\d|\d)\s*(TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR|₺|€|\$|£)\b/giu;
+  const re = /(-?\d[\d.,'’`]*\d|\d)\s*(TRY|TL|EUR|EURO|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR|₺|€|\$|£)\b/giu;
   for (const match of line.text.matchAll(re)) {
     const n = parseMoney(match[1] ?? "");
     const currency = currencyToken(match[2] ?? "");
+    if (n === undefined || !currency) continue;
+    out.push({ n, currency, line, index: match.index ?? Number.MAX_SAFE_INTEGER });
+  }
+  const reverse = /\b(TRY|TL|EUR|EURO|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)\s+(-?\d[\d.,'’`]*\d|\d)/giu;
+  for (const match of line.text.matchAll(reverse)) {
+    const currency = currencyToken(match[1] ?? "");
+    const n = parseMoney(match[2] ?? "");
     if (n === undefined || !currency) continue;
     out.push({ n, currency, line, index: match.index ?? Number.MAX_SAFE_INTEGER });
   }
@@ -230,6 +251,41 @@ function totalAmount(lines:EvidenceLine[]) {
     const nums=same.flatMap(l=>Array.from(l.text.matchAll(/-?\d[\d.,]*\d|\d/g)).map(m=>({n:parseMoney(m[0]),line:l})))
       .filter((x):x is {n:number;line:EvidenceLine}=>x.n!==undefined);
     if(nums.length) return nums[0];
+  }
+
+  // A terse bare "Total" is still semantically bounded when its own visual row
+  // contains exactly one explicit amount+currency pair (for example
+  // "Total   EURO 21`000.00").  The currency is part of the same evidence, so
+  // no document-wide inference is needed. Multiple monetary pairs stay
+  // ambiguous and fail closed.
+  for (const label of lines.filter(l => /^TOTAL\s*:?$/i.test(norm(l.text)))) {
+    const same = lines
+      .filter(l => l.pageNumber === label.pageNumber && sameRow(l, label) && l.bbox.x0 > label.bbox.x1 - .01)
+      .sort((a,b) => a.bbox.x0 - b.bbox.x0);
+    const paired = same.flatMap(monetaryPairs)
+      .sort((a,b) => a.line.bbox.x0 - b.line.bbox.x0 || a.index - b.index);
+    if (paired.length === 1) return paired[0];
+  }
+
+  // Some commercial/proforma invoices use the deliberately terse label "Total".
+  // Accept it only when the same visual row contains a numeric value AND the
+  // document exposes exactly one explicit amount/unit-price currency header.
+  // This keeps generic subtotal/tax rows fail-closed while allowing a role-bound
+  // table total such as Amount(USD) ... Total ... 4835.
+  const tableCurrencies = lines.flatMap(line => {
+    const m = norm(line.text).match(/\b(?:AMOUNT|UNIT\s*PRICE|RATE)\s*\(?\s*(TRY|TL|EUR|EURO|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)\s*\)?/);
+    return m?.[1] ? [currencyToken(m[1])].filter((x): x is string => Boolean(x)) : [];
+  });
+  const distinctTableCurrencies = [...new Set(tableCurrencies)];
+  if (distinctTableCurrencies.length === 1) {
+    for (const label of lines.filter(l => /^TOTAL\s*:?$/i.test(norm(l.text)))) {
+      const same = lines
+        .filter(l => l.pageNumber === label.pageNumber && sameRow(l, label) && l.bbox.x0 > label.bbox.x1 - .01)
+        .sort((a,b) => a.bbox.x0 - b.bbox.x0);
+      const nums = same.flatMap(l => Array.from(l.text.matchAll(/-?\d[\d.,'’`]*\d|\d/g)).map(m => ({n:parseMoney(m[0]),line:l})))
+        .filter((x): x is {n:number;line:EvidenceLine} => x.n !== undefined);
+      if (nums.length === 1) return { ...nums[0], currency: distinctTableCurrencies[0]! };
+    }
   }
   return undefined;
 }
@@ -263,7 +319,15 @@ export function discoverInvoiceCommercialTermsFieldCandidates(
      * evidence. A document may also contain exchange-rate rows such as
      * "53,3268 TRY"; those are not the invoice currency.
      */
-    const totalCurrency="currency" in total ? total.currency : currencyToken(total.line.text);
+    let totalCurrency="currency" in total ? total.currency : currencyToken(total.line.text);
+    if(!totalCurrency){
+      const tableCurrencies = lines.flatMap(line => {
+        const m = norm(line.text).match(/\b(?:AMOUNT|UNIT\s*PRICE|RATE)\s*\(?\s*(TRY|TL|EUR|EURO|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)\s*\)?/);
+        return m?.[1] ? [currencyToken(m[1])].filter((x): x is string => Boolean(x)) : [];
+      });
+      const distinct = [...new Set(tableCurrencies)];
+      if(distinct.length===1) totalCurrency=distinct[0];
+    }
     if(totalCurrency){
       add(fields,candidate("header.currency",totalCurrency,"header-currency-from-total",segmentId,total.line,.99));
     }

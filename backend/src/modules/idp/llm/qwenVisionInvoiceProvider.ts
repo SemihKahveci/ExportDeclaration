@@ -206,6 +206,12 @@ export function sanitizeVisionPaymentType(value: unknown): unknown {
   if (combined?.[1]?.trim()) return combined[1].trim();
   // A monetary amount is not a payment method/term (for example "0,00 EUR").
   if (/^[-+]?\d[\d.,]*\s*(?:TRY|TL|EUR|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)$/i.test(trimmed)) return undefined;
+  // Amount-in-words lines (for example "Seventeen Thousand Five Hundred USD")
+  // are commercial totals, not payment terms. Reject currency-ended prose unless
+  // it also contains explicit payment semantics.
+  if (/\b(?:TRY|TL|EUR|EURO|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)\s*$/i.test(trimmed) &&
+      !/\b(?:PAYMENT|ODEME|PESIN|MUKABILI|ADVANCE|CASH|ACCOUNT|CREDIT|DAYS?)\b/i.test(trimmed) &&
+      trimmed.split(/\s+/).length >= 3) return undefined;
   return trimmed;
 }
 

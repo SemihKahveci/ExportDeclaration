@@ -10,7 +10,7 @@ import type {
   FieldCandidateEnvelope,
 } from "../domain/fieldCandidate.types.js";
 
-const EXTRACTOR = "invoice-header-party-generic-v5";
+const EXTRACTOR = "invoice-header-party-generic-v6";
 
 type EvidenceLine = {
   text: string;
@@ -30,6 +30,10 @@ function norm(text: string): string {
     .replace(/Ü/g, "U")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function semanticWords(text: string): string {
+  return norm(text).replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function unionBox(words: CanonicalWord[]): CanonicalBBox {
@@ -149,9 +153,40 @@ function cleanDate(raw: string): string | undefined {
   return `${match[3]}-${match[2]!.padStart(2, "0")}-${match[1]!.padStart(2, "0")}`;
 }
 
+function parseEnglishDate(raw: string): string | undefined {
+  const monthNames: Record<string, string> = { JAN: "01", JANUARY: "01", FEB: "02", FEBRUARY: "02", MAR: "03", MARCH: "03", APR: "04", APRIL: "04", MAY: "05", JUN: "06", JUNE: "06", JUL: "07", JULY: "07", AUG: "08", AUGUST: "08", SEP: "09", SEPT: "09", SEPTEMBER: "09", OCT: "10", OCTOBER: "10", NOV: "11", NOVEMBER: "11", DEC: "12", DECEMBER: "12" };
+  const match = norm(raw).match(/\b(\d{1,2})(?:ST|ND|RD|TH)?[\s-]+([A-Z]+)[,\s-]+((?:20)?\d{2})\b|\b([A-Z]+)[\s-]+(\d{1,2})(?:ST|ND|RD|TH)?(?:,\s*|[\s-]+)((?:20)?\d{2})\b/);
+  if (!match) return undefined;
+  const day = match[1] ?? match[5];
+  const month = monthNames[match[2] ?? match[4] ?? ""];
+  let year = match[3] ?? match[6];
+  if (!day || !month || !year) return undefined;
+  if (/^\d{2}$/.test(year)) year = `20${year}`;
+  return `${year}-${month}-${day.padStart(2, "0")}`;
+}
+
+function explicitInvoiceNumber(lines: EvidenceLine[]): { value: string; line: EvidenceLine } | undefined {
+  const labels = lines.filter(line => /\b(?:FATURA\s*NO|INVOICE\s*(?:NO|NUMBER)|PRO-?INV\s*NO|RECHNUNGS?-?NR)\b/.test(norm(line.text)));
+  for (const label of labels) {
+    const inline = label.text.match(/(?:FATURA\s*NO|INVOICE\s*(?:NO|NUMBER)|PRO-?INV\s*NO|RECHNUNGS?-?NR)\s*[:.#-]?\s*([A-Z0-9][A-Z0-9./-]{3,30})/i)?.[1];
+    if (inline && !/^(?:DATE|DATUM)$/i.test(inline)) return { value: inline, line: label };
+    const nearby = lines.filter(line => line.pageNumber === label.pageNumber && line !== label)
+      .filter(line => centerY(line.bbox) >= centerY(label.bbox) - 0.004 && centerY(line.bbox) <= centerY(label.bbox) + 0.045)
+      .filter(line => line.bbox.x0 >= label.bbox.x0 - 0.02)
+      .sort((a,b) => Math.abs(centerY(a.bbox)-centerY(label.bbox)) - Math.abs(centerY(b.bbox)-centerY(label.bbox)) || a.bbox.x0-b.bbox.x0);
+    for (const line of nearby) {
+      const token = line.text.match(/\b[A-Z0-9][A-Z0-9./-]{3,30}\b/i)?.[0];
+      if (token && /\d/.test(token) && !/^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(token)) return { value: token, line };
+    }
+  }
+  return undefined;
+}
+
 function invoiceNumber(
   lines: EvidenceLine[],
 ): { value: string; line: EvidenceLine } | undefined {
+  const explicit = explicitInvoiceNumber(lines);
+  if (explicit) return explicit;
   const label = findLabel(lines, /\bFATURA\s*NO\b/);
   const values: Array<{ value: string; line: EvidenceLine }> = [];
 
@@ -188,38 +223,28 @@ function invoiceNumber(
 function invoiceDate(
   lines: EvidenceLine[],
 ): { value: string; line: EvidenceLine } | undefined {
-  const label = findLabel(lines, /\bFATURA\s*TARIHI\b/);
-  const values: Array<{ value: string; line: EvidenceLine }> = [];
-
-  for (const line of lines) {
-    if (/(IRSALIYE|ETTN)/.test(norm(line.text))) continue;
-
-    const match = line.text.match(/\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}/);
-    let value = match?.[0] ? cleanDate(match[0]) : undefined;
-    if (!value) {
-      const monthNames: Record<string, string> = { JAN: "01", JANUARY: "01", FEB: "02", FEBRUARY: "02", MAR: "03", MARCH: "03", APR: "04", APRIL: "04", MAY: "05", JUN: "06", JUNE: "06", JUL: "07", JULY: "07", AUG: "08", AUGUST: "08", SEP: "09", SEPT: "09", SEPTEMBER: "09", OCT: "10", OCTOBER: "10", NOV: "11", NOVEMBER: "11", DEC: "12", DECEMBER: "12" };
-      const english = norm(line.text).match(/\b(\d{1,2})(?:ST|ND|RD|TH)?[\s-]+([A-Z]+)[,\s-]+(20\d{2})\b|\b([A-Z]+)[\s-]+(\d{1,2})(?:ST|ND|RD|TH)?[,]?[\s-]+(20\d{2})\b/);
-      if (english) {
-        const day = english[1] ?? english[5];
-        const month = monthNames[english[2] ?? english[4] ?? ""];
-        const year = english[3] ?? english[6];
-        if (day && month && year) value = `${year}-${month}-${day.padStart(2, "0")}`;
-      }
-    }
-    if (value) values.push({ value, line });
+  const labels = lines.filter(line => /\b(?:FATURA TARIHI|INVOICE DATE|DATE OF INVOICE|DATUM)\b/.test(semanticWords(line.text)));
+  const dateFromLine = (line: EvidenceLine): string | undefined => {
+    const numeric = line.text.match(/\b\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}\b/)?.[0];
+    return numeric ? cleanDate(numeric) : parseEnglishDate(line.text);
+  };
+  for (const label of labels) {
+    const inline = dateFromLine(label);
+    if (inline) return { value: inline, line: label };
+    const nearby = lines.filter(line => line.pageNumber === label.pageNumber && line !== label)
+      .filter(line => centerY(line.bbox) >= centerY(label.bbox) - 0.004 && centerY(line.bbox) <= centerY(label.bbox) + 0.045)
+      .filter(line => line.bbox.x0 >= label.bbox.x0 - 0.02)
+      .sort((a,b) => Math.abs(centerY(a.bbox)-centerY(label.bbox)) - Math.abs(centerY(b.bbox)-centerY(label.bbox)) || a.bbox.x0-b.bbox.x0);
+    for (const line of nearby) { const value = dateFromLine(line); if (value) return { value, line }; }
   }
-
-  if (!values.length) return undefined;
-  if (!label) return values.length === 1 ? values[0] : undefined;
-
-  const sameRow = values
-    .filter((entry) => sameVisualRow(entry.line, label))
-    .filter((entry) => centerX(entry.line.bbox) >= centerX(label.bbox) - 0.02)
-    .sort((a, b) => a.line.bbox.x0 - b.line.bbox.x0);
-
-  if (sameRow.length) return sameRow[0];
-
-  // Fail closed instead of borrowing a different date such as dispatch date.
+  const combined = lines.find(line => /\b(?:PRO-?INV|INVOICE)\s*NO\.?\s*&\s*DATE\b/.test(norm(line.text)));
+  if (combined) {
+    const nearby = lines.filter(line => line.pageNumber === combined.pageNumber && line !== combined)
+      .filter(line => centerY(line.bbox) >= centerY(combined.bbox) - 0.004 && centerY(line.bbox) <= centerY(combined.bbox) + 0.05)
+      .filter(line => line.bbox.x0 >= combined.bbox.x0 - 0.02)
+      .sort((a,b) => Math.abs(centerY(a.bbox)-centerY(combined.bbox)) - Math.abs(centerY(b.bbox)-centerY(combined.bbox)));
+    for (const line of nearby) { const value = parseEnglishDate(line.text); if (value) return { value, line }; }
+  }
   return undefined;
 }
 
@@ -267,8 +292,8 @@ function companySignal(text: string): number {
 
 
 const SELLER_ROLE_RE = /^(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER|ABSENDER|VERKAEUFER|VERKAUFER)(?:\s*[:\/-]|\b)/;
-const BUYER_ROLE_RE = /^(?:ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO|RECHNUNG\s+AN|KUNDE|EMPFAENGER|EMPFANGER|FIRMA\s*\/\s*ADRESSE)(?:\s*[:\/-]|\b)/;
-const PARTY_BLOCK_STOP_RE = /^(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER|ABSENDER|VERKAEUFER|VERKAUFER|ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO|RECHNUNG\s+AN|KUNDE|EMPFAENGER|EMPFANGER|FIRMA\s*\/\s*ADRESSE|FATURA|INVOICE|RECHNUNG|TARIH|DATE|DATUM|MALZEME|HIZMET|DESCRIPTION|BESCHREIBUNG|POS\b|ITEM\b)/;
+const BUYER_ROLE_RE = /^(?:ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO|RECHNUNG\s+AN|KUNDE|EMPFAENGER|EMPFANGER|FIRMA\s*\/\s*ADRESSE|FIRMA|TO)(?:\s*[:\/-]|\b)/;
+const PARTY_BLOCK_STOP_RE = /^(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER|ABSENDER|VERKAEUFER|VERKAUFER|ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO|RECHNUNG\s+AN|KUNDE|EMPFAENGER|EMPFANGER|FIRMA\s*\/\s*ADRESSE|FIRMA|TO|FATURA|INVOICE|RECHNUNG|TARIH|DATE|DATUM|MALZEME|HIZMET|DESCRIPTION|BESCHREIBUNG|POS\b|ITEM\b)/;
 const PARTY_STRUCTURAL_ADDRESS_RE = /^(?:ADDRESS|ADRESSE|ADRES|ADRESI|ANSCHRIFT)\s*:?$/;
 
 function roleValueOnLine(line: EvidenceLine, role: RegExp): string | undefined {
@@ -283,6 +308,11 @@ function roleValueOnLine(line: EvidenceLine, role: RegExp): string | undefined {
   if (!separators.length) return undefined;
   const value = raw.slice(Math.min(...separators) + 1).trim();
   return looksLikePartyName(value) ? value : undefined;
+}
+
+function isLegalSuffixContinuation(text: string): boolean {
+  const value = semanticWords(text);
+  return /^(?:(?:LIMITED|LTD|SIRKETI|SIRKET|GMBH|LLC|INC|CORP|CORPORATION|SA|AS)(?:\s+|$)){1,4}$/.test(value);
 }
 
 function explicitRoleParty(
@@ -301,15 +331,38 @@ function explicitRoleParty(
   const inline = roleValueOnLine(label, role);
   let name: EvidenceLine | undefined = inline ? { ...label, text: inline } : undefined;
   if (!name) {
+    name = samePage.find(line => line !== label && sameVisualRow(line, label) && line.bbox.x0 > label.bbox.x1 - 0.01 && looksLikePartyName(line.text) && !PARTY_BLOCK_STOP_RE.test(norm(line.text)) && !PARTY_STRUCTURAL_ADDRESS_RE.test(norm(line.text)));
+  }
+  if (!name) {
     name = samePage.find(line => line !== label && centerY(line.bbox) > centerY(label.bbox) + 0.001 && looksLikePartyName(line.text) && !PARTY_BLOCK_STOP_RE.test(norm(line.text)) && !PARTY_STRUCTURAL_ADDRESS_RE.test(norm(line.text)));
   }
   if (!name) return undefined;
+
+  const partyName = name;
+  const continuation = samePage
+    .filter(line => line !== partyName && centerY(line.bbox) > centerY(partyName.bbox) + 0.001)
+    .filter(line => centerY(line.bbox) - centerY(partyName.bbox) <= 0.025)
+    .filter(line => Math.abs(line.bbox.x0 - partyName.bbox.x0) <= 0.035)
+    .find(line => isLegalSuffixContinuation(line.text));
+  if (continuation) {
+    name = {
+      ...name,
+      text: `${name.text.trim()} ${continuation.text.trim()}`.replace(/\s+/g, " "),
+      bbox: {
+        x0: Math.min(name.bbox.x0, continuation.bbox.x0),
+        y0: Math.min(name.bbox.y0, continuation.bbox.y0),
+        x1: Math.max(name.bbox.x1, continuation.bbox.x1),
+        y1: Math.max(name.bbox.y1, continuation.bbox.y1),
+      },
+      source: name.source === "OCR" || continuation.source === "OCR" ? "OCR" : "NATIVE_TEXT",
+    };
+  }
 
   const rows: EvidenceLine[] = [];
   let previousY = centerY(name.bbox);
   for (const line of samePage) {
     const y = centerY(line.bbox);
-    if (y <= centerY(name.bbox) + 0.001 || line === label) continue;
+    if (y <= centerY(name.bbox) + 0.001 || line === label || line === continuation) continue;
     if (y - previousY > 0.035) break;
     const value = norm(line.text);
     if (PARTY_BLOCK_STOP_RE.test(value) || /^(TEL|FAX|WEB|E-?POSTA|EMAIL|VKN|VAT|TAX|VERGI|TICARET|IBAN|SWIFT|BIC)\b/.test(value)) break;
@@ -324,11 +377,13 @@ function explicitRoleParty(
   }
 
   let country: { value: string; line: EvidenceLine } | undefined;
-  for (const line of [...rows].reverse()) {
-    const value = line.text.trim();
-    if (/^[A-Za-zÇĞİÖŞÜçğıöşüÄÖÜäöüß .'-]{3,40}$/.test(value) && !/\d/.test(value) && value.split(/\s+/).length <= 4) {
-      country = { value, line };
-      break;
+  const terminal = rows.at(-1);
+  if (terminal) {
+    const value = terminal.text.trim();
+    const normalized = norm(value);
+    const legalOrBusinessText = /\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|INDUSTRIES|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(normalized);
+    if (/^[A-Za-zÇĞİÖŞÜçğıöşüÄÖÜäöüß .'-]{3,40}$/.test(value) && !/\d/.test(value) && value.split(/\s+/).length <= 4 && !legalOrBusinessText) {
+      country = { value, line: terminal };
     }
   }
   const addressRows = rows.filter(line => line !== country?.line);
@@ -422,6 +477,7 @@ function addressLines(block: EvidenceLine[], party: EvidenceLine): EvidenceLine[
     if (Math.abs(line.bbox.x0-party.bbox.x0) > 0.16) return false;
     const v=norm(line.text);
     if (/^(TEL|FAX|WEB|E-?POSTA|VKN|VERGI|TICARET|E-?FATURA|ETTN|FATURA|IRSALIYE|OZELLESTIRME|SENARYO)/.test(v)) return false;
+    if (/^(?:SIRA|SL\s*NO|ITEM|DESCRIPTION|ACIKLAMA|MALZEME|MIKTAR|QUANTITY|BIRIM|UNIT|GTIP|HSN|HS\s*CODE|RATE|AMOUNT|TUTAR)\b/.test(v)) return false;
     return true;
   });
 }
@@ -456,14 +512,15 @@ function buyerCountry(block: EvidenceLine[], buyer: EvidenceLine): {value:string
     prevY=y;
   }
 
-  // Country is a short alphabetic terminal row inside that compact address run.
-  for(const line of [...rows].reverse()){
-    const v=line.text.trim();
-    if(!/^[A-Za-zÇĞİÖŞÜçğıöşü .'-]{3,40}$/.test(v)) continue;
-    if(/\d/.test(v)||v.split(/\s+/).length>4) continue;
-    return {value:v,line};
-  }
-  return undefined;
+  // Country authority is terminal: do not scan backwards past administrative,
+  // legal or malformed address rows looking for a country-looking phrase.
+  const line=rows.at(-1);
+  if(!line) return undefined;
+  const v=line.text.trim(), n=norm(v);
+  if(!/^[A-Za-zÇĞİÖŞÜçğıöşü .'-]{3,40}$/.test(v)) return undefined;
+  if(/\d/.test(v)||v.split(/\s+/).length>4) return undefined;
+  if(/\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(n)) return undefined;
+  return {value:v,line};
 }
 export function discoverInvoiceHeaderPartyFieldCandidates(
   canonical: CanonicalDocument,

@@ -189,6 +189,104 @@ function addLabeledNumber(fields: Record<string, FieldCandidate[]>, canonical: C
   }
 }
 
+function addSameLineLabeledNumber(
+  fields: Record<string, FieldCandidate[]>,
+  canonical: CanonicalDocument,
+  segmentId: string,
+  field: string,
+  label: RegExp,
+  unitRequired = false,
+) {
+  for (const page of canonical.pages) {
+    /*
+     * Weight labels are intentionally evaluated per canonical visual/text line.
+     * pageText()/norm() flatten line breaks, which can accidentally bind a label
+     * to the first number on a following line and bypass the ambiguity-aware
+     * geometry resolver below.
+     */
+    const lineTexts = [
+      ...(page.lines ?? []).map(line => line.text),
+      ...(page.nativeText ?? "").split(/\r?\n/),
+      ...(page.ocrText ?? "").split(/\r?\n/),
+    ].map(text => text.trim()).filter(Boolean);
+
+    const seen = new Set<string>();
+    for (const rawLine of lineTexts) {
+      const normalizedLine = norm(rawLine);
+      if (!normalizedLine || seen.has(normalizedLine)) continue;
+      seen.add(normalizedLine);
+
+      const match = label.exec(normalizedLine);
+      label.lastIndex = 0;
+      if (!match) continue;
+      const value = parseNumber(match[1] ?? "");
+      if (value === undefined) continue;
+
+      const evidenceText = match[0];
+      const evidence = wordsForMatch(page, evidenceText);
+      if (evidence.length) {
+        fields[field] = [makeCandidate(field, value, `${segmentId}:shipment:${field}`, segmentId, page, evidence, unitRequired ? 0.99 : 0.98)];
+        return;
+      }
+
+      fields[field] = [makeTextCandidate(field, value, `${segmentId}:shipment:${field}`, segmentId, page, rawLine, unitRequired ? 0.99 : 0.98)];
+      return;
+    }
+  }
+}
+
+
+function discoverColumnBoundWeight(
+  fields: Record<string, FieldCandidate[]>,
+  canonical: CanonicalDocument,
+  segmentId: string,
+  field: string,
+  kind: "GROSS" | "NET",
+) {
+  const labelPattern = kind === "GROSS"
+    ? /^(?:GR(?:OSS)?\.?\s*WT\.?\s*(?:KGS?|KG)?|GROSS\s+(?:WEIGHT|WT\.?|KG))$/
+    : /^(?:NET\s*WT\.?\s*(?:KGS?|KG)?|NET\s+(?:WEIGHT|WT\.?|KG))$/;
+
+  for (const page of canonical.pages) {
+    const lines = page.lines ?? [];
+    const labels = lines.filter(line => labelPattern.test(norm(line.text).replace(/\s+/g, " ")));
+    for (const label of labels) {
+      const lx = (label.bbox.x0 + label.bbox.x1) / 2;
+      const ly = (label.bbox.y0 + label.bbox.y1) / 2;
+      const candidates = lines
+        .filter(line => line !== label)
+        .filter(line => {
+          const cy = (line.bbox.y0 + line.bbox.y1) / 2;
+          const sameRow = Math.abs(cy - ly) <= Math.max(0.008, (label.bbox.y1 - label.bbox.y0) * 0.9);
+          const below = cy > ly + 0.002 && cy <= ly + 0.065;
+          return sameRow || below;
+        })
+        .filter(line => {
+          const cx = (line.bbox.x0 + line.bbox.x1) / 2;
+          const sameRow = Math.abs(((line.bbox.y0 + line.bbox.y1) / 2) - ly) <= Math.max(0.008, (label.bbox.y1 - label.bbox.y0) * 0.9);
+          if (sameRow) return line.bbox.x0 >= label.bbox.x1 - 0.01 && line.bbox.x0 - label.bbox.x1 <= 0.12;
+          return Math.abs(cx - lx) <= Math.max(0.08, (label.bbox.x1 - label.bbox.x0) * 0.9);
+        })
+        .filter(line => /^[:：]?\s*[\d.,]+(?:\s*(?:KG|KGS))?$/i.test(line.text.trim()))
+        .sort((a,b) => Math.abs(((a.bbox.x0+a.bbox.x1)/2)-lx)-Math.abs(((b.bbox.x0+b.bbox.x1)/2)-lx) || a.bbox.y0-b.bbox.y0);
+      if (candidates.length !== 1) continue;
+      const value = parseNumber(candidates[0]!.text);
+      if (value === undefined || value <= 0 || value > 1_000_000) continue;
+      fields[field] = [{
+        candidateId: `${segmentId}:shipment:${field}`,
+        field, value, confidence: 0.99, extractor: EXTRACTOR,
+        evidence: [{
+          segmentId, pageNumber: page.pageNumber,
+          bbox: { x0: Math.min(label.bbox.x0,candidates[0]!.bbox.x0), y0: Math.min(label.bbox.y0,candidates[0]!.bbox.y0), x1: Math.max(label.bbox.x1,candidates[0]!.bbox.x1), y1: Math.max(label.bbox.y1,candidates[0]!.bbox.y1) },
+          text: `${label.text} | ${candidates[0]!.text}`,
+          contentSource: label.source === "OCR" || candidates[0]!.source === "OCR" ? "OCR" : "NATIVE_TEXT"
+        }]
+      }];
+      return;
+    }
+  }
+}
+
 function discoverLabeledWeight(
   fields: Record<string, FieldCandidate[]>,
   canonical: CanonicalDocument,
@@ -328,6 +426,32 @@ function discoverLabeledWeight(
 
         return;
       }
+    }
+  }
+}
+
+function discoverCompactWeightLabel(
+  fields: Record<string, FieldCandidate[]>,
+  canonical: CanonicalDocument,
+  segmentId: string,
+  field: string,
+  kind: "GROSS" | "NET",
+) {
+  const labelRe = kind === "GROSS" ? /^(?:GR|GROSS)\.?\s*WT\.?\s*KGS?$/ : /^NET\s*WT\.?\s*KGS?$/;
+  for (const page of canonical.pages) {
+    const words = page.words.slice().sort((a,b) => centerY(a)-centerY(b) || a.bbox.x0-b.bbox.x0);
+    const label = words.find(word => labelRe.test(norm(word.text).replace(/\s+/g," ")));
+    if (!label) continue;
+    const candidates = words.filter(word => word !== label)
+      .filter(word => Math.abs(centerY(word)-centerY(label)) <= 0.02)
+      .filter(word => word.bbox.x0 >= label.bbox.x1 - 0.01)
+      .sort((a,b) => a.bbox.x0-b.bbox.x0);
+    for (const word of candidates) {
+      if (!/\d/.test(word.text)) continue;
+      const value = parseNumber(word.text);
+      if (value === undefined || value <= 0 || value > 1_000_000) continue;
+      fields[field] = [makeCandidate(field, value, `${segmentId}:shipment:${field}`, segmentId, page, [label, word], 0.99)];
+      return;
     }
   }
 }
@@ -492,21 +616,21 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*([\d.,]+)/,
   );
   
-  addLabeledNumber(
+  addSameLineLabeledNumber(
     fields,
     canonical,
     segmentId,
     GROSS_FIELD,
-    /(?:TOPLAM\s+)?(?:BRUT\s+(?:AGIRLIK|KG)|GROSS\s+(?:WEIGHT|WT\.?|KG))\s*[:：]?\s*([\d.,]+)\s*(?:KG|KGS)?/,
+    /(?:TOPLAM\s+)?(?:BRUT\s+(?:AGIRLIK|KG)|(?:GROSS|GR\.?)\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?|GROSS\s+KG)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
     true,
   );
   
-  addLabeledNumber(
+  addSameLineLabeledNumber(
     fields,
     canonical,
     segmentId,
     NET_FIELD,
-    /(?:TOPLAM\s+)?(?:NET\s+(?:AGIRLIK|KG)|NET\s+(?:WEIGHT|WT\.?))\s*[:：]?\s*([\d.,]+)\s*(?:KG|KGS)?/,
+    /(?:TOPLAM\s+)?(?:NET\s+(?:AGIRLIK|KG)|NET\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
     true,
   );
   
@@ -514,6 +638,9 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
    * Native-text exact match bulunamazsa OCR-tolerant canonical
    * geometry fallback kullan.
    */
+  if (!fields[GROSS_FIELD]?.length) {
+    discoverColumnBoundWeight(fields, canonical, segmentId, GROSS_FIELD, "GROSS");
+  }
   if (!fields[GROSS_FIELD]?.length) {
     discoverLabeledWeight(
       fields,
@@ -525,6 +652,9 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
   }
   
   if (!fields[NET_FIELD]?.length) {
+    discoverColumnBoundWeight(fields, canonical, segmentId, NET_FIELD, "NET");
+  }
+  if (!fields[NET_FIELD]?.length) {
     discoverLabeledWeight(
       fields,
       canonical,
@@ -533,6 +663,9 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
       "NET",
     );
   }
+
+  if (!fields[GROSS_FIELD]?.length) discoverCompactWeightLabel(fields, canonical, segmentId, GROSS_FIELD, "GROSS");
+  if (!fields[NET_FIELD]?.length) discoverCompactWeightLabel(fields, canonical, segmentId, NET_FIELD, "NET");
   
   // Explicit summary labels such as "TOPLAM KAP: 66 PALET" carry both
   // package count and package type. Prefer this role-bound evidence before the

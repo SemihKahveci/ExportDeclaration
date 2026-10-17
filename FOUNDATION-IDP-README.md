@@ -165,3 +165,86 @@ The goods semantic boundary now rejects a PAGE_IMAGE 12-digit HS/GTIP candidate 
 - Skip structural address labels while continuing to collect the following address rows.
 - Preserve explicit seller/buyer role authority, legacy `SAYIN` behavior, and fail-closed handling for unlabeled party blocks.
 - No supplier-specific rules, invoice-specific constants, fixed coordinates, model inference requirement, or direct normalized writes.
+
+### 1.8.50 — Persisted semantic authority coverage
+- Replays the current deterministic header/party, shipment, commercial, goods and origin readers against persisted canonical evidence for the six problem invoices plus the VED control invoice.
+- Re-applies the current production candidate persistence guards in memory before Foundation 6 authority selection/resolution; no OCR/Qwen call and no database mutation occurs.
+- Reports scalar authority/resolution plus promotion eligibility and goods row coverage. Missing or old persisted evidence is classified as `REPLAY_SOURCE_MISSING` / `REPLAY_SOURCE_STALE`, not misreported as a semantic parser failure.
+- This checkpoint decides which documents genuinely require a fresh production run before the next seven-document acceptance pass.
+
+### 1.8.50.1 — Persisted semantic discrepancy diagnostic
+- 1.8.50 proved all seven target documents have replayable persisted canonical evidence, so a fresh model/OCR run is not yet required.
+- Added a read-only diagnostic for the five documents whose replay exposed unresolved or semantically suspicious fields.
+- The diagnostic emits current deterministic candidates beside canonical source anchor lines and frozen corpus expectations, allowing the next parser fix to be source-grounded rather than supplier/invoice-specific.
+- No OCR/Qwen call, database mutation, normalized-data write, or production rule change is performed by this checkpoint.
+
+### 1.8.50.2 — Persisted semantic parser fixes
+- Source-grounded fixes from the 1.8.50.1 discrepancy diagnostic: explicit international invoice-number/date roles, two-digit English month dates, compact `NET WT.KGS` / `GR.WT.KGS` weights, and same-row role/value party blocks.
+- Stops legacy party-address collection at goods-table semantic headers so table labels such as `Sıra` / `Miktar` cannot leak into buyer addresses.
+- Extends commercial semantics for `TERM OF PAYMENT`, currency-before-amount totals, unique amount-column currency binding, and bank-name morphology while keeping unrelated reference dates fail-closed.
+- Vision payment sanitization rejects amount-in-words currency lines without payment semantics, preventing written totals from becoming payment terms.
+- No supplier-specific rules, invoice-specific constants, fixed coordinates, OCR/Qwen requirement, database mutation, or direct normalized-data write.
+
+### 1.8.50.2.1 — Role-bound bare Total boundary
+- Allows a bare `Total` label only when exactly one explicit `Amount/Unit Price/Rate (CURRENCY)` table header establishes currency authority and the same visual row contains exactly one numeric total.
+- Keeps generic bare totals fail-closed when currency context is ambiguous or absent; no supplier/invoice constants, fixed coordinates, model inference, or direct normalized writes.
+
+### 1.8.50.2.2 — Same-row monetary Total boundary
+- Allows a bare `Total` label when the same visual row contains exactly one explicit amount+currency pair such as `EURO 21\`000.00`; the currency and amount remain bound to the same source evidence.
+- Multiple same-row monetary pairs remain ambiguous and fail closed, preventing local-currency equivalents or mixed totals from being selected arbitrarily.
+- Preserves the 1.8.50.2.1 unique table-currency path for layouts such as `Amount(USD) ... Total ... 4835`.
+- No supplier-specific rules, invoice-specific constants, fixed coordinates, model inference, database mutation, or direct normalized-data writes.
+
+### 1.8.50.3 — Current-parser replay precedence
+
+Persisted semantic coverage replay now gives the freshly rebuilt deterministic envelope precedence when an older persisted deterministic candidate has the same stable candidateId. This fixes a replay-only stale-value shadowing bug: current parser results were visible in deterministicEvidence but could be discarded during candidate merge, causing the scalar matrix to report an older value. Unrelated persisted/Vision evidence remains in the replay; no OCR/model call, database mutation, supplier rule, invoice constant, or normalized-data write is introduced.
+
+### 1.8.50.4 — Role-bound scalar safety
+- Adds a geometry-bound fallback for explicit `NET WT.KGS` / `GR.WT.KGS` headers whose numeric values are rendered on the following visual row; ambiguous multiple numeric values remain fail-closed.
+- Recognizes invoice-date labels separated by encoded/non-breaking-space artifacts while still requiring an explicit invoice-date semantic role.
+- Tightens explicit party-block terminal-country inference so company/legal/registry text such as `LIMITED SIRKETI` or `Handelsregister` cannot be promoted as a country; genuine short terminal country rows remain eligible.
+- No supplier-specific rules, invoice-specific constants, fixed coordinates, OCR/Qwen requirement, database mutation, or direct normalized-data writes were added.
+
+
+#### 1.8.50.4.1 — Role-bound scalar contract fixture correction
+- Corrected the synthetic ambiguous-weight contract fixture so both numeric candidates genuinely overlap the NET WT column.
+- No production runtime/parser behavior changed; this only fixes the regression test geometry.
+
+### 1.8.50.4.2 — Same-line weight boundary
+- Gross/net text-label extraction no longer lets `\s*` cross a line break from a compact weight label into the first numeric line below it.
+- Separated compact labels are therefore delegated to the geometry authority added in 1.8.50.4; ambiguous values in the same label column remain fail-closed instead of being preempted by page-text regex matching.
+- No supplier/invoice-specific rule, fixed coordinate, OCR/model inference, database mutation, or direct normalized write was added.
+
+### 1.8.50.4.3 — Line-preserving weight authority
+
+- Gross/net direct label parsing now preserves canonical line boundaries instead of using flattened page text.
+- A weight label cannot silently consume a numeric value from the following line; separated label/value layouts are delegated to the ambiguity-aware geometry resolver.
+- Ambiguous same-column values remain fail-closed while unambiguous PML-style separated NET/GR weight layouts remain recoverable.
+- No supplier/invoice-specific constants, fixed coordinates, OCR/model inference, database mutation, or direct normalized write were introduced.
+
+### 1.8.50.5 — Semantic neighborhood diagnostic
+- Adds a read-only persisted-canonical probe for the remaining PML, Dermeternal, and Ningbo scalar discrepancies after the 1.8.50.4.x safety boundary passed.
+- Emits current deterministic candidates together with canonical visual-line neighborhoods around invoice/date, weight, party/address/country, payment, bank, and total semantics so the next production fix is based on the actual persisted geometry/text rather than another inferred fixture.
+- No OCR/Qwen call, database mutation, production parser change, supplier-specific production rule, invoice-specific production constant, or normalized-data write is performed.
+
+
+### 1.8.50.5.1 — Semantic neighborhood diagnostic DB config fix
+
+- Diagnostic-only fix: use the project-standard `env.mongoUri` key instead of the nonexistent `env.MONGO_URI`.
+- No production parser, OCR/model, database mutation, or normalized declaration behavior changes.
+
+### 1.8.50.5.2 — Source-grounded semantic boundary
+- Binds compact NET/GR weight labels to a unique numeric value on the same visual row as well as the existing below-column layout; ambiguity still fails closed.
+- Normalizes punctuation/mojibake only for semantic label recognition, allowing encoded `INVOICE DATE` and `TERM OF PAYMENT` roles to bind their source values without weakening value evidence.
+- Treats a nearby legal-suffix-only row as continuation of the party name rather than an address/country, and makes inferred country authority terminal-only so administrative/address text cannot be recovered by scanning backwards.
+- Adds a source-shaped contract for same-row weights, encoded English invoice date, administrative party tails, legal suffix continuation, separated payment value, and genuine terminal country preservation.
+- No supplier-specific rules, invoice-specific constants, fixed coordinates, OCR/Qwen inference, database mutation, or direct normalized-data write.
+
+#### 1.8.50.5.2.1 — TypeScript narrowing correction
+- Preserves the 1.8.50.5.2 source-grounded party-name continuation behavior while snapshotting the already-validated party name before callback-based filtering.
+- Removes the TS18048 false narrowing loss inside Array.filter callbacks; no runtime extraction semantics or authority rules changed.
+
+### 1.8.50.5.3 — Colon-prefixed weight value boundary
+- Canonical weight value fragments such as `: 20.190` / `: 24.000` are accepted by the existing role-and-geometry-bound weight resolver.
+- The colon remains only punctuation attached to the numeric value; the value still requires a recognized NET/GROSS label and the existing unique spatial binding.
+- Ambiguous spatial matches continue to fail closed; no supplier/invoice-specific constants or fixed coordinates were added.
