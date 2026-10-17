@@ -55,3 +55,25 @@ The 1.8.33 persisted acceptance proved that all 56 goods rows have deterministic
 - Requires regime and supplementary measure to remain source-absent, gross/net weight to remain invoice-summary-only, and package/package-unit to remain non-row-local unless row-local evidence actually exists.
 - Prevents declaration ownership from becoming permission to distribute invoice totals or package counts across goods rows.
 - No OCR/Qwen, DB mutation, supplier rule, invoice-specific production constant, derived distribution, authority change or direct normalized write.
+
+### 1.8.39 — Document-owned scalar / transport / party coverage
+
+- Audits the supplied Beyanname Alanlari `Dokümandan Parse` ownership outside goods rows against persisted canonical evidence and current deterministic candidate discovery.
+- Separates `CURRENT_CANDIDATE_COVERED`, role-local `SOURCE_HINT_PRESENT_NEEDS_ROLE_LOCAL_DIAGNOSTIC`, schema gaps, and legitimate source absence.
+- A semantic word hit is diagnostic only and never grants Foundation 6 authority. Country/address/row-origin tokens remain forbidden as implicit customs-role evidence.
+- Runs on persisted canonical evidence only; no OCR/model inference, database mutation, supplier-specific rules, invoice-specific production constants, or direct normalized writes.
+
+### 1.8.40 — Current role-bound authority coverage
+
+- Corrects the 1.8.39 diagnostic boundary: declaration field names are mapped to the current deterministic parser vocabulary before coverage is judged (`trade.deliveryTerm`, `header.totalAmount`, `finance.exchangeRate`, `trade.paymentType`, `packageInfo.*`).
+- Acceptance-gates the known source-backed scalar values on the persisted VED invoice without OCR/model reruns or database mutation.
+- Broad text hints (especially BANK-like text) are not treated as authority; a semantic parser candidate is required.
+- Customs-country, vehicle and container fields remain fail-closed when exact role evidence is absent.
+- Schema-only gaps remain distinct from extraction bugs when the invoice does not prove a role-specific source.
+
+### 1.8.41 — Pre-full-run declaration authority acceptance
+
+- Consolidates the persisted-evidence gates before the next expensive full 32B + VL30B production run.
+- Requires current deterministic authority for seller/buyer, commercial totals/currency/rate/payment/delivery/transport, package/weights, all 56 x 7 goods-core fields, and all 56 row-local origins.
+- Requires stale Vision payment/bank poison to remain rejected and source-absent customs-country, vehicle and container roles to remain fail-closed.
+- This is an acceptance replay only: no OCR/Qwen call, database mutation, supplier-specific production rule, invoice-specific production constant, or direct normalized write.
