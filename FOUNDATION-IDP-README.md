@@ -364,3 +364,9 @@ Contract:
 #### Foundation 8.9.1 — CJS-compatible shadow contract runner
 
 The 8.9 production shadow wiring is unchanged. The verification script now performs its asynchronous source check inside an explicit `async main()` entry point so `tsx` can execute the contract under the project's CommonJS output mode without top-level `await`.
+
+### Foundation 8.10 — Opt-in Specialist Model Execution (Shadow)
+
+Foundation 8 specialist requests can now be executed against the configured invoice LLM provider in production worker shadow mode. `FOUNDATION8_SHADOW_MODEL_ENABLED` is disabled by default. When explicitly enabled, PARTIES, COMMERCIAL, GOODS and LOGISTICS each receive their portable `SKILL.md` context plus the same canonical source evidence. Returned fields are filtered by specialist ownership before they enter the shadow audit. This path does not mutate production `fieldCandidates`, Foundation 6 promotion, or `normalizedData`.
+
+This checkpoint intentionally separates **model execution** from **semantic cutover**. It makes Spark/Qwen canaries possible without allowing experimental specialist output to become declaration truth. A later checkpoint projects accepted specialist output into atomic `InvoiceUnderstanding` and compares it against the legacy shadow projection before any production authority change.

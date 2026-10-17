@@ -83,6 +83,8 @@ export const env = {
   llmVisionConcurrency: Math.max(1, Math.floor(num(process.env.LLM_VISION_CONCURRENCY, 1))),
   llmVisionMaxPages: Math.max(1, Math.floor(num(process.env.LLM_VISION_MAX_PAGES, 12))),
   llmVisionMaxImageBytes: Math.max(256 * 1024, Math.floor(num(process.env.LLM_VISION_MAX_IMAGE_BYTES, 8 * 1024 * 1024))),
+  // Foundation 8 specialist execution is shadow-only and opt-in. Keep disabled by default.
+  foundation8ShadowModelEnabled: bool(process.env.FOUNDATION8_SHADOW_MODEL_ENABLED, false),
   
   superAdminResetPassword: bool(process.env.SUPERADMIN_RESET_PASSWORD, false),
   
