@@ -264,6 +264,78 @@ function companySignal(text: string): number {
   return score;
 }
 
+
+
+const SELLER_ROLE_RE = /^(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER|ABSENDER|VERKAEUFER|VERKAUFER)(?:\s*[:\/-]|\b)/;
+const BUYER_ROLE_RE = /^(?:ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO|RECHNUNG\s+AN|KUNDE|EMPFAENGER|EMPFANGER|FIRMA\s*\/\s*ADRESSE)(?:\s*[:\/-]|\b)/;
+const PARTY_BLOCK_STOP_RE = /^(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER|ABSENDER|VERKAEUFER|VERKAUFER|ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO|RECHNUNG\s+AN|KUNDE|EMPFAENGER|EMPFANGER|FIRMA\s*\/\s*ADRESSE|FATURA|INVOICE|RECHNUNG|TARIH|DATE|DATUM|MALZEME|HIZMET|DESCRIPTION|BESCHREIBUNG|POS\b|ITEM\b)/;
+const PARTY_STRUCTURAL_ADDRESS_RE = /^(?:ADDRESS|ADRESSE|ADRES|ADRESI|ANSCHRIFT)\s*:?$/;
+
+function roleValueOnLine(line: EvidenceLine, role: RegExp): string | undefined {
+  const normalized = norm(line.text);
+  const match = normalized.match(role);
+  if (!match) return undefined;
+  const raw = line.text.trim();
+  // A slash can be part of the semantic role itself (for example "Firma / Adresse").
+  // Treat only explicit value separators as inline-value boundaries; otherwise the
+  // structural word after the slash could be promoted as the company name.
+  const separators = [raw.indexOf(":"), raw.indexOf("-")].filter(x => x >= 0);
+  if (!separators.length) return undefined;
+  const value = raw.slice(Math.min(...separators) + 1).trim();
+  return looksLikePartyName(value) ? value : undefined;
+}
+
+function explicitRoleParty(
+  lines: EvidenceLine[],
+  role: RegExp,
+): { name: EvidenceLine; address?: { value: string; lines: EvidenceLine[] }; country?: { value: string; line: EvidenceLine } } | undefined {
+  const label = lines.find(line => role.test(norm(line.text)));
+  if (!label) return undefined;
+  const samePage = lines
+    .filter(line => line.pageNumber === label.pageNumber)
+    .filter(line => centerY(line.bbox) >= centerY(label.bbox) - 0.002)
+    .filter(line => centerY(line.bbox) <= centerY(label.bbox) + 0.16)
+    .filter(line => Math.abs(line.bbox.x0 - label.bbox.x0) <= 0.18)
+    .sort((a,b) => centerY(a.bbox)-centerY(b.bbox) || a.bbox.x0-b.bbox.x0);
+
+  const inline = roleValueOnLine(label, role);
+  let name: EvidenceLine | undefined = inline ? { ...label, text: inline } : undefined;
+  if (!name) {
+    name = samePage.find(line => line !== label && centerY(line.bbox) > centerY(label.bbox) + 0.001 && looksLikePartyName(line.text) && !PARTY_BLOCK_STOP_RE.test(norm(line.text)) && !PARTY_STRUCTURAL_ADDRESS_RE.test(norm(line.text)));
+  }
+  if (!name) return undefined;
+
+  const rows: EvidenceLine[] = [];
+  let previousY = centerY(name.bbox);
+  for (const line of samePage) {
+    const y = centerY(line.bbox);
+    if (y <= centerY(name.bbox) + 0.001 || line === label) continue;
+    if (y - previousY > 0.035) break;
+    const value = norm(line.text);
+    if (PARTY_BLOCK_STOP_RE.test(value) || /^(TEL|FAX|WEB|E-?POSTA|EMAIL|VKN|VAT|TAX|VERGI|TICARET|IBAN|SWIFT|BIC)\b/.test(value)) break;
+    // ADDRESS / ADRESSE / ADRES / ADRESI / ANSCHRIFT is a structural boundary,
+    // not party content. Skip the label but continue collecting the address rows.
+    if (PARTY_STRUCTURAL_ADDRESS_RE.test(value)) {
+      previousY = y;
+      continue;
+    }
+    rows.push(line);
+    previousY = y;
+  }
+
+  let country: { value: string; line: EvidenceLine } | undefined;
+  for (const line of [...rows].reverse()) {
+    const value = line.text.trim();
+    if (/^[A-Za-zÇĞİÖŞÜçğıöşüÄÖÜäöüß .'-]{3,40}$/.test(value) && !/\d/.test(value) && value.split(/\s+/).length <= 4) {
+      country = { value, line };
+      break;
+    }
+  }
+  const addressRows = rows.filter(line => line !== country?.line);
+  const addressValue = addressRows.map(line => line.text.trim()).join(", ").replace(/\s+/g," ").trim();
+  return { name, address: addressValue ? { value: addressValue, lines: addressRows } : undefined, country };
+}
+
 function findSayin(lines: EvidenceLine[]): EvidenceLine | undefined {
   return lines.find((line) => /^SAYIN\b/.test(norm(line.text)));
 }
@@ -430,7 +502,9 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
     );
   }
 
-  const seller = sellerParty(lines);
+  const explicitSeller = explicitRoleParty(lines, SELLER_ROLE_RE);
+  const explicitBuyer = explicitRoleParty(lines, BUYER_ROLE_RE);
+  const seller = explicitSeller?.name ?? sellerParty(lines);
   if (seller) {
     add(
       fields,
@@ -445,7 +519,7 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
     );
   }
 
-  const buyer = buyerParty(lines);
+  const buyer = explicitBuyer?.name ?? buyerParty(lines);
   if (buyer) {
     add(fields, candidate("parties.buyer.name", buyer.text.trim(), "party-buyer-name", segmentId, buyer, 0.96));
   }
@@ -454,7 +528,17 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
   const taxNo = sellerTaxNo(lines, seller, sayin);
   if (taxNo) add(fields, candidate("parties.seller.taxNo", taxNo.value, "party-seller-tax-no", segmentId, taxNo.line, 0.99));
 
-  if (seller && sayin) {
+  if (explicitSeller?.address) {
+    const first = explicitSeller.address.lines[0]!;
+    const ev = { ...first, text: explicitSeller.address.lines.map(x=>x.text).join(" | "), bbox: {
+      x0: Math.min(...explicitSeller.address.lines.map(x=>x.bbox.x0)), y0: Math.min(...explicitSeller.address.lines.map(x=>x.bbox.y0)),
+      x1: Math.max(...explicitSeller.address.lines.map(x=>x.bbox.x1)), y1: Math.max(...explicitSeller.address.lines.map(x=>x.bbox.y1))
+    }};
+    add(fields, candidate("parties.seller.address", explicitSeller.address.value, "party-seller-address-explicit-role", segmentId, ev, 0.97));
+  }
+  if (explicitSeller?.country) add(fields, candidate("parties.seller.country", explicitSeller.country.value, "party-seller-country-explicit-role", segmentId, explicitSeller.country.line, 0.97));
+
+  if (seller && sayin && !explicitSeller) {
     const block=between(lines, centerY(seller.bbox), centerY(sayin.bbox), seller.pageNumber);
     const address=partyAddress(block,seller);
     if (address) {
@@ -466,7 +550,17 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
     }
   }
 
-  if (buyer && sayin) {
+  if (explicitBuyer?.address) {
+    const first = explicitBuyer.address.lines[0]!;
+    const ev = { ...first, text: explicitBuyer.address.lines.map(x=>x.text).join(" | "), bbox: {
+      x0: Math.min(...explicitBuyer.address.lines.map(x=>x.bbox.x0)), y0: Math.min(...explicitBuyer.address.lines.map(x=>x.bbox.y0)),
+      x1: Math.max(...explicitBuyer.address.lines.map(x=>x.bbox.x1)), y1: Math.max(...explicitBuyer.address.lines.map(x=>x.bbox.y1))
+    }};
+    add(fields, candidate("parties.buyer.address", explicitBuyer.address.value, "party-buyer-address-explicit-role", segmentId, ev, 0.97));
+  }
+  if (explicitBuyer?.country) add(fields, candidate("parties.buyer.country", explicitBuyer.country.value, "party-buyer-country-explicit-role", segmentId, explicitBuyer.country.line, 0.97));
+
+  if (buyer && sayin && !explicitBuyer) {
     const nextBoundary = lines
       .filter(x=>x.pageNumber===buyer.pageNumber)
       .filter(x=>centerY(x.bbox)>centerY(buyer.bbox) && /MALZEME|HIZMET/.test(norm(x.text)))

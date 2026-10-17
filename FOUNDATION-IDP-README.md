@@ -151,3 +151,17 @@ The goods semantic boundary now rejects a PAGE_IMAGE 12-digit HS/GTIP candidate 
 - A conflicting PAGE_IMAGE interpretation cannot outrank a role-bound native bank block.
 - Pure monetary text such as `0,00 EUR` cannot opt into bank authority.
 - The rule is document-generic and adds no supplier/invoice-specific constants or direct normalized-data writes.
+
+### 1.8.49.3 — Party/address semantic authority
+- Added document-generic explicit party-role blocks for seller/exporter and buyer/customer semantics, including common German invoice labels.
+- `Firma / Adresse` is treated as an explicit recipient block; seller/exporter blocks require their own semantic role. Unlabelled multi-party layouts remain fail-closed.
+- Name, address and terminal country evidence stays native/OCR-backed and enters the existing Foundation 6 header-party authority path; no direct normalized write was added.
+- Existing Turkish `SAYIN` invoice layout remains a regression gate, so broader party knowledge cannot replace the already-working VED path.
+
+### 1.8.49.3.1 — Party structural-label boundary
+
+- Treat standalone party-block address labels (`ADDRESS`, `ADRESSE`, `ADRES`, `ADRESI`, `ANSCHRIFT`) as structural metadata, never as a party name.
+- Do not interpret `/` inside a compound semantic role such as `Firma / Adresse` as an inline role/value separator.
+- Skip structural address labels while continuing to collect the following address rows.
+- Preserve explicit seller/buyer role authority, legacy `SAYIN` behavior, and fail-closed handling for unlabeled party blocks.
+- No supplier-specific rules, invoice-specific constants, fixed coordinates, model inference requirement, or direct normalized writes.

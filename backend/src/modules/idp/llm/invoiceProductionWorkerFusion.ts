@@ -469,8 +469,8 @@ export function enforceVisionDocumentRoleAuthority(
   // Parties: repeated logos, addresses, shipment words and table text on later
   // pages are not party authority. Require an explicit seller/buyer semantic
   // role on the page that produced the vision candidate.
-  const sellerRole = /\b(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER)\b/;
-  const buyerRole = /\b(?:ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO)\b/;
+  const sellerRole = /\b(?:SATICI|GONDERICI|IHRACATCI|SELLER|SUPPLIER|EXPORTER|SHIPPER|ABSENDER|VERKAEUFER|VERKAUFER)\b/;
+  const buyerRole = /\b(?:ALICI|MUSTERI|ITHALATCI|BUYER|CUSTOMER|IMPORTER|CONSIGNEE|BILL\s+TO|SOLD\s+TO|RECHNUNG\s+AN|KUNDE|EMPFAENGER|EMPFANGER|FIRMA\s*\/\s*ADRESSE)\b/;
   keepOnlyWithRole("parties.seller.name", sellerRole, (candidate, page) => partyNameShape(candidate.value) && valueCorroboratedOnPage(candidate, page));
   keepOnlyWithRole("parties.seller.address", sellerRole, (candidate, page) => partyAddressShape(candidate.value) && valueCorroboratedOnPage(candidate, page));
   keepOnlyWithRole("parties.seller.country", sellerRole);
