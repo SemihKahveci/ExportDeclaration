@@ -437,3 +437,9 @@ npm run typecheck --prefix frontend
 docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8170SpecialistReliabilityPartialPromotionContract.ts
 docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/exportFoundation8RunDiagnostics.ts --limit=7 | Tee-Object -FilePath foundation8-real-run-7invoices.json
 ```
+
+### Foundation 8.18 — Semantic Vision Goods Arbitration
+
+The seven-invoice persisted diagnostic exposed a general pipeline regression: the primary Qwen-VL pass could already extract a correct material/model code, description and (for simple rows) numeric tuple, but the later validated-native-row authority boundary could overwrite those semantic bindings with geometrically plausible yet semantically swapped native tokens. Foundation 8.18 makes goods identity semantic-primary again. High-confidence Qwen-VL `productCode` and `description` candidates may retain authority over conflicting native row guesses. Numeric Vision authority remains deliberately narrower: it is allowed only for a single commercial row when quantity × unit price equals line total and the same line total is independently corroborated by the document total. Arithmetic never creates a missing value.
+
+The text-specialist provider now also requests Ollama structured output with the Foundation 8 `fields[]` contract and repeats the flattened-output requirement at the end of the request. This targets the observed GOODS failures where the model returned semantically useful content in a domain-native shape instead of the provider contract. Foundation 6 remains the final write authority; no supplier/invoice constants or golden answers enter runtime.

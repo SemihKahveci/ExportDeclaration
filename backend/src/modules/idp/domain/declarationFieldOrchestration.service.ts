@@ -352,12 +352,70 @@ export function selectDirectSourceEvidenceAuthority(
     selections.push({ field, candidateId: selected.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
   }
 
+  // 8.18: PAGE_IMAGE is the semantic-primary source for goods identity. A
+  // geometrically validated native row can still bind the wrong token to a
+  // semantic column (for example model/material code vs short description).
+  // Preserve a high-confidence Vision identity candidate instead of blindly
+  // replacing it merely because a native token exists. This is row-generic and
+  // requires no supplier/layout constants.
+  const semanticVisionAuthorityFields = new Set<string>();
+  for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
+    if (!/^goodsLines\.\d+\.(productCode|description)$/.test(field)) continue;
+    const vision = fieldCandidates.filter((candidate) =>
+      candidate.extractor === "invoice-qwen-vision-v1" &&
+      candidate.confidence >= 0.95 &&
+      typeof candidate.value === "string" && candidate.value.trim().length > 0 &&
+      candidate.evidence.some((evidence) => evidence.contentSource === "PAGE_IMAGE")
+    );
+    if (vision.length !== 1) continue;
+    selections.push({ field, candidateId: vision[0]!.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+    semanticVisionAuthorityFields.add(field);
+  }
+
+  // For a single commercial row, Vision numeric semantics may outrank a
+  // conflicting native row only when the complete Vision tuple is arithmetic-
+  // consistent AND its line total is independently corroborated by the document
+  // total. This fixes semantic column swaps without making arithmetic invent a
+  // value. Multi-row documents remain on the stricter native/reconciled path.
+  const goodsRowIndexes = new Set(Object.keys(candidates.fields).flatMap((field) => {
+    const match = /^goodsLines\.(\d+)\./.exec(field);
+    return match ? [Number(match[1])] : [];
+  }));
+  if (goodsRowIndexes.size === 1 && goodsRowIndexes.has(0)) {
+    const visionCandidate = (suffix: string) => (candidates.fields[`goodsLines.0.${suffix}`] ?? []).find((candidate) =>
+      candidate.extractor === "invoice-qwen-vision-v1" &&
+      candidate.confidence >= 0.95 &&
+      candidate.evidence.some((evidence) => evidence.contentSource === "PAGE_IMAGE")
+    );
+    const quantity = visionCandidate("quantity");
+    const unit = visionCandidate("unit");
+    const unitPrice = visionCandidate("unitPrice");
+    const lineTotal = visionCandidate("lineTotal");
+    const q = finiteNumber(quantity?.value);
+    const p = finiteNumber(unitPrice?.value);
+    const a = finiteNumber(lineTotal?.value);
+    const documentTotals = (candidates.fields.totalAmount ?? [])
+      .map((candidate) => finiteNumber(candidate.value))
+      .filter((value): value is number => value !== undefined && value > 0);
+    const totalCorroborated = a !== undefined && documentTotals.some((total) => approximatelyEqual(total, a));
+    if (q !== undefined && q > 0 && p !== undefined && p >= 0 && a !== undefined && a >= 0 &&
+        approximatelyEqual(q * p, a) && totalCorroborated) {
+      for (const [suffix, candidate] of [["quantity", quantity], ["unit", unit], ["unitPrice", unitPrice], ["lineTotal", lineTotal]] as const) {
+        if (!candidate) continue;
+        const field = `goodsLines.0.${suffix}`;
+        selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+        semanticVisionAuthorityFields.add(field);
+      }
+    }
+  }
+
   // 1.8.21: a generic goods row that passed the canonical evidence validator
-  // may provide direct native authority for its remaining row-local fields.
-  // Description and unit price retain their stricter existing selectors below,
-  // which intentionally override this generic row selection when applicable.
+  // may provide direct native authority for its remaining row-local fields,
+  // unless the stricter 8.18 semantic-primary arbitration above established
+  // Vision authority for that exact field.
   for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
     if (!/^goodsLines\.\d+\.(productCode|description|quantity|unit|unitPrice|lineTotal)$/.test(field)) continue;
+    if (semanticVisionAuthorityFields.has(field)) continue;
     const nativeRow = fieldCandidates.filter((candidate) =>
       candidate.candidateId.endsWith(":f6-native-row") &&
       !candidate.derived &&

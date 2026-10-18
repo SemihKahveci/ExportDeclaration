@@ -115,6 +115,48 @@ function parseTextSpecialistResponse(content: string, request: InvoiceLlmExtract
   };
 }
 
+function specialistStructuredOutputSchema() {
+  return {
+    type: "object",
+    required: ["version", "decision", "fields"],
+    properties: {
+      version: { enum: ["1", 1] },
+      decision: { enum: ["EXTRACTED", "PARTIAL", "REVIEW_REQUIRED"] },
+      fields: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["field", "value", "confidence", "evidence"],
+          properties: {
+            field: { type: "string" },
+            value: {},
+            confidence: { type: "number", minimum: 0, maximum: 1 },
+            evidence: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["pageNumber", "source", "quote"],
+                properties: {
+                  pageNumber: { type: "integer", minimum: 1 },
+                  source: { enum: ["NATIVE_TEXT", "OCR"] },
+                  quote: { type: "string", minLength: 1 }
+                }
+              }
+            }
+          }
+        }
+      },
+      issues: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { code: { type: "string" }, message: { type: "string" } }
+        }
+      }
+    }
+  };
+}
+
 /** Text-only provider for Foundation 8 bounded specialists. It never accepts page images. */
 export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
   readonly name = "qwen-ollama-text-specialist";
@@ -142,7 +184,7 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
           model: env.foundation8SpecialistModel,
           stream: false,
           think: false,
-          format: "json",
+          format: specialistStructuredOutputSchema(),
           options: { temperature: 0, num_ctx: env.foundation8SpecialistNumCtx, num_predict: env.foundation8SpecialistNumPredict },
           messages: [
             {
@@ -167,7 +209,12 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
                 instruction: request.focusInstruction,
                 nativeText: request.nativeText,
                 ocrText: request.ocrText,
-                verifiedKnowledge: request.verifiedKnowledge
+                verifiedKnowledge: request.verifiedKnowledge,
+                outputContract: {
+                  requiredTopLevel: ["version", "decision", "fields"],
+                  fieldShape: "{ field, value, confidence, evidence: [{ pageNumber, source, quote }] }",
+                  warning: "Do not return domain-native goodsLines/parties objects. Always flatten every answer into fields[]."
+                }
               })
             }
           ]
