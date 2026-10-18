@@ -46,33 +46,44 @@ const nonEmpty = (value: unknown) => typeof value === "string" ? value.trim().le
 export function bridgeReconciledFoundation8ToCandidates(params: {
   segmentId: string;
   reconciliation: Foundation8SpecialistReconciliationAudit;
+  /** 8.17 domain-local safety: a failed GOODS specialist must not discard grounded PARTIES/COMMERCIAL/LOGISTICS. */
+  promotableDomains?: ReadonlySet<"PARTIES" | "COMMERCIAL" | "GOODS" | "LOGISTICS">;
 }): FieldCandidateEnvelope {
   const out: FieldCandidateEnvelope = { version: "1", fields: {} };
-  if (params.reconciliation.action === "REVIEW_REQUIRED") return out;
   const u: InvoiceUnderstanding = params.reconciliation.result.understanding;
+  const domains = params.promotableDomains ?? (params.reconciliation.action === "REVIEW_REQUIRED"
+    ? new Set<"PARTIES" | "COMMERCIAL" | "GOODS" | "LOGISTICS">()
+    : new Set<"PARTIES" | "COMMERCIAL" | "GOODS" | "LOGISTICS">(["PARTIES", "COMMERCIAL", "GOODS", "LOGISTICS"]));
 
+  if (domains.has("COMMERCIAL")) {
   addGrounded(out, params.segmentId, "invoiceNo", u.documentIdentity.invoiceNo, nonEmpty);
   addGrounded(out, params.segmentId, "invoiceDate", u.documentIdentity.invoiceDate, nonEmpty);
+  addGrounded(out, params.segmentId, "currency", u.commercialTerms.currency, nonEmpty);
+  addGrounded(out, params.segmentId, "totalAmount", u.commercialTerms.totalAmount);
+  addGrounded(out, params.segmentId, "exchangeRate", u.commercialTerms.exchangeRate);
+  addGrounded(out, params.segmentId, "paymentType", u.commercialTerms.paymentTerm, nonEmpty);
+  addGrounded(out, params.segmentId, "bankInfo", u.commercialTerms.bankDetails, nonEmpty);
+  }
+
+  if (domains.has("PARTIES")) {
   addGrounded(out, params.segmentId, "parties.seller.name", u.parties.seller?.name, nonEmpty);
   addGrounded(out, params.segmentId, "parties.seller.address", u.parties.seller?.address, nonEmpty);
   addGrounded(out, params.segmentId, "parties.seller.country", u.parties.seller?.country, nonEmpty);
   addGrounded(out, params.segmentId, "parties.buyer.name", u.parties.buyer?.name, nonEmpty);
   addGrounded(out, params.segmentId, "parties.buyer.address", u.parties.buyer?.address, nonEmpty);
   addGrounded(out, params.segmentId, "parties.buyer.country", u.parties.buyer?.country, nonEmpty);
+  }
 
-  addGrounded(out, params.segmentId, "currency", u.commercialTerms.currency, nonEmpty);
-  addGrounded(out, params.segmentId, "totalAmount", u.commercialTerms.totalAmount);
-  addGrounded(out, params.segmentId, "exchangeRate", u.commercialTerms.exchangeRate);
-  addGrounded(out, params.segmentId, "paymentType", u.commercialTerms.paymentTerm, nonEmpty);
-  addGrounded(out, params.segmentId, "bankInfo", u.commercialTerms.bankDetails, nonEmpty);
-
+  if (domains.has("LOGISTICS")) {
   addGrounded(out, params.segmentId, "deliveryTerm", u.logistics.deliveryTerm, nonEmpty);
   addGrounded(out, params.segmentId, "transportMode", u.logistics.transportMode, nonEmpty);
   addGrounded(out, params.segmentId, "grossWeight", u.logistics.grossWeight);
   addGrounded(out, params.segmentId, "netWeight", u.logistics.netWeight);
   addGrounded(out, params.segmentId, "totalPackage", u.packageSummary.count);
   addGrounded(out, params.segmentId, "packageType", u.packageSummary.type, nonEmpty);
+  }
 
+  if (!domains.has("GOODS")) return out;
   const validation = validateInvoiceUnderstanding(u);
   const completeRows = new Set(validation.goodsRows.filter(row => row.complete).map(row => row.rowId));
   u.goodsTable.rows.forEach((row, arrayIndex) => {

@@ -422,3 +422,18 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 ```
 
 Real canary/cutover remains opt-in. For the Spark setup already used by the project, keep the existing `LLM_MODEL` and `LLM_VISION_MODEL`; set only `FOUNDATION8_RECONCILED_PROMOTION_ENABLED=true` after the 8.16 contract is green. Golden expected answers remain evaluation-only and are never imported into runtime skills or prompts.
+
+## Foundation 8.17 — Specialist Reliability + Domain-Local Promotion
+
+The seven-invoice 8.16 production canary proved that Foundation 8 model execution was enabled, but one failed or review-required specialist could force document-wide `REVIEW_REQUIRED` and therefore suppress every reconciled promotion. 8.17 changes the cutover safety boundary from document-global to **domain-local**: a failed GOODS specialist still fails closed for GOODS, while independently completed and page-grounded PARTIES, COMMERCIAL and LOGISTICS domains remain eligible to become Foundation 6 candidates. Foundation 6 remains the final write authority.
+
+The text specialist provider now tolerates a harmless Qwen JSON-shape variation where an empty `issues` array is omitted; `fields` remains mandatory and all ownership/evidence validation remains enforced. Transient Ollama transport failures receive one bounded retry. This is reliability recovery, not answer fabrication: no supplier/invoice-specific constants, golden answers, arithmetic repair, or direct normalized-data writes are introduced.
+
+A persistent diagnostic exporter is also included so future real-invoice canaries can be inspected from persisted Mongo state without screenshots or re-running OCR/Qwen:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8170SpecialistReliabilityPartialPromotionContract.ts
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/exportFoundation8RunDiagnostics.ts --limit=7 | Tee-Object -FilePath foundation8-real-run-7invoices.json
+```

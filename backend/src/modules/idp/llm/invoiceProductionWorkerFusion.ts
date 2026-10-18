@@ -898,8 +898,20 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const foundation8SpecialistReconciliationAudit = foundation8SpecialistModelAudit
       ? reconcileFoundation8SpecialistModelShadow({ documentId: result.segmentId, audit: foundation8SpecialistModelAudit })
       : undefined;
+    // 8.17: promotion safety is domain-local. A failed/review-required GOODS call
+    // must fail closed for GOODS, but it must not erase independently grounded
+    // PARTIES / COMMERCIAL / LOGISTICS specialist work.
+    const foundation8PromotableDomains = new Set(
+      (foundation8SpecialistModelAudit?.specialists ?? [])
+        .filter(item => item.status === "COMPLETED" && item.response?.decision !== "REVIEW_REQUIRED")
+        .map(item => item.domain)
+    );
     const foundation8ReconciledCandidates = env.foundation8ReconciledPromotionEnabled && foundation8SpecialistReconciliationAudit
-      ? bridgeReconciledFoundation8ToCandidates({ segmentId: result.segmentId, reconciliation: foundation8SpecialistReconciliationAudit })
+      ? bridgeReconciledFoundation8ToCandidates({
+          segmentId: result.segmentId,
+          reconciliation: foundation8SpecialistReconciliationAudit,
+          promotableDomains: foundation8PromotableDomains
+        })
       : { version: "1" as const, fields: {} };
     const productionCandidates = env.foundation8ReconciledPromotionEnabled
       ? overlayReconciledFoundation8Candidates(finalRoleGuardedCandidates, foundation8ReconciledCandidates)
@@ -911,7 +923,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       foundation8ShadowAudit,
       ...(foundation8SpecialistModelAudit ? { foundation8SpecialistModelAudit } : {}),
       ...(foundation8SpecialistReconciliationAudit ? { foundation8SpecialistReconciliationAudit } : {}),
-      ...(env.foundation8ReconciledPromotionEnabled ? { foundation8ReconciledPromotionAudit: { version: "8.16.0", promotedFields: Object.keys(foundation8ReconciledCandidates.fields).sort() } } : {}),
+      ...(env.foundation8ReconciledPromotionEnabled ? { foundation8ReconciledPromotionAudit: { version: "8.17.0", promotableDomains: [...foundation8PromotableDomains].sort(), promotedFields: Object.keys(foundation8ReconciledCandidates.fields).sort() } } : {}),
       adaptiveRecoveryAudit: adaptiveRecoveryPlan,
       adaptiveRecoveryExecutionAudit: adaptiveRecoveryExecution.audit,
       adaptiveGoodsDescriptionExecutionAudit: adaptiveGoodsDescriptionExecution.audit,

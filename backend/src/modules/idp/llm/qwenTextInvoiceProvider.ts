@@ -81,7 +81,11 @@ function parseTextSpecialistResponse(content: string, request: InvoiceLlmExtract
   if (![InvoiceLlmExtractionDecision.EXTRACTED, InvoiceLlmExtractionDecision.PARTIAL, InvoiceLlmExtractionDecision.REVIEW_REQUIRED].includes(parsed.decision as never)) {
     throw new Error("Foundation 8 text specialist decision invalid.");
   }
-  if (!Array.isArray(parsed.fields) || !Array.isArray(parsed.issues)) throw new Error("Foundation 8 text specialist response contract incomplete.");
+  // 8.17: Qwen occasionally omits an empty `issues` array even when the semantic
+  // payload is otherwise valid. Treat that JSON-shape variation as [] instead of
+  // discarding an entire specialist domain. `fields` remains mandatory.
+  if (!Array.isArray(parsed.fields)) throw new Error("Foundation 8 text specialist response contract incomplete: fields missing.");
+  const parsedIssues = Array.isArray(parsed.issues) ? parsed.issues : [];
 
   const seen = new Set<string>();
   const fields: InvoiceLlmExtractedField[] = parsed.fields.map(raw => {
@@ -105,7 +109,7 @@ function parseTextSpecialistResponse(content: string, request: InvoiceLlmExtract
       : parsed.decision!,
     fields: groundedFields,
     issues: [
-      ...parsed.issues.map(issue => ({ code: String(issue?.code ?? "UNKNOWN"), message: String(issue?.message ?? "") })),
+      ...parsedIssues.map(issue => ({ code: String(issue?.code ?? "UNKNOWN"), message: String(issue?.message ?? "") })),
       ...rejectedEvidenceFields.map(field => ({ code: "EVIDENCE_NOT_GROUNDED_IN_PAGE_PACKET", message: `${field}: cited evidence is not a verbatim span on the declared canonical page/source.` }))
     ]
   };
@@ -125,7 +129,12 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
     const timeout = setTimeout(() => controller.abort(), env.llmTimeoutMs);
     const startedAt = Date.now();
     try {
-      const response = await fetch(`${ollamaBaseUrl(env.llmBaseUrl)}/api/chat`, {
+      const endpoint = `${ollamaBaseUrl(env.llmBaseUrl)}/api/chat`;
+      let response: Response | undefined;
+      let lastTransportError: unknown;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          response = await fetch(endpoint, {
         method: "POST",
         headers: { "content-type": "application/json", ...(env.llmApiKey ? { authorization: `Bearer ${env.llmApiKey}` } : {}) },
         signal: controller.signal,
@@ -164,6 +173,15 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
           ]
         })
       });
+          break;
+        } catch (error) {
+          lastTransportError = error;
+          if (controller.signal.aborted || attempt >= 2) throw error;
+          console.warn("idp.foundation8_text_specialist.transport_retry", { documentId: request.documentId, model: env.foundation8SpecialistModel, attempt, error: error instanceof Error ? error.message : String(error) });
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+      }
+      if (!response) throw lastTransportError instanceof Error ? lastTransportError : new Error("Foundation 8 text specialist transport failed.");
       if (!response.ok) throw new Error(`Foundation 8 text specialist HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
       const payload = await response.json() as { message?: { content?: string } };
       const content = payload.message?.content?.trim();
