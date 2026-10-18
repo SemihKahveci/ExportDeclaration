@@ -74,8 +74,79 @@ function evidenceGroundedInPacket(field: InvoiceLlmExtractedField, request: Invo
   });
 }
 
+
+function evidenceArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw;
+  return raw && typeof raw === "object" ? [raw] : [];
+}
+
+function domainNativeGoodsFields(parsed: Record<string, unknown>, request: InvoiceLlmExtractionRequest): unknown[] {
+  const goodsTable = parsed.goodsTable && typeof parsed.goodsTable === "object"
+    ? parsed.goodsTable as Record<string, unknown>
+    : undefined;
+  const rowsRaw = Array.isArray(parsed.goodsLines)
+    ? parsed.goodsLines
+    : Array.isArray(goodsTable?.rows)
+      ? goodsTable.rows
+      : Array.isArray(parsed.rows)
+        ? parsed.rows
+        : [];
+  const fields: unknown[] = [];
+
+  const push = (field: string, raw: unknown, fallbackEvidence?: unknown, fallbackConfidence?: unknown) => {
+    if (!requestedFieldMatches(request.requestedFields, field) || raw === undefined || raw === null || raw === "") return;
+    const wrapped = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : undefined;
+    const value = wrapped && Object.prototype.hasOwnProperty.call(wrapped, "value") ? wrapped.value : raw;
+    if (value === undefined || value === null || value === "") return;
+    const evidence = evidenceArray(wrapped?.evidence ?? fallbackEvidence);
+    // A domain-native shape is only normalized when it still carries source evidence.
+    // This is a shape adapter, never an evidence/value recovery mechanism.
+    if (!evidence.length) return;
+    const confidenceRaw = wrapped?.confidence ?? fallbackConfidence;
+    const confidence = typeof confidenceRaw === "number" && confidenceRaw >= 0 && confidenceRaw <= 1 ? confidenceRaw : 0.5;
+    fields.push({ field, value, confidence, evidence });
+  };
+
+  if (goodsTable) {
+    push(
+      "goodsTable.expectedRowCount",
+      goodsTable.expectedRowCount,
+      goodsTable.tableEvidence ?? goodsTable.evidence,
+      goodsTable.confidence
+    );
+  } else {
+    push("goodsTable.expectedRowCount", parsed.expectedRowCount, parsed.tableEvidence ?? parsed.evidence, parsed.confidence);
+  }
+
+  const rowKeys = ["productCode", "description", "hsCode", "quantity", "unit", "unitPrice", "lineTotal", "origin"] as const;
+  rowsRaw.forEach((rawRow, index) => {
+    if (!rawRow || typeof rawRow !== "object" || Array.isArray(rawRow)) return;
+    const row = rawRow as Record<string, unknown>;
+    const evidenceMap = row.evidence && typeof row.evidence === "object" && !Array.isArray(row.evidence)
+      ? row.evidence as Record<string, unknown>
+      : undefined;
+    for (const key of rowKeys) {
+      push(
+        `goodsLines.${index}.${key}`,
+        row[key],
+        evidenceMap?.[key] ?? row[`${key}Evidence`] ?? row.rowEvidence,
+        row.confidence
+      );
+    }
+  });
+  return fields;
+}
+
+export function normalizeFoundation8SpecialistJsonShape(parsed: Record<string, unknown>, request: InvoiceLlmExtractionRequest): Record<string, unknown> {
+  if (Array.isArray(parsed.fields)) return parsed;
+  const adaptedGoodsFields = domainNativeGoodsFields(parsed, request);
+  if (!adaptedGoodsFields.length) return parsed;
+  return { ...parsed, fields: adaptedGoodsFields };
+}
+
 function parseTextSpecialistResponse(content: string, request: InvoiceLlmExtractionRequest): Omit<InvoiceLlmExtractionResponse, "model" | "provider"> {
-  const parsed = JSON.parse(stripFence(content)) as Partial<InvoiceLlmExtractionResponse>;
+  const rawJson = JSON.parse(stripFence(content)) as Record<string, unknown>;
+  const parsed = normalizeFoundation8SpecialistJsonShape(rawJson, request) as Partial<InvoiceLlmExtractionResponse>;
   const rawVersion = (parsed as { version?: unknown }).version;
   if (rawVersion !== "1" && rawVersion !== 1) throw new Error("Foundation 8 text specialist response version invalid.");
   if (![InvoiceLlmExtractionDecision.EXTRACTED, InvoiceLlmExtractionDecision.PARTIAL, InvoiceLlmExtractionDecision.REVIEW_REQUIRED].includes(parsed.decision as never)) {

@@ -443,3 +443,14 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/expo
 The seven-invoice persisted diagnostic exposed a general pipeline regression: the primary Qwen-VL pass could already extract a correct material/model code, description and (for simple rows) numeric tuple, but the later validated-native-row authority boundary could overwrite those semantic bindings with geometrically plausible yet semantically swapped native tokens. Foundation 8.18 makes goods identity semantic-primary again. High-confidence Qwen-VL `productCode` and `description` candidates may retain authority over conflicting native row guesses. Numeric Vision authority remains deliberately narrower: it is allowed only for a single commercial row when quantity × unit price equals line total and the same line total is independently corroborated by the document total. Arithmetic never creates a missing value.
 
 The text-specialist provider now also requests Ollama structured output with the Foundation 8 `fields[]` contract and repeats the flattened-output requirement at the end of the request. This targets the observed GOODS failures where the model returned semantically useful content in a domain-native shape instead of the provider contract. Foundation 6 remains the final write authority; no supplier/invoice constants or golden answers enter runtime.
+
+### Foundation 8.19 — Evidence-Preserving GOODS Shape Adapter
+
+The 8.18 Volta/YEM real canary proved that the main remaining blocker is no longer Foundation 6 cutover: PARTIES, COMMERCIAL and LOGISTICS are promoted domain-locally, but the Qwen3 32B GOODS specialist still returns a semantically useful domain-native JSON shape on some invoices instead of the requested flat `fields[]` envelope. The provider therefore marked GOODS `FAILED` with `fields missing`, leaving legacy/native row binding in control.
+
+8.19 adds a deterministic provider-boundary shape adapter. When `fields[]` is absent, evidence-bearing `goodsTable.rows[]`, `goodsLines[]` or `rows[]` output is normalized into the same owned flat paths (`goodsLines.N.*` and `goodsTable.expectedRowCount`) expected by the existing specialist projection. The adapter does not infer values, borrow evidence, perform arithmetic repair, or accept evidence-free nested values. Every adapted value must still carry page/source evidence and then pass the existing verbatim canonical-page grounding check. Existing compliant `fields[]` responses are untouched.
+
+This addresses the general model-output-contract mismatch rather than Volta/YEM answers. Foundation 6 remains the final write authority; golden answers, supplier identities and invoice-specific constants remain outside runtime.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8190DomainNativeGoodsShapeAdapterContract.ts`
