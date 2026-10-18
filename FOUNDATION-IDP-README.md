@@ -467,3 +467,15 @@ Contract:
 ### Foundation 8.20.1 — Type guard hotfix
 
 Restores the finite-number type guard used by existing commercial/logistics projection paths after the 8.20 typed goods scalar projection refactor. No runtime authority, evidence, or promotion semantics changed.
+
+### Foundation 8.21 — Specialist Evidence + Projection Reliability Bundle
+
+The persisted Volta/YEM canary after 8.20 exposed several related boundary defects at once, so this checkpoint fixes them together instead of adding another invoice-specific rule. Structured specialist values are now constrained to primitive string/number output at the Ollama schema boundary; the projection accepts the already-observed typed scalar wrapper representation consistently across PARTIES, COMMERCIAL, GOODS and LOGISTICS; and a missing/failed GOODS payload no longer makes otherwise independent domain understanding structurally invalid. An empty goods table remains incomplete and cannot be mistaken for a successfully extracted table.
+
+Evidence remains mandatory. Exact normalized source spans are still preferred; for long row-context quotes only, the provider tolerates encoding/whitespace drift when at least 90% of six-or-more normalized quote tokens occur in source order on the declared canonical page. Short scalar quotes still require an exact normalized span. This is an evidence-transport tolerance, not value recovery: it does not calculate values, borrow evidence across pages, infer packaging/commercial quantities, or encode supplier/invoice answers. Foundation 6 remains the only declaration write authority.
+
+Contract:
+
+```powershell
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation821SpecialistEvidenceProjectionBundleContract.ts
+```

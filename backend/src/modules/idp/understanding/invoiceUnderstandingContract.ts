@@ -37,14 +37,15 @@ export function validateInvoiceUnderstanding(understanding: InvoiceUnderstanding
       if (grounded && !grounded.evidence.some(ref => rowPages.has(ref.pageNumber))) errors.push(`goods row ${row.rowId}.${field}: evidence is not row-local`);
     }
   }
-  validateEvidence(understanding.goodsTable.tableEvidence, "goods table", errors);
+  const hasGoodsMaterial = understanding.goodsTable.rows.length > 0 || understanding.goodsTable.expectedRowCount !== undefined;
+  if (hasGoodsMaterial) validateEvidence(understanding.goodsTable.tableEvidence, "goods table", errors);
   const goodsRows = understanding.goodsTable.rows.map(row => rowCompleteness(row, requiredGoodsFields));
   const completeGoodsRowCount = goodsRows.filter(row => row.complete).length;
   const materializedGoodsRowCount = goodsRows.length;
   const expectedGoodsRowCount = understanding.goodsTable.expectedRowCount;
   if (expectedGoodsRowCount !== undefined && (!Number.isInteger(expectedGoodsRowCount) || expectedGoodsRowCount < 0)) errors.push("goodsTable.expectedRowCount must be a non-negative integer");
   const countMatches = expectedGoodsRowCount === undefined || expectedGoodsRowCount === materializedGoodsRowCount;
-  const goodsTableComplete = countMatches && completeGoodsRowCount === materializedGoodsRowCount && (expectedGoodsRowCount === undefined || completeGoodsRowCount === expectedGoodsRowCount);
+  const goodsTableComplete = materializedGoodsRowCount > 0 && countMatches && completeGoodsRowCount === materializedGoodsRowCount && (expectedGoodsRowCount === undefined || completeGoodsRowCount === expectedGoodsRowCount);
   return { valid: errors.length === 0, errors, goodsRows, completeGoodsRowCount, materializedGoodsRowCount, expectedGoodsRowCount, goodsTableComplete };
 }
 /** Arithmetic corroborates extraction; it never manufactures a missing value. */

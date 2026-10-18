@@ -50,6 +50,37 @@ function normalizeEvidenceText(value: string): string {
     .replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function normalizedTokens(value: string): string[] {
+  return normalizeEvidenceText(value).split(" ").filter(token => token.length > 0);
+}
+
+function orderedTokenCoverage(needle: string[], haystack: string[]): number {
+  if (!needle.length || !haystack.length) return 0;
+  let cursor = 0;
+  let matched = 0;
+  for (const token of needle) {
+    while (cursor < haystack.length && haystack[cursor] !== token) cursor += 1;
+    if (cursor >= haystack.length) break;
+    matched += 1;
+    cursor += 1;
+  }
+  return matched / needle.length;
+}
+
+function quoteGroundedInPage(quoteRaw: string, pageRaw: string): boolean {
+  const quote = normalizeEvidenceText(quoteRaw);
+  const page = normalizeEvidenceText(pageRaw);
+  if (quote.length < 4) return false;
+  if (page.includes(quote)) return true;
+
+  // Canonical PDF text and Ollama JSON can differ in whitespace/encoding around
+  // the same copied row. For long contextual quotes, tolerate only a very high
+  // ordered-token match. Short scalar quotes still require an exact span.
+  const quoteTokens = normalizedTokens(quoteRaw);
+  if (quoteTokens.length < 6) return false;
+  return orderedTokenCoverage(quoteTokens, normalizedTokens(pageRaw)) >= 0.9;
+}
+
 function pagePacketOf(request: InvoiceLlmExtractionRequest): Map<number, { source: "NATIVE_TEXT" | "OCR"; text: string }> {
   const pages = new Map<number, { source: "NATIVE_TEXT" | "OCR"; text: string }>();
   const packet = request.nativeText ?? "";
@@ -68,9 +99,7 @@ function evidenceGroundedInPacket(field: InvoiceLlmExtractedField, request: Invo
     if (ref.source === "VERIFIED_KNOWLEDGE") return false; // skills are instructions, never invoice facts
     const page = pages.get(ref.pageNumber);
     if (!page || page.source !== ref.source) return false;
-    const quote = normalizeEvidenceText(ref.quote ?? "");
-    if (quote.length < 4) return false;
-    return normalizeEvidenceText(page.text).includes(quote);
+    return quoteGroundedInPage(ref.quote ?? "", page.text);
   });
 }
 
@@ -200,7 +229,7 @@ function specialistStructuredOutputSchema() {
           required: ["field", "value", "confidence", "evidence"],
           properties: {
             field: { type: "string" },
-            value: {},
+            value: { anyOf: [{ type: "string" }, { type: "number" }] },
             confidence: { type: "number", minimum: 0, maximum: 1 },
             evidence: {
               type: "array",
@@ -283,8 +312,8 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
                 verifiedKnowledge: request.verifiedKnowledge,
                 outputContract: {
                   requiredTopLevel: ["version", "decision", "fields"],
-                  fieldShape: "{ field, value, confidence, evidence: [{ pageNumber, source, quote }] }",
-                  warning: "Do not return domain-native goodsLines/parties objects. Always flatten every answer into fields[]."
+                  fieldShape: "{ field, value: string|number, confidence, evidence: [{ pageNumber, source, quote }] }",
+                  warning: "Do not return domain-native goodsLines/parties objects. Always flatten every answer into fields[]. value MUST be a primitive string or number, never an object/wrapper."
                 }
               })
             }

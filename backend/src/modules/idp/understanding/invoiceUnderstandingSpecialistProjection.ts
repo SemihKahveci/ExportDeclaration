@@ -9,19 +9,11 @@ import {
 } from "./invoiceUnderstanding.types.js";
 import type { Foundation8SpecialistModelExecutionAudit } from "./invoiceUnderstandingSpecialistModelExecution.js";
 
-export const FOUNDATION8_SPECIALIST_PROJECTION_VERSION = "8.20.1" as const;
+export const FOUNDATION8_SPECIALIST_PROJECTION_VERSION = "8.21.0" as const;
 
 function evidenceRef(ref: InvoiceLlmEvidenceRef): InvoiceUnderstandingEvidenceRef {
   return { pageNumber: ref.pageNumber, source: ref.source, quote: ref.quote, region: ref.region };
 }
-
-function grounded<T>(field: InvoiceLlmExtractedField | undefined, guard: (value: unknown) => value is T): GroundedValue<T> | undefined {
-  if (!field || !guard(field.value) || !field.evidence.length) return undefined;
-  return { value: field.value, confidence: field.confidence, evidence: field.evidence.map(evidenceRef) };
-}
-
-const isString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
-const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
 function scalarValue(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
@@ -155,37 +147,37 @@ export function projectSpecialistModelAuditToInvoiceUnderstanding(params: {
     documentId: params.documentId,
     decision: anyFailed ? InvoiceUnderstandingDecision.REVIEW_REQUIRED : InvoiceUnderstandingDecision.PARTIAL,
     documentIdentity: {
-      invoiceNo: grounded(commercial.get("invoiceNo"), isString),
-      invoiceDate: grounded(commercial.get("invoiceDate"), isString)
+      invoiceNo: groundedString(commercial.get("invoiceNo")),
+      invoiceDate: groundedString(commercial.get("invoiceDate"))
     },
     parties: {
       seller: {
-        name: grounded(parties.get("parties.seller.name"), isString),
-        address: grounded(parties.get("parties.seller.address"), isString),
-        country: grounded(parties.get("parties.seller.country"), isString)
+        name: groundedString(parties.get("parties.seller.name")),
+        address: groundedString(parties.get("parties.seller.address")),
+        country: groundedString(parties.get("parties.seller.country"))
       },
       buyer: {
-        name: grounded(parties.get("parties.buyer.name"), isString),
-        address: grounded(parties.get("parties.buyer.address"), isString),
-        country: grounded(parties.get("parties.buyer.country"), isString)
+        name: groundedString(parties.get("parties.buyer.name")),
+        address: groundedString(parties.get("parties.buyer.address")),
+        country: groundedString(parties.get("parties.buyer.country"))
       }
     },
     commercialTerms: {
-      currency: grounded(commercial.get("currency"), isString),
-      totalAmount: grounded(commercial.get("totalAmount"), isNumber),
-      exchangeRate: grounded(commercial.get("exchangeRate"), isNumber),
-      paymentTerm: grounded(commercial.get("paymentTerm"), isString),
-      bankDetails: grounded(commercial.get("bankDetails"), isString)
+      currency: groundedString(commercial.get("currency")),
+      totalAmount: groundedNumber(commercial.get("totalAmount")),
+      exchangeRate: groundedNumber(commercial.get("exchangeRate")),
+      paymentTerm: groundedString(commercial.get("paymentTerm")),
+      bankDetails: groundedString(commercial.get("bankDetails"))
     },
     logistics: {
-      deliveryTerm: grounded(logistics.get("deliveryTerm"), isString),
-      transportMode: grounded(logistics.get("transportMode"), isString),
-      grossWeight: grounded(logistics.get("grossWeight"), isNumber),
-      netWeight: grounded(logistics.get("netWeight"), isNumber)
+      deliveryTerm: groundedString(logistics.get("deliveryTerm")),
+      transportMode: groundedString(logistics.get("transportMode")),
+      grossWeight: groundedNumber(logistics.get("grossWeight")),
+      netWeight: groundedNumber(logistics.get("netWeight"))
     },
     packageSummary: {
-      count: grounded(logistics.get("totalPackage"), isNumber),
-      type: grounded(logistics.get("packageType"), isString)
+      count: groundedNumber(logistics.get("totalPackage")),
+      type: groundedString(logistics.get("packageType"))
     },
     goodsTable: { tableEvidence, ...(expectedRowCount !== undefined ? { expectedRowCount } : {}), rows },
     issues
