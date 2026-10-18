@@ -9,7 +9,7 @@ import {
 } from "./invoiceUnderstanding.types.js";
 import type { Foundation8SpecialistModelExecutionAudit } from "./invoiceUnderstandingSpecialistModelExecution.js";
 
-export const FOUNDATION8_SPECIALIST_PROJECTION_VERSION = "8.11.0" as const;
+export const FOUNDATION8_SPECIALIST_PROJECTION_VERSION = "8.16.0" as const;
 
 function evidenceRef(ref: InvoiceLlmEvidenceRef): InvoiceUnderstandingEvidenceRef {
   return { pageNumber: ref.pageNumber, source: ref.source, quote: ref.quote, region: ref.region };
@@ -96,6 +96,10 @@ export function projectSpecialistModelAuditToInvoiceUnderstanding(params: {
     .map(item => ({ code: "SPECIALIST_FAILED", message: `${item.domain}: ${item.error ?? "specialist failed"}`, scope: "DOCUMENT" }));
 
   const rows = projectGoodsRows(goods, issues);
+  const expectedRowCountField = grounded(goods.get("goodsTable.expectedRowCount"), isNumber);
+  const expectedRowCount = expectedRowCountField && Number.isInteger(expectedRowCountField.value) && expectedRowCountField.value >= 0
+    ? expectedRowCountField.value
+    : undefined;
   const tableEvidence = uniqueEvidence(rows.flatMap(row => [row.productCode, row.description, row.hsCode, row.quantity, row.unit, row.unitPrice, row.lineTotal, row.origin]));
   const anyFailed = params.audit.specialists.some(item => item.status === "FAILED");
 
@@ -136,7 +140,7 @@ export function projectSpecialistModelAuditToInvoiceUnderstanding(params: {
       count: grounded(logistics.get("totalPackage"), isNumber),
       type: grounded(logistics.get("packageType"), isString)
     },
-    goodsTable: { tableEvidence, rows },
+    goodsTable: { tableEvidence, ...(expectedRowCount !== undefined ? { expectedRowCount } : {}), rows },
     issues
   };
 }

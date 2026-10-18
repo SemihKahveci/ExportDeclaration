@@ -42,6 +42,38 @@ function normalizeEvidence(field: string, raw: unknown): InvoiceLlmEvidenceRef[]
   });
 }
 
+
+function normalizeEvidenceText(value: string): string {
+  return value
+    .toLocaleUpperCase("tr-TR")
+    .replace(/İ/g, "I").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U")
+    .replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function pagePacketOf(request: InvoiceLlmExtractionRequest): Map<number, { source: "NATIVE_TEXT" | "OCR"; text: string }> {
+  const pages = new Map<number, { source: "NATIVE_TEXT" | "OCR"; text: string }>();
+  const packet = request.nativeText ?? "";
+  const marker = /<<<PAGE\s+(\d+)\s+\|\s+SOURCE\s+(NATIVE_TEXT|OCR)>>>([\s\S]*?)<<<END PAGE\s+\1>>>/g;
+  for (const match of packet.matchAll(marker)) {
+    pages.set(Number(match[1]), { source: match[2] as "NATIVE_TEXT" | "OCR", text: match[3] ?? "" });
+  }
+  return pages;
+}
+
+function evidenceGroundedInPacket(field: InvoiceLlmExtractedField, request: InvoiceLlmExtractionRequest): boolean {
+  const pages = pagePacketOf(request);
+  if (pages.size === 0) return true; // compatibility for direct unit callers without the 8.15 packet
+  if (!field.evidence.length) return false;
+  return field.evidence.every(ref => {
+    if (ref.source === "VERIFIED_KNOWLEDGE") return false; // skills are instructions, never invoice facts
+    const page = pages.get(ref.pageNumber);
+    if (!page || page.source !== ref.source) return false;
+    const quote = normalizeEvidenceText(ref.quote ?? "");
+    if (quote.length < 4) return false;
+    return normalizeEvidenceText(page.text).includes(quote);
+  });
+}
+
 function parseTextSpecialistResponse(content: string, request: InvoiceLlmExtractionRequest): Omit<InvoiceLlmExtractionResponse, "model" | "provider"> {
   const parsed = JSON.parse(stripFence(content)) as Partial<InvoiceLlmExtractionResponse>;
   const rawVersion = (parsed as { version?: unknown }).version;
@@ -64,11 +96,18 @@ function parseTextSpecialistResponse(content: string, request: InvoiceLlmExtract
     return { field: raw.field, value: raw.value, confidence: raw.confidence, evidence: normalizeEvidence(raw.field, raw.evidence) };
   });
 
+  const groundedFields = fields.filter(field => evidenceGroundedInPacket(field, request));
+  const rejectedEvidenceFields = fields.filter(field => !evidenceGroundedInPacket(field, request)).map(field => field.field);
   return {
     version: "1",
-    decision: parsed.decision!,
-    fields,
-    issues: parsed.issues.map(issue => ({ code: String(issue?.code ?? "UNKNOWN"), message: String(issue?.message ?? "") }))
+    decision: rejectedEvidenceFields.length > 0 && parsed.decision === InvoiceLlmExtractionDecision.EXTRACTED
+      ? InvoiceLlmExtractionDecision.PARTIAL
+      : parsed.decision!,
+    fields: groundedFields,
+    issues: [
+      ...parsed.issues.map(issue => ({ code: String(issue?.code ?? "UNKNOWN"), message: String(issue?.message ?? "") })),
+      ...rejectedEvidenceFields.map(field => ({ code: "EVIDENCE_NOT_GROUNDED_IN_PAGE_PACKET", message: `${field}: cited evidence is not a verbatim span on the declared canonical page/source.` }))
+    ]
   };
 }
 
@@ -95,7 +134,7 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
           stream: false,
           think: false,
           format: "json",
-          options: { temperature: 0, num_ctx: 16384, num_predict: 4096 },
+          options: { temperature: 0, num_ctx: env.foundation8SpecialistNumCtx, num_predict: env.foundation8SpecialistNumPredict },
           messages: [
             {
               role: "system",
@@ -104,7 +143,8 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
                 "Return JSON only with: version, decision, fields, issues.",
                 "Each field must contain field, value, confidence, evidence[].",
                 "Use only requested fields. For goods wildcard fields, replace * with the zero-based commercial row index.",
-                "Evidence must cite a real pageNumber and source NATIVE_TEXT, OCR, or VERIFIED_KNOWLEDGE.",
+                "Evidence must cite a real pageNumber and source NATIVE_TEXT or OCR. VERIFIED_KNOWLEDGE contains instructions, not invoice facts.",
+                "Every evidence item must include a verbatim quote copied from that exact page; include enough row/role context to prove the binding.",
                 "Never manufacture missing values. If source evidence is ambiguous, omit the field and use PARTIAL or REVIEW_REQUIRED."
               ].join(" ")
             },

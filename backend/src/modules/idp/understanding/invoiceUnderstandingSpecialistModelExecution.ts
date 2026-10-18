@@ -9,7 +9,7 @@ import {
   type InvoiceUnderstandingEvidenceBundle
 } from "./invoiceUnderstandingOrchestration.js";
 
-export const FOUNDATION8_SPECIALIST_MODEL_EXECUTION_VERSION = "8.15.0" as const;
+export const FOUNDATION8_SPECIALIST_MODEL_EXECUTION_VERSION = "8.16.0" as const;
 
 const REQUESTED_FIELDS: Record<InvoiceSpecialistDomain, readonly string[]> = {
   PARTIES: [
@@ -17,14 +17,14 @@ const REQUESTED_FIELDS: Record<InvoiceSpecialistDomain, readonly string[]> = {
     "parties.buyer.name", "parties.buyer.address", "parties.buyer.country"
   ],
   COMMERCIAL: ["invoiceNo", "invoiceDate", "currency", "totalAmount", "exchangeRate", "paymentTerm", "bankDetails"],
-  GOODS: ["goodsLines.*.productCode", "goodsLines.*.description", "goodsLines.*.hsCode", "goodsLines.*.quantity", "goodsLines.*.unit", "goodsLines.*.unitPrice", "goodsLines.*.lineTotal", "goodsLines.*.origin"],
+  GOODS: ["goodsTable.expectedRowCount", "goodsLines.*.productCode", "goodsLines.*.description", "goodsLines.*.hsCode", "goodsLines.*.quantity", "goodsLines.*.unit", "goodsLines.*.unitPrice", "goodsLines.*.lineTotal", "goodsLines.*.origin"],
   LOGISTICS: ["deliveryTerm", "transportMode", "grossWeight", "netWeight", "totalPackage", "packageType"]
 };
 
 function fieldOwnedBy(domain: InvoiceSpecialistDomain, field: string): boolean {
   if (domain === "PARTIES") return /^parties\.(seller|buyer)\.(name|address|country)$/.test(field);
   if (domain === "COMMERCIAL") return /^(invoiceNo|invoiceDate|currency|totalAmount|exchangeRate|paymentTerm|bankDetails)$/.test(field);
-  if (domain === "GOODS") return /^goodsLines\.\d+\.(productCode|description|hsCode|quantity|unit|unitPrice|lineTotal|origin)$/.test(field);
+  if (domain === "GOODS") return field === "goodsTable.expectedRowCount" || /^goodsLines\.\d+\.(productCode|description|hsCode|quantity|unit|unitPrice|lineTotal|origin)$/.test(field);
   return /^(deliveryTerm|transportMode|grossWeight|netWeight|totalPackage|packageType)$/.test(field);
 }
 
@@ -42,6 +42,29 @@ export function renderFoundation8PageGroundedEvidencePacket(request: {
     page.text.trim(),
     `<<<END PAGE ${page.pageNumber}>>>`
   ].join("\n")).join("\n\n");
+}
+
+function goodsRowIndexes(response: InvoiceLlmExtractionResponse): Set<number> {
+  return new Set(response.fields.flatMap(field => {
+    const match = /^goodsLines\.(\d+)\./.exec(field.field);
+    return match ? [Number(match[1])] : [];
+  }));
+}
+
+function expectedGoodsRowCount(response: InvoiceLlmExtractionResponse): number | undefined {
+  const value = response.fields.find(field => field.field === "goodsTable.expectedRowCount")?.value;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+function mergeGoodsRecovery(primary: InvoiceLlmExtractionResponse, recovery: InvoiceLlmExtractionResponse): InvoiceLlmExtractionResponse {
+  const byField = new Map(primary.fields.map(field => [field.field, field]));
+  for (const field of recovery.fields) byField.set(field.field, field);
+  return {
+    ...recovery,
+    decision: recovery.decision === "REVIEW_REQUIRED" ? primary.decision : recovery.decision,
+    fields: [...byField.values()],
+    issues: [...primary.issues, ...recovery.issues]
+  };
 }
 
 export interface Foundation8SpecialistModelAuditItem {
@@ -80,12 +103,14 @@ export async function executeFoundation8SpecialistModelShadow(params: {
   const requests = planInvoiceUnderstandingSpecialists(params.bundle);
   const executionStartedAt = Date.now();
   const specialists: Foundation8SpecialistModelAuditItem[] = [];
+  let modelCallsAttempted = 0;
 
   for (const request of requests) {
     const requestedFields = REQUESTED_FIELDS[request.domain];
     const specialistStartedAt = Date.now();
     try {
-      const response = await params.provider.extractInvoice({
+      modelCallsAttempted += 1;
+      let response = await params.provider.extractInvoice({
         version: "1",
         documentId: request.documentId,
         evidenceMode: InvoiceLlmEvidenceMode.TEXT,
@@ -101,9 +126,38 @@ export async function executeFoundation8SpecialistModelShadow(params: {
           `Never infer or repair forbidden sections: ${request.forbidden.join(", ")}.`,
           "Use only source-grounded evidence. Missing or ambiguous values must remain absent/review-required.",
           "Canonical evidence is page-delimited. Every returned evidence.pageNumber must match the page containing the cited value; never move evidence across page boundaries.",
+          "Evidence quotes must be verbatim source spans from the cited page and should include enough neighboring role/row context to prove the semantic binding.",
+          request.domain === "GOODS" ? "Return goodsTable.expectedRowCount when the commercial-row count is source-supported. Return every commercial goods row in document order; printed row N maps to goodsLines.(N-1). Never stop after the first page or after finding HS codes." : "",
           request.skillContext
         ].join("\n\n")
       });
+      if (request.domain === "GOODS") {
+        const expected = expectedGoodsRowCount(response);
+        const returnedRows = goodsRowIndexes(response).size;
+        const needsRecovery = response.decision !== "EXTRACTED" || (expected !== undefined && returnedRows < expected);
+        if (needsRecovery) {
+          modelCallsAttempted += 1;
+          const recovery = await params.provider.extractInvoice({
+            version: "1",
+            documentId: request.documentId,
+            evidenceMode: InvoiceLlmEvidenceMode.TEXT,
+            requestedFields: [...requestedFields],
+            nativeText: renderFoundation8PageGroundedEvidencePacket(request),
+            verifiedKnowledge: [{ label: `foundation8-skill:${request.skillName}@${request.skillVersion}`, content: request.skillContext }],
+            focusInstruction: [
+              `You are the ${request.domain} invoice specialist performing one bounded completeness recovery pass.`,
+              expected !== undefined ? `The source-supported expected commercial row count is ${expected}; the previous pass materialized ${returnedRows}.` : `The previous pass was incomplete and materialized ${returnedRows} goods rows.`,
+              "Re-read the complete page-delimited goods table from first page through every continuation page.",
+              "Return every commercial row in document order. Printed row N maps to goodsLines.(N-1).",
+              "Bind quantity, unit price and line total by column semantics. Package/carton/pallet counts are never goods quantity.",
+              "Do not fabricate 12-digit GTIP from shorter HS/HSN codes and do not infer origin from party country.",
+              "Every field needs a verbatim quote from its exact canonical page.",
+              request.skillContext
+            ].join("\n\n")
+          });
+          response = mergeGoodsRecovery(response, recovery);
+        }
+      }
       const rejected = response.fields.filter(field => !fieldOwnedBy(request.domain, field.field)).map(field => field.field);
       specialists.push({
         domain: request.domain,
@@ -141,7 +195,7 @@ export async function executeFoundation8SpecialistModelShadow(params: {
     version: FOUNDATION8_SPECIALIST_MODEL_EXECUTION_VERSION,
     mode: "SHADOW_ONLY",
     productionCandidateMutation: false,
-    modelCallsAttempted: requests.length,
+    modelCallsAttempted,
     totalElapsedMs: Date.now() - executionStartedAt,
     specialists
   };

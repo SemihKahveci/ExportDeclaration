@@ -86,7 +86,10 @@ export const env = {
   // Foundation 8 specialist execution is shadow-only and opt-in. Keep disabled by default.
   foundation8ShadowModelEnabled: bool(process.env.FOUNDATION8_SHADOW_MODEL_ENABLED, false),
   // Text-only model used by Foundation 8 bounded specialists. Kept separate from the vision model.
-  foundation8SpecialistModel: process.env.FOUNDATION8_SPECIALIST_MODEL ?? process.env.LLM_MODEL ?? "Qwen3",
+  foundation8SpecialistModel: process.env.FOUNDATION8_SPECIALIST_MODEL?.trim() || process.env.LLM_MODEL || "Qwen3",
+  foundation8SpecialistNumCtx: Math.max(16384, Math.floor(num(process.env.FOUNDATION8_SPECIALIST_NUM_CTX, 32768))),
+  foundation8SpecialistNumPredict: Math.max(4096, Math.floor(num(process.env.FOUNDATION8_SPECIALIST_NUM_PREDICT, 12288))),
+  foundation8ReconciledPromotionEnabled: bool(process.env.FOUNDATION8_RECONCILED_PROMOTION_ENABLED, false),
   
   superAdminResetPassword: bool(process.env.SUPERADMIN_RESET_PASSWORD, false),
   

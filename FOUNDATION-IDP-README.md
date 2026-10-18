@@ -402,3 +402,23 @@ Contract: `backend/scripts/idp/verifyFoundation8140SpecialistTextProviderSplitCo
 ### Foundation 8.15 — Page-Grounded Specialist Evidence Packet
 
 Foundation 8 specialist model execution now receives canonical invoice text as deterministic page-delimited evidence instead of an unlabelled flattened document string. Each page keeps its real page number and native/OCR source identity; blank pages are omitted and the legacy flat text remains only as a compatibility fallback. This is shadow-only and does not change production candidates, Foundation 6 promotion, or normalized declaration writes.
+
+## Foundation 8.16 — Reconciled Specialist Cutover
+
+The first seven real-PDF UI proofs after 8.15 exposed an important boundary: Foundation 8 specialists were still audit-only, so their output could not improve `fieldCandidates` or the declaration UI. 8.16 keeps that safety boundary explicit but adds an opt-in reconciled promotion path (`FOUNDATION8_RECONCILED_PROMOTION_ENABLED=true`).
+
+The cutover is evidence constrained. Specialist evidence must cite an existing canonical page/source with a verbatim source quote. Stable legacy document scalars are preserved when already present; reconciled atomic GOODS fields may replace legacy field-index/page-image guesses. A 6/8-digit HS/HSN is never promoted as a fabricated 12-digit GTIP. Goods origin requires explicit origin semantics, and customs country roles no longer inherit party/address country values without their own role evidence.
+
+Observed general failure classes from the seven-proof corpus are encoded as portable capabilities rather than invoice-specific answers: package quantity vs commercial quantity, product code vs description, unit price vs amount, explicit/global goods-origin semantics, multiline party addresses, document-total semantics, package count/type, air transport semantics, and full multi-page goods-table continuation.
+
+Long GOODS extraction now has a larger configurable text budget (`FOUNDATION8_SPECIALIST_NUM_CTX`, `FOUNDATION8_SPECIALIST_NUM_PREDICT`), carries `goodsTable.expectedRowCount`, and receives one bounded completeness recovery pass when the first specialist response is partial or returns fewer rows than the source-supported expected count. The specialist model configuration now safely falls back to `LLM_MODEL` when `FOUNDATION8_SPECIALIST_MODEL` is unset/blank, avoiding an accidental generic `Qwen3` override in Compose.
+
+Contract:
+
+```powershell
+npm run typecheck
+npm run typecheck --prefix frontend
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8160ReconciledSpecialistCutoverContract.ts
+```
+
+Real canary/cutover remains opt-in. For the Spark setup already used by the project, keep the existing `LLM_MODEL` and `LLM_VISION_MODEL`; set only `FOUNDATION8_RECONCILED_PROMOTION_ENABLED=true` after the 8.16 contract is green. Golden expected answers remain evaluation-only and are never imported into runtime skills or prompts.

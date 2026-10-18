@@ -3,6 +3,7 @@ import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
 import { runFoundation8ShadowRuntime } from "../understanding/invoiceUnderstandingShadowRuntime.js";
 import { executeFoundation8SpecialistModelShadow } from "../understanding/invoiceUnderstandingSpecialistModelExecution.js";
 import { reconcileFoundation8SpecialistModelShadow } from "../understanding/invoiceUnderstandingSpecialistReconciliation.js";
+import { bridgeReconciledFoundation8ToCandidates, overlayReconciledFoundation8Candidates } from "../understanding/invoiceUnderstandingSpecialistCandidateBridge.js";
 import type { CandidateExtractionEnvelope } from "../domain/candidateExtraction.types.js";
 import type { DocumentSegment } from "../domain/documentSegment.types.js";
 import type { SegmentClassification } from "../domain/segmentClassification.types.js";
@@ -482,6 +483,21 @@ export function enforceVisionDocumentRoleAuthority(
   keepOnlyWithRole("parties.buyer.address", buyerRole, (candidate, page) => partyAddressShape(candidate.value) && valueCorroboratedOnPage(candidate, page));
   keepOnlyWithRole("parties.buyer.country", buyerRole);
 
+  // Customs-country roles are independent semantic fields. A seller/buyer address,
+  // a row origin or a port/city token cannot authorize them by itself.
+  keepOnlyWithRole("origin", /\b(?:MENSEI|MENSE\s*I|COUNTRY\s+OF\s+ORIGIN|ORIGIN\s+OF\s+GOODS|URSPRUNG)\b/);
+  keepOnlyWithRole("exitCountry", /\b(?:CIKIS\s+ULKESI|COUNTRY\s+OF\s+(?:EXPORT|DEPARTURE))\b/);
+  keepOnlyWithRole("arrivalCountry", /\b(?:VARIS\s+ULKESI|COUNTRY\s+OF\s+ARRIVAL)\b/);
+  keepOnlyWithRole("destinationCountry", /\b(?:GIDECEGI\s+ULKE|COUNTRY\s+OF\s+FINAL\s+DESTINATION|FINAL\s+DESTINATION|PORT\s+OF\s+DESTINATION)\b/);
+  keepOnlyWithRole("tradeCountry", /\b(?:TICARET\s+YAPILAN\s+ULKE|COUNTRY\s+OF\s+TRADE)\b/);
+
+  // Goods origin is not the seller/buyer country. PAGE_IMAGE row origin needs
+  // an explicit origin role/statement on its own evidence page.
+  for (const field of Object.keys(fields)) {
+    if (!/^goodsLines\.\d+\.origin$/.test(field)) continue;
+    keepOnlyWithRole(field, /\b(?:MENSEI|MENSE\s*I|URSPRUG|URSPRUNG|COUNTRY\s+OF\s+ORIGIN(?:\s+OF\s+GOODS)?|ORIGIN\s+OF\s+GOODS|MADE\s+IN|MENSEILIDIR)\b/);
+  }
+
   // Header/shipment scalars that are especially prone to numeric-role
   // collisions. Quantity/price values must not become invoice totals or
   // weights merely because the VLM returned the requested JSON key.
@@ -882,13 +898,20 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const foundation8SpecialistReconciliationAudit = foundation8SpecialistModelAudit
       ? reconcileFoundation8SpecialistModelShadow({ documentId: result.segmentId, audit: foundation8SpecialistModelAudit })
       : undefined;
+    const foundation8ReconciledCandidates = env.foundation8ReconciledPromotionEnabled && foundation8SpecialistReconciliationAudit
+      ? bridgeReconciledFoundation8ToCandidates({ segmentId: result.segmentId, reconciliation: foundation8SpecialistReconciliationAudit })
+      : { version: "1" as const, fields: {} };
+    const productionCandidates = env.foundation8ReconciledPromotionEnabled
+      ? overlayReconciledFoundation8Candidates(finalRoleGuardedCandidates, foundation8ReconciledCandidates)
+      : finalRoleGuardedCandidates;
 
     result.data = {
       ...result.data,
-      fieldCandidates: finalRoleGuardedCandidates,
+      fieldCandidates: productionCandidates,
       foundation8ShadowAudit,
       ...(foundation8SpecialistModelAudit ? { foundation8SpecialistModelAudit } : {}),
       ...(foundation8SpecialistReconciliationAudit ? { foundation8SpecialistReconciliationAudit } : {}),
+      ...(env.foundation8ReconciledPromotionEnabled ? { foundation8ReconciledPromotionAudit: { version: "8.16.0", promotedFields: Object.keys(foundation8ReconciledCandidates.fields).sort() } } : {}),
       adaptiveRecoveryAudit: adaptiveRecoveryPlan,
       adaptiveRecoveryExecutionAudit: adaptiveRecoveryExecution.audit,
       adaptiveGoodsDescriptionExecutionAudit: adaptiveGoodsDescriptionExecution.audit,
