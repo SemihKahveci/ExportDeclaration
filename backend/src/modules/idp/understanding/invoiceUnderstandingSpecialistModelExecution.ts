@@ -10,7 +10,7 @@ import {
 } from "./invoiceUnderstandingOrchestration.js";
 import { mergeFoundation8GoodsChunks, planFoundation8GoodsChunks } from "./invoiceUnderstandingGoodsChunking.js";
 
-export const FOUNDATION8_SPECIALIST_MODEL_EXECUTION_VERSION = "8.22.0" as const;
+export const FOUNDATION8_SPECIALIST_MODEL_EXECUTION_VERSION = "8.23.0" as const;
 
 const REQUESTED_FIELDS: Record<InvoiceSpecialistDomain, readonly string[]> = {
   PARTIES: [
@@ -99,8 +99,9 @@ async function executeGoodsChunked(params: {
   provider: InvoiceLlmExtractionProvider;
   requestedFields: readonly string[];
   onModelCall: () => void;
+  targetPageNumbers?: ReadonlySet<number>;
 }): Promise<{ response: InvoiceLlmExtractionResponse; audit: NonNullable<Foundation8SpecialistModelAuditItem["goodsChunkAudit"]> }> {
-  const chunks = planFoundation8GoodsChunks(params.request.canonicalPages ?? []);
+  const chunks = planFoundation8GoodsChunks(params.request.canonicalPages ?? [], params.targetPageNumbers);
   if (!chunks.length) {
     params.onModelCall();
     const response = await params.provider.extractInvoice({
@@ -163,9 +164,11 @@ async function executeGoodsChunked(params: {
       }
     }
   };
-  // Two bounded workers prevent a long multi-page table from becoming one giant
-  // sequential request while avoiding an uncontrolled model-call swarm.
-  await Promise.all([worker(), worker()]);
+  // 8.23: the Ollama/Spark endpoint is shared by Vision and by concurrent invoice
+  // jobs. Two GOODS workers per job multiplied into a cross-job request storm.
+  // Keep chunking, but serialize GOODS calls inside each invoice; the worker queue
+  // remains the outer concurrency boundary.
+  await worker();
   const merged = mergeFoundation8GoodsChunks({ documentId: params.request.documentId, chunks: completed, failedTargetPages });
   return {
     response: merged.response,
@@ -188,8 +191,13 @@ async function executeGoodsChunked(params: {
 export async function executeFoundation8SpecialistModelShadow(params: {
   bundle: InvoiceUnderstandingEvidenceBundle;
   provider: InvoiceLlmExtractionProvider;
+  /** 8.24.3: execute only capability domains that the current semantic pass actually needs. */
+  domains?: ReadonlySet<InvoiceSpecialistDomain>;
+  /** Known source pages containing goods rows. Empty/undefined deliberately falls back to all pages. */
+  goodsTargetPageNumbers?: ReadonlySet<number>;
 }): Promise<Foundation8SpecialistModelExecutionAudit> {
-  const requests = planInvoiceUnderstandingSpecialists(params.bundle);
+  const requests = planInvoiceUnderstandingSpecialists(params.bundle)
+    .filter(request => !params.domains || params.domains.has(request.domain));
   const executionStartedAt = Date.now();
   const specialists: Foundation8SpecialistModelAuditItem[] = [];
   let modelCallsAttempted = 0;
@@ -203,7 +211,8 @@ export async function executeFoundation8SpecialistModelShadow(params: {
       if (request.domain === "GOODS" && (request.canonicalPages?.length ?? 0) > 0) {
         const chunked = await executeGoodsChunked({
           request, provider: params.provider, requestedFields,
-          onModelCall: () => { modelCallsAttempted += 1; }
+          onModelCall: () => { modelCallsAttempted += 1; },
+          targetPageNumbers: params.goodsTargetPageNumbers
         });
         response = chunked.response;
         goodsChunkAudit = chunked.audit;

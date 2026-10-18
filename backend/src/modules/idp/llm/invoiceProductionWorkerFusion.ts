@@ -734,6 +734,10 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         verifiedKnowledge: []
       },
       completedPages,
+      // Foundation 8 specialists already own domain-targeted recovery. Running the
+      // legacy PAGE_IMAGE recovery fan-out as well rereads every page several times
+      // and can overload the same local Ollama runtime without adding authority.
+      suppressLegacyRecovery: env.foundation8ShadowModelEnabled,
       onPageCheckpoint: async (page) => {
         segmentCheckpoint.pages[String(page.pageNumber)] = {
           status: page.status,
@@ -796,7 +800,19 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"
       ? mergeInvoicePrimaryWithFallback(guardedVisionCandidates, deterministicFallback)
       : mergeInvoiceCandidateSources(deterministicFallback, guardedVisionCandidates);
-    const fusedCandidates = mergeInvoiceCandidateSources(primaryFused, roleBoundDeterministic);
+    // 8.24: semantic-primary means exactly that. Role-bound deterministic evidence is
+    // fallback/corroboration, not a second extractor allowed to compete with a grounded
+    // Vision goods field. This restores the original LLM-first contract: if Vision
+    // extracted a goods field, keep that semantic value; use native/OCR only when the
+    // semantic primary left the field absent. Non-goods role-bound evidence remains a
+    // peer for the existing high-risk scalar guards/F6 policy.
+    const roleBoundWithoutCompetingGoods: FieldCandidateEnvelope = {
+      version: "1",
+      fields: Object.fromEntries(Object.entries(roleBoundDeterministic.fields).filter(([field]) =>
+        !/^goodsLines\.\d+\./.test(field) || !(guardedVisionCandidates.fields[field]?.length)
+      ))
+    };
+    const fusedCandidates = mergeInvoiceCandidateSources(primaryFused, roleBoundWithoutCompetingGoods);
 
     const associatedCandidates = associateExplicitGoodsUnitsFromQuantity({
       canonicalDocument: params.canonicalDocument,
@@ -804,11 +820,17 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       candidates: fusedCandidates
     });
     const adaptiveRecoveryPlan = planInvoiceAdaptiveRecovery(associatedCandidates);
+    // 8.23: once Foundation 8 specialists are active, they are the sole targeted
+    // semantic recovery layer. Keep the planner audit, but execute no legacy
+    // adaptive PAGE_IMAGE recovery actions in parallel with specialist recovery.
+    const executableAdaptiveRecoveryPlan = env.foundation8ShadowModelEnabled
+      ? { ...adaptiveRecoveryPlan, actions: [] }
+      : adaptiveRecoveryPlan;
     const adaptiveRecoveryExecution = await executeInvoiceAdaptiveScalarRecovery({
       canonicalDocument: params.canonicalDocument,
       segmentId: result.segmentId,
       pageNumbers: [...segment.pageNumbers],
-      plan: adaptiveRecoveryPlan,
+      plan: executableAdaptiveRecoveryPlan,
       currentCandidates: associatedCandidates,
       provider,
       renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
@@ -819,7 +841,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalDocument: params.canonicalDocument,
       segmentId: result.segmentId,
       pageNumbers: [...segment.pageNumbers],
-      plan: adaptiveRecoveryPlan,
+      plan: executableAdaptiveRecoveryPlan,
       currentCandidates: adaptiveRecoveryExecution.candidates,
       provider,
       renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
@@ -830,7 +852,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalDocument: params.canonicalDocument,
       segmentId: result.segmentId,
       pageNumbers: [...segment.pageNumbers],
-      plan: adaptiveRecoveryPlan,
+      plan: executableAdaptiveRecoveryPlan,
       currentCandidates: adaptiveGoodsDescriptionExecution.candidates,
       provider,
       renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
@@ -841,7 +863,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalDocument: params.canonicalDocument,
       segmentId: result.segmentId,
       pageNumbers: [...segment.pageNumbers],
-      plan: adaptiveRecoveryPlan,
+      plan: executableAdaptiveRecoveryPlan,
       currentCandidates: adaptiveGoodsCodeExecution.candidates,
       provider,
       renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
@@ -852,16 +874,15 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     // semantic-role guard must therefore be the final Vision boundary, not only
     // a pre-recovery filter; otherwise a focused recovery call can reintroduce
     // the same unsupported scalar that the primary pass correctly rejected.
-    const finalRoleGuardedCandidates = enforceValidatedNativeGoodsFieldAuthority(
-      enforceVisionGoodsRowBoundary(
-        enforceVisionSourceBackedCommercialNumericAuthority(
-          enforceVisionDocumentRoleAuthority(
-            sanitizeVisionCommercialSemanticCandidates(adaptiveGoodsNumericExecution.candidates),
-            params.canonicalDocument
-          ),
-          roleBoundDeterministic
-        ),
-        roleBoundDeterministic
+    // 8.24: do not re-demote already grounded semantic goods after extraction.
+    // The old native-row/row-boundary guards could delete a correct Vision quantity,
+    // description or row merely because a deterministic parser produced a different
+    // interpretation. Keep document-role and source-backed high-risk scalar guards,
+    // but let semantic goods survive to F6 unchanged.
+    const finalRoleGuardedCandidates = enforceVisionSourceBackedCommercialNumericAuthority(
+      enforceVisionDocumentRoleAuthority(
+        sanitizeVisionCommercialSemanticCandidates(adaptiveGoodsNumericExecution.candidates),
+        params.canonicalDocument
       ),
       roleBoundDeterministic
     );
@@ -892,8 +913,30 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       candidates: finalRoleGuardedCandidates,
       evidenceBundle: foundation8EvidenceBundle
     });
-    const foundation8SpecialistModelAudit = env.foundation8ShadowModelEnabled
-      ? await executeFoundation8SpecialistModelShadow({ bundle: foundation8EvidenceBundle, provider: createFoundation8SpecialistProvider() })
+    // 8.24.3: specialist execution is capability-routed, not an unconditional second
+    // full-document extraction pass. The primary semantic pass already owns healthy
+    // domains; specialists are reserved for concrete incompleteness/recovery gaps.
+    const foundation8SpecialistDomains = new Set<"PARTIES" | "COMMERCIAL" | "GOODS" | "LOGISTICS">(
+      foundation8ShadowAudit.reconciliation.recoveryRequests.map(request => request.domain)
+    );
+    const shadowUnderstanding = foundation8ShadowAudit.understanding;
+    if (!shadowUnderstanding.parties.seller?.name || !shadowUnderstanding.parties.buyer?.name) foundation8SpecialistDomains.add("PARTIES");
+    if (!shadowUnderstanding.documentIdentity.invoiceNo || !shadowUnderstanding.documentIdentity.invoiceDate
+      || !shadowUnderstanding.commercialTerms.currency || !shadowUnderstanding.commercialTerms.totalAmount) {
+      foundation8SpecialistDomains.add("COMMERCIAL");
+    }
+    // Logistics/package fields are optional invoice semantics. Do not spend a full
+    // specialist call merely because a document legitimately omits one of them.
+    const goodsTargetPageNumbers = new Set(
+      shadowUnderstanding.goodsTable.rows.flatMap(row => row.pageNumbers)
+    );
+    const foundation8SpecialistModelAudit = env.foundation8ShadowModelEnabled && env.foundation8TextSpecialistsEnabled && foundation8SpecialistDomains.size > 0
+      ? await executeFoundation8SpecialistModelShadow({
+          bundle: foundation8EvidenceBundle,
+          provider: createFoundation8SpecialistProvider(),
+          domains: foundation8SpecialistDomains,
+          goodsTargetPageNumbers
+        })
       : undefined;
     const foundation8SpecialistReconciliationAudit = foundation8SpecialistModelAudit
       ? reconcileFoundation8SpecialistModelShadow({ documentId: result.segmentId, audit: foundation8SpecialistModelAudit })

@@ -79,6 +79,8 @@ export async function executeInvoiceVisionByPage(params: {
   renderPage: InvoiceVisionPageRenderer;
   request: Omit<InvoiceLlmExtractionRequest, "documentId" | "evidenceMode">;
   completedPages?: Record<number, { candidates: FieldCandidateEnvelope; decision: string; candidateCount: number; extractionArtifact?: InvoiceLlmExtractionArtifact }>;
+  /** Foundation 8 specialists own targeted semantic recovery when enabled. */
+  suppressLegacyRecovery?: boolean;
   onPageCheckpoint?: (checkpoint: {
     pageNumber: number;
     status: "COMPLETED" | "FAILED";
@@ -298,7 +300,7 @@ export async function executeInvoiceVisionByPage(params: {
     // pass that excludes only the evidence-gated critical scalars. This is not
     // OCR/deterministic authority: the same page image and Qwen provider remain
     // the primary evidence source. Normal non-empty responses pay no retry cost.
-    if (response.decision === "REVIEW_REQUIRED" && response.fields.length === 0) {
+    if (!params.suppressLegacyRecovery && response.decision === "REVIEW_REQUIRED" && response.fields.length === 0) {
       const recoveryRequestedFields = params.request.requestedFields.filter(
         (field) => field !== "invoiceDate" && field !== "currency"
       );
@@ -334,7 +336,7 @@ export async function executeInvoiceVisionByPage(params: {
     // evidence-gated critical scalars remain excluded. Empty/fail-closed page
     // responses do not trigger this pass.
     let scalarResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
-    if (response.fields.length > 0) {
+    if (!params.suppressLegacyRecovery && response.fields.length > 0) {
       const returnedFields = new Set(response.fields.map((field) => field.field));
       const scalarRequestedFields = params.request.requestedFields.filter(
         (field) => field !== "invoiceDate"
@@ -382,7 +384,7 @@ export async function executeInvoiceVisionByPage(params: {
       (field) => params.request.requestedFields.includes(field) && !criticalReturnedFields.has(field)
     );
     criticalScalarRecoveryRequestedFields = [...criticalRequestedFields];
-    if (response.fields.length > 0 && criticalRequestedFields.length > 0) {
+    if (!params.suppressLegacyRecovery && response.fields.length > 0 && criticalRequestedFields.length > 0) {
       criticalScalarRecoveryAttempted = true;
       try {
         const criticalRecovery = await params.provider.extractInvoice({
@@ -425,7 +427,7 @@ export async function executeInvoiceVisionByPage(params: {
     const responseHasOrigin = response.fields.some((field) => field.field === "origin");
     const scalarHasOrigin = scalarResponse?.fields.some((field) => field.field === "origin") ?? false;
     const originWasRequested = params.request.requestedFields.includes("origin");
-    if (originWasRequested && response.fields.length > 0 && !responseHasOrigin && !scalarHasOrigin) {
+    if (!params.suppressLegacyRecovery && originWasRequested && response.fields.length > 0 && !responseHasOrigin && !scalarHasOrigin) {
       originRecoveryAttempted = true;
       try {
         const originRecovery = await params.provider.extractInvoice({
@@ -487,7 +489,7 @@ export async function executeInvoiceVisionByPage(params: {
       }
     }
     goodsNumericRecoveryReasons = [...new Set(goodsNumericRecoveryReasons)];
-    goodsNumericRecoveryTriggered = goodsNumericRecoveryReasons.length > 0;
+    goodsNumericRecoveryTriggered = !params.suppressLegacyRecovery && goodsNumericRecoveryReasons.length > 0;
 
     let numericRecoveryResponse: Awaited<ReturnType<InvoiceLlmExtractionProvider["extractInvoice"]>> | undefined;
     if (goodsNumericRecoveryTriggered) {

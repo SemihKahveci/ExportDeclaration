@@ -29,20 +29,24 @@ function nonEmptyPages(pages: readonly InvoiceUnderstandingCanonicalPage[]): Inv
  * bounded continuation context, allowing a row split at a page break to remain atomic.
  * This keeps model input bounded without supplier coordinates or layout constants.
  */
-export function planFoundation8GoodsChunks(pages: readonly InvoiceUnderstandingCanonicalPage[]): Foundation8GoodsChunk[] {
+export function planFoundation8GoodsChunks(
+  pages: readonly InvoiceUnderstandingCanonicalPage[],
+  targetPageNumbers?: ReadonlySet<number>
+): Foundation8GoodsChunk[] {
   const ordered = nonEmptyPages(pages);
-  return ordered.map((target, index) => {
+  return ordered.flatMap((target, index) => {
+    if (targetPageNumbers?.size && !targetPageNumbers.has(target.pageNumber)) return [];
     const remaining = Math.max(0, FOUNDATION8_GOODS_CHUNK_CONTEXT_CHAR_LIMIT - target.text.length);
     const next = ordered[index + 1];
     const adjacentBudget = Math.min(remaining, FOUNDATION8_GOODS_ADJACENT_CONTEXT_CHAR_LIMIT);
     const continuation = next && adjacentBudget > 0
       ? { ...next, text: next.text.slice(0, adjacentBudget) }
       : undefined;
-    return {
+    return [{
       chunkId: `goods-p${target.pageNumber}`,
       targetPageNumber: target.pageNumber,
       pages: continuation ? [target, continuation] : [target]
-    };
+    }];
   });
 }
 

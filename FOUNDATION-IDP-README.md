@@ -509,3 +509,31 @@ docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/veri
 After this contract is green, the next real-model canary should prioritize a multi-page/high-row-count invoice. The purpose is to validate chunk timing, per-page row ownership, merge completeness, and bounded recovery before expanding the real-model corpus.
 
 8.22 also tightens the cutover boundary: GOODS is promotable only when reconciliation has no GOODS recovery request. Completed chunks remain visible in audit/reconciliation, but an incomplete table cannot partially replace legacy rows and create a mixed-authority production goods table.
+
+### Foundation 8.23 — Inference Budget + Capability Routing
+- Foundation 8 specialists are now the sole targeted semantic-recovery layer when specialist execution is enabled. Primary page Vision remains active, but legacy broad PAGE_IMAGE recovery fan-out and Foundation-7 adaptive PAGE_IMAGE recovery execution are suppressed to prevent duplicate rereads of the same evidence.
+- GOODS chunking remains page-bounded, but per-invoice GOODS model execution is serialized so concurrent invoice jobs cannot multiply two chunk workers each into an Ollama/Spark request storm.
+- Goods skill v1.2 strengthens generic numeric role disambiguation: header → cell → commercial unit binding precedes arithmetic; packaging counts cannot become commercial quantity; arithmetic consistency cannot prove semantic column identity.
+- Recovery discipline is now explicit skill knowledge: one semantic reading per bounded chunk, then only domain-local evidence-targeted recovery/review.
+- No supplier/invoice-specific runtime constants, no expected answers in skills, no direct normalizedData write; Foundation 6 remains final promotion authority.
+
+### Foundation 8.24 — Semantic-primary simplification
+- 8.24.2 correction: when `FOUNDATION8_SHADOW_MODEL_ENABLED=true`, the bounded Foundation 8 text specialists are enabled by default again. The 8.24.0 Vision-only default was disproved by the four-invoice source-truth canary: Volta became correct, but YEM still bound package quantity as commercial quantity, Çelikel materialized a note/package summary as a phantom goods row, and VED146 retained severe locale-decimal corruption. `FOUNDATION8_TEXT_SPECIALISTS_ENABLED=false` remains an explicit operator override; Foundation 8 shadow mode itself is still default-off.
+- Grounded Qwen-VL goods fields are semantic-primary. Native/OCR deterministic goods candidates remain fallback when Vision left a field absent, but they no longer compete with or re-demote an already extracted semantic goods value before Foundation 6.
+- The shared invoice extraction skill is v12 and explicitly teaches source-truth preservation, header/cell semantic role binding, package-vs-commercial quantity, complete multi-page rows, product-code vs HS identity, and explicit document-level goods-origin semantics.
+- High-risk document-role/scalar guards and Foundation 6 persistence authority remain intact. No supplier/invoice-specific runtime constants were added.
+- Runtime acceptance is no longer contract-only: the release gate is real PDF source-truth coverage through normalizedData/UI, with the four canaries used as capability classes rather than memorized answers.
+
+### Foundation 8.24.3 — Capability-Routed Specialist Budget
+- Fixes the 8.24.2 fresh-canary runtime regression where re-enabling all four text specialists turned every invoice into an unconditional second full-document extraction pass. The production worker now executes only specialist domains justified by the current semantic understanding: reconciliation-requested domains plus missing core party/commercial identity fields.
+- GOODS remains the main targeted recovery path for incomplete atomic rows, but its chunk planner now receives only pages already carrying source-grounded goods-row evidence when such pages are known. If no goods page is known, it deliberately falls back to the existing all-page fail-closed behavior rather than guessing a page from supplier/layout constants.
+- LOGISTICS is not invoked merely because an optional logistics/package field is absent. Healthy Vision/native semantic domains remain untouched instead of being reread by Qwen3 32B.
+- This is inference-budget/capability routing only: no supplier/invoice-specific value, coordinate, expected answer, arithmetic repair, or direct normalizedData write is added. Foundation 6 remains final promotion authority.
+- Expected canary effect: Volta/YEM/Çelikel no longer pay PARTIES+COMMERCIAL+LOGISTICS text calls when those domains are already healthy; VED146 still receives bounded GOODS work on its actual goods-bearing pages. This reduces Spark model contention and makes the 8.24.2 specialist reactivation operationally bounded again.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8243CapabilityRoutedSpecialistBudgetContract.ts`
+
+#### 8.24.3a — Typecheck correction
+- Corrected the capability-routing patch contract without changing runtime policy: optional seller/buyer objects are guarded before reading `name`, and the existing GOODS chunk planner's `targetPageNumbers` parameter is now threaded through the local `executeGoodsChunked` helper type/call.
+- No extraction, skill, supplier, expected-value, or authority behavior changed; this is the compile-safe form of 8.24.3.

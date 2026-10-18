@@ -85,6 +85,11 @@ export const env = {
   llmVisionMaxImageBytes: Math.max(256 * 1024, Math.floor(num(process.env.LLM_VISION_MAX_IMAGE_BYTES, 8 * 1024 * 1024))),
   // Foundation 8 specialist execution is shadow-only and opt-in. Keep disabled by default.
   foundation8ShadowModelEnabled: bool(process.env.FOUNDATION8_SHADOW_MODEL_ENABLED, false),
+  // 8.24.2: when Foundation 8 semantic runtime is explicitly enabled, its bounded text
+  // specialists are part of that semantic path by default. Shadow mode itself remains off by
+  // default, so this does not add inference to installations that have not enabled Foundation 8.
+  // Operators may still explicitly set FOUNDATION8_TEXT_SPECIALISTS_ENABLED=false to disable them.
+  foundation8TextSpecialistsEnabled: bool(process.env.FOUNDATION8_TEXT_SPECIALISTS_ENABLED, true),
   // Text-only model used by Foundation 8 bounded specialists. Kept separate from the vision model.
   foundation8SpecialistModel: process.env.FOUNDATION8_SPECIALIST_MODEL?.trim() || process.env.LLM_MODEL || "Qwen3",
   foundation8SpecialistNumCtx: Math.max(16384, Math.floor(num(process.env.FOUNDATION8_SPECIALIST_NUM_CTX, 32768))),
