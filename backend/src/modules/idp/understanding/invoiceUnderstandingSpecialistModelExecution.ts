@@ -94,6 +94,11 @@ export interface Foundation8SpecialistModelExecutionAudit {
 }
 
 
+function isFoundation8TransportFailure(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /fetch failed|abort|timeout|ECONN|socket|network/i.test(message);
+}
+
 async function executeGoodsChunked(params: {
   request: ReturnType<typeof planInvoiceUnderstandingSpecialists>[number];
   provider: InvoiceLlmExtractionProvider;
@@ -153,8 +158,15 @@ async function executeGoodsChunked(params: {
           response = mergeGoodsRecovery(response, await call(true));
         }
         completed.push({ targetPageNumber: chunk.targetPageNumber, response });
-      } catch {
-        // One bounded retry is chunk-local. A failed page cannot fail unrelated pages.
+      } catch (error) {
+        // Transport/runtime failure is not semantic uncertainty. Repeating the same
+        // heavyweight call against the same unhealthy endpoint only amplifies load.
+        // Fail this chunk closed immediately; semantic REVIEW_REQUIRED still gets
+        // its single bounded recovery above.
+        if (isFoundation8TransportFailure(error)) {
+          failedTargetPages.push(chunk.targetPageNumber);
+          continue;
+        }
         try {
           retriedTargetPages.push(chunk.targetPageNumber);
           completed.push({ targetPageNumber: chunk.targetPageNumber, response: await call(true) });

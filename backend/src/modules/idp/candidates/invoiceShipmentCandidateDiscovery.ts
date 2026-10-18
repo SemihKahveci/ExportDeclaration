@@ -667,7 +667,7 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
   if (!fields[GROSS_FIELD]?.length) discoverCompactWeightLabel(fields, canonical, segmentId, GROSS_FIELD, "GROSS");
   if (!fields[NET_FIELD]?.length) discoverCompactWeightLabel(fields, canonical, segmentId, NET_FIELD, "NET");
   
-  // Explicit summary labels such as "TOPLAM KAP: 66 PALET" carry both
+  // Explicit summary labels such as "TOPLAM KAP: 18 PALET" carry both
   // package count and package type. Prefer this role-bound evidence before the
   // table-column heuristic; it is layout/supplier independent.
   if (!fields[PACKAGE_FIELD]?.length) {

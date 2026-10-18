@@ -117,7 +117,7 @@ function parseLocaleNumericEvidence(raw: unknown): number | undefined {
     const parts = token.split(sep);
     // A single separator followed by exactly three digits is a thousands
     // grouping when the integer side is non-zero and no second grouping exists.
-    // Evidence such as 0.700 remains decimal; 25.000 becomes 25000.
+    // Evidence such as 0.700 remains decimal; 12.345 becomes 12345.
     if (parts.length === 2 && parts[0] !== "0" && /^\d{3}$/.test(parts[1] ?? "")) token = parts.join("");
     else if (parts.length > 2 && parts.slice(1).every((part) => /^\d{3}$/.test(part))) token = parts.join("");
     else token = token.replace(sep, ".");
@@ -496,7 +496,7 @@ function ollamaImage(image: InvoiceLlmPageImage): string {
 let activeVisionInferences = 0;
 const visionWaiters: Array<() => void> = [];
 
-async function acquireVisionSlot(): Promise<{ queueWaitMs: number; release: () => void }> {
+export async function acquireVisionSlot(): Promise<{ queueWaitMs: number; release: () => void }> {
   const queuedAt = Date.now();
   if (activeVisionInferences < env.llmVisionConcurrency) {
     activeVisionInferences += 1;
@@ -546,7 +546,9 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
       queueWaitMs: slot.queueWaitMs,
       activeVisionInferences,
       concurrencyLimit: env.llmVisionConcurrency,
-      timeoutMs
+      timeoutMs,
+      numCtx: env.llmVisionNumCtx,
+      numPredict: env.llmVisionNumPredict
     });
     try {
       const userText = JSON.stringify({
@@ -572,10 +574,12 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
           format: "json",
           options: {
             temperature: 0,
-            // Ollama's effective context can otherwise be exhausted by the
-            // page image + prompt before the compact JSON finishes.
-            num_ctx: 8192,
-            num_predict: 4096
+            // 8.25.1: Ollama counts image/prompt tokens and generated output against
+            // num_ctx. The portable skill context made the former 8k context too
+            // small on some invoices even though num_predict was 4k. Keep both
+            // budgets explicit/configurable and reserve substantially more context.
+            num_ctx: env.llmVisionNumCtx,
+            num_predict: env.llmVisionNumPredict
           },
           messages: [
             { role: "system", content: INVOICE_EXTRACTION_SYSTEM_PROMPT },
@@ -602,6 +606,13 @@ export class QwenVisionInvoiceProvider implements InvoiceLlmExtractionProvider {
       if (!content) {
         const thinkingBytes = Buffer.byteLength(payload.message?.thinking ?? "", "utf8");
         throw new Error(`Qwen vision response content boş (transport=ollama-native, done_reason=${payload.done_reason ?? "unknown"}, thinkingBytes=${thinkingBytes}).`);
+      }
+      if (payload.done_reason === "length") {
+        throw new Error(
+          `LLM_VISION_OUTPUT_TRUNCATED: structured response exhausted context/output budget ` +
+          `(num_ctx=${env.llmVisionNumCtx}, num_predict=${env.llmVisionNumPredict}, ` +
+          `contentBytes=${Buffer.byteLength(content, "utf8")}, evalCount=${payload.eval_count ?? "unknown"})`
+        );
       }
       const parsedResponse = parseResponse(content, request, pageImages, {
         done: payload.done,

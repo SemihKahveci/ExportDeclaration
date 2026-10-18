@@ -1,4 +1,5 @@
 import { env } from "../../../config/env.js";
+import { acquireVisionSlot } from "./qwenVisionInvoiceProvider.js";
 import {
   InvoiceLlmExtractionDecision,
   type InvoiceLlmEvidenceRef,
@@ -269,9 +270,21 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
 
     const startedAt = Date.now();
     const endpoint = `${ollamaBaseUrl(env.llmBaseUrl)}/api/chat`;
+    // 8.24.4: the text and vision models share the same Ollama/Spark runtime.
+    // Do not let a 32B specialist load/generate while a VL inference is active.
+    // The existing FIFO vision gate becomes the single device-level inference gate,
+    // so worker concurrency cannot create cross-model transport thrash/fetch failures.
+    const slot = await acquireVisionSlot();
+    console.info("idp.foundation8_text_specialist.started", {
+      documentId: request.documentId,
+      model: env.foundation8SpecialistModel,
+      queueWaitMs: slot.queueWaitMs,
+      sharedInferenceGate: true
+    });
+    try {
       let response: Response | undefined;
       let lastTransportError: unknown;
-      for (let attempt = 1; attempt <= 2; attempt += 1) {
+      for (let attempt = 1; attempt <= 1; attempt += 1) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), env.llmTimeoutMs);
         try {
@@ -322,7 +335,7 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
           break;
         } catch (error) {
           lastTransportError = error;
-          if (attempt >= 2) throw error;
+          if (attempt >= 1) throw error;
           console.warn("idp.foundation8_text_specialist.transport_retry", { documentId: request.documentId, model: env.foundation8SpecialistModel, attempt, error: error instanceof Error ? error.message : String(error) });
           await new Promise(resolve => setTimeout(resolve, 1500));
         } finally {
@@ -343,6 +356,9 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
         fieldCount: parsed.fields.length
       });
       return { ...parsed, model: env.foundation8SpecialistModel, provider: this.name };
+    } finally {
+      slot.release();
+    }
   }
 }
 

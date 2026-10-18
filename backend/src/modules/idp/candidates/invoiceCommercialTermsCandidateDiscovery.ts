@@ -271,7 +271,7 @@ function totalAmount(lines:EvidenceLine[]) {
   // Accept it only when the same visual row contains a numeric value AND the
   // document exposes exactly one explicit amount/unit-price currency header.
   // This keeps generic subtotal/tax rows fail-closed while allowing a role-bound
-  // table total such as Amount(USD) ... Total ... 4835.
+  // table total such as Amount(USD) ... Total ... 7420.
   const tableCurrencies = lines.flatMap(line => {
     const m = norm(line.text).match(/\b(?:AMOUNT|UNIT\s*PRICE|RATE)\s*\(?\s*(TRY|TL|EUR|EURO|USD|GBP|CHF|JPY|CNY|RUB|AED|SAR)\s*\)?/);
     return m?.[1] ? [currencyToken(m[1])].filter((x): x is string => Boolean(x)) : [];
@@ -317,7 +317,7 @@ export function discoverInvoiceCommercialTermsFieldCandidates(
     /*
      * Invoice currency is deliberately bound to the selected invoice-total
      * evidence. A document may also contain exchange-rate rows such as
-     * "53,3268 TRY"; those are not the invoice currency.
+     * "41,2750 TRY"; those are not the invoice currency.
      */
     let totalCurrency="currency" in total ? total.currency : currencyToken(total.line.text);
     if(!totalCurrency){

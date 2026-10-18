@@ -81,15 +81,18 @@ export const env = {
   // wedged local runtime cannot hold a worker slot for 30 minutes.
   llmVisionAttemptTimeoutMs: Math.max(1000, Math.floor(num(process.env.LLM_VISION_ATTEMPT_TIMEOUT_MS, 5 * 60 * 1000))),
   llmVisionConcurrency: Math.max(1, Math.floor(num(process.env.LLM_VISION_CONCURRENCY, 1))),
+  // Keep the primary Vision request close to the proven pre-8.24 runtime budget.
+  // Foundation 8 no longer injects the full specialist skill corpus into every page prompt;
+  // the shared invoiceExtractionSkill remains the semantic instruction source.
+  llmVisionNumCtx: Math.max(8192, Math.floor(num(process.env.LLM_VISION_NUM_CTX, 8192))),
+  llmVisionNumPredict: Math.max(2048, Math.floor(num(process.env.LLM_VISION_NUM_PREDICT, 4096))),
   llmVisionMaxPages: Math.max(1, Math.floor(num(process.env.LLM_VISION_MAX_PAGES, 12))),
   llmVisionMaxImageBytes: Math.max(256 * 1024, Math.floor(num(process.env.LLM_VISION_MAX_IMAGE_BYTES, 8 * 1024 * 1024))),
   // Foundation 8 specialist execution is shadow-only and opt-in. Keep disabled by default.
   foundation8ShadowModelEnabled: bool(process.env.FOUNDATION8_SHADOW_MODEL_ENABLED, false),
-  // 8.24.2: when Foundation 8 semantic runtime is explicitly enabled, its bounded text
-  // specialists are part of that semantic path by default. Shadow mode itself remains off by
-  // default, so this does not add inference to installations that have not enabled Foundation 8.
-  // Operators may still explicitly set FOUNDATION8_TEXT_SPECIALISTS_ENABLED=false to disable them.
-  foundation8TextSpecialistsEnabled: bool(process.env.FOUNDATION8_TEXT_SPECIALISTS_ENABLED, true),
+  // Bounded text specialists remain available only as an explicit experiment/recovery lane.
+  // They are disabled by default so the normal path never swaps Qwen-VL <-> Qwen3 on Spark.
+  foundation8TextSpecialistsEnabled: bool(process.env.FOUNDATION8_TEXT_SPECIALISTS_ENABLED, false),
   // Text-only model used by Foundation 8 bounded specialists. Kept separate from the vision model.
   foundation8SpecialistModel: process.env.FOUNDATION8_SPECIALIST_MODEL?.trim() || process.env.LLM_MODEL || "Qwen3",
   foundation8SpecialistNumCtx: Math.max(16384, Math.floor(num(process.env.FOUNDATION8_SPECIALIST_NUM_CTX, 32768))),

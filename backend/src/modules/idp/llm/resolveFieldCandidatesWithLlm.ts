@@ -15,6 +15,13 @@ export async function resolveFieldCandidatesWithLlm(envelope: FieldCandidateEnve
   const deterministic = resolveFieldCandidates(envelope);
   if (deterministic.status === FieldResolutionStatus.RESOLVED) return { resolution: deterministic };
   if (!(options.llmEnabled ?? env.llmEnabled)) return { resolution: deterministic };
+  // Foundation 8 already performs semantic extraction with Qwen-VL and keeps F6 as
+  // final authority. Calling the legacy qwen3:32b field resolver here creates a
+  // second heavyweight model lane, forces VL<->text model swaps on the same Spark,
+  // and can block RESOLVE for minutes while another invoice is still in Vision.
+  // Fail closed on unresolved deterministic ambiguity instead; the declaration/F6
+  // boundary can retain review state without paying another model inference.
+  if (env.foundation8ShadowModelEnabled) return { resolution: deterministic };
 
   const ambiguous = ambiguousEntries(envelope, deterministic);
   const provider = options.provider ?? new QwenOpenAiProvider();

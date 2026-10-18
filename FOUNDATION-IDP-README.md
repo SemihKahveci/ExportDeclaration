@@ -537,3 +537,52 @@ Contract:
 #### 8.24.3a — Typecheck correction
 - Corrected the capability-routing patch contract without changing runtime policy: optional seller/buyer objects are guarded before reading `name`, and the existing GOODS chunk planner's `targetPageNumbers` parameter is now threaded through the local `executeGoodsChunked` helper type/call.
 - No extraction, skill, supplier, expected-value, or authority behavior changed; this is the compile-safe form of 8.24.3.
+
+### Foundation 8.24.4 — shared Spark/Ollama inference gate
+
+Fresh multi-invoice canary exposed a transport-level resource collision rather than an invoice semantic failure: `qwen3-vl:30b-a3b-instruct-q4_K_M` vision calls were serialized by the existing vision gate, while newly re-enabled `qwen3:32b` text specialists bypassed that gate and could execute concurrently against the same Spark/Ollama runtime. Under worker concurrency this caused cross-model contention, very long specialist latency and repeated `fetch failed` transport retries.
+
+8.24.4 makes the existing FIFO inference slot a shared device-level gate for both Vision and Foundation 8 text specialists. A specialist now queues behind an active Vision request (and vice versa) and always releases the slot in `finally`. This intentionally preserves `IDP_WORKER_CONCURRENCY=2` for non-model pipeline work while allowing only one heavyweight Ollama inference at a time on the shared runtime. The existing single bounded transport retry remains as a true transient-recovery guard; it is no longer expected to compensate for self-inflicted concurrent model contention. This checkpoint changes scheduling only: no supplier/invoice rule, expected value, extraction authority or F6 write boundary is changed.
+
+### Foundation 8.25 — Single Semantic Inference Lane
+- Fresh four-invoice canaries proved that the 8.24.2 text-specialist reactivation created the regression: Foundation 8 was running Qwen-VL semantic extraction and then loading `qwen3:32b` again for specialist/legacy field-resolution work on the same Spark/Ollama runtime. The shared gate prevented simultaneous execution but did not prevent expensive cross-model swapping, long queueing, or endpoint instability; VED146 still triggered `fetch failed`, while unrelated invoices spent minutes in RESOLVE.
+- Foundation 8 now has one default semantic model lane: Qwen-VL remains semantic-primary and receives the portable invoice-understanding, parties, commercial, goods-table and logistics skill contexts directly as VERIFIED_KNOWLEDGE. The skills therefore remain active without requiring a second 32B text-model extraction pass.
+- Bounded Qwen3 text specialists are now explicit opt-in (`FOUNDATION8_TEXT_SPECIALISTS_ENABLED=true`) rather than default-on. They remain available for controlled experiments/recovery but are not part of normal Foundation 8 production inference.
+- The legacy Qwen3 field-candidate resolver is skipped while Foundation 8 shadow/runtime mode is active. Deterministic ambiguity fails closed to review/F6 instead of launching another heavyweight text inference. Foundation 6 remains the final candidate-resolution/write authority.
+- Transport failures are no longer retried as if they were semantic uncertainty. The text provider has zero automatic transport retries, and GOODS chunk execution immediately fails a transport-broken chunk closed. A model `REVIEW_REQUIRED` decision may still receive its single bounded semantic recovery because that is a different failure class.
+- This checkpoint removes the self-inflicted VL↔text model-switch loop introduced after 8.24 while preserving the semantic capability knowledge that 8.24.2 was trying to restore. No supplier/invoice-specific answer, coordinate, expected value, arithmetic repair, or direct `normalizedData` write was added.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation825SingleSemanticLaneContract.ts`
+
+### Foundation 8.25.1 — Vision Output Budget
+- The first 8.25 fresh batch exposed a context-budget regression, not a new invoice-layout failure: several Qwen-VL calls ended with Ollama `done_reason=length`, `evalCount=559` and an unterminated JSON string. The previous provider hard-coded `num_ctx=8192`; after 8.25 injected the portable skill context into the semantic-primary Vision request, page-image tokens + prompt/skills consumed almost the whole context and left only a few hundred generation tokens despite `num_predict=4096`.
+- Vision context/output budgets are now explicit runtime settings: `LLM_VISION_NUM_CTX=32768` and `LLM_VISION_NUM_PREDICT=8192` by default. The provider passes these values directly to Ollama and logs them on every Vision start, so future truncation is diagnosable from one worker log.
+- `done_reason=length` is classified before JSON parsing as `LLM_VISION_OUTPUT_TRUNCATED` with the effective context/output budgets, content bytes and eval count. A truncated response is never treated as semantic uncertainty and never promoted as partial invoice truth.
+- This restores headroom for the same seven-invoice capability set after the 8.25 skill-context cutover; it does not add invoice/supplier rules, expected answers, arithmetic repair, a second model pass, or any new write authority. Foundation 6 remains the final promotion boundary.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8251VisionOutputBudgetContract.ts`
+
+### Foundation 8.25.2 — corpus-neutral batch readiness
+- Fixed the 8.25 / 8.25.1 verification scripts so they resolve repository files both from the host project root and from the backend container working directory (`/app/backend`). The previous scripts incorrectly assumed `process.cwd()` was always the repository root, which is why `docker compose ... exec backend` reported `ENOENT: compose.dev.yaml` even though the runtime patch itself typechecked.
+- Audited the Foundation 8 semantic path before the larger corpus run. Qwen-VL remains the single default semantic lane, the five portable skills remain injected into primary Vision, text specialists remain default-off, the legacy field LLM remains bypassed in Foundation 8, truncation remains fail-closed, and the UI continues to read persisted `normalizedData` rather than a shadow artifact.
+- Removed corpus-derived example literals from runtime comments/prompts and portable skills (supplier/location examples, package counts, numeric quantities/totals/exchange-rate examples). They were not write-time hardcoded answers, but some skill examples are sent to Qwen-VL as verified knowledge, so retaining values copied from the seven-canary corpus would violate the corpus-neutrality requirement and could bias extraction. Replacements are generic synthetic examples only.
+- Added a batch-readiness contract that locks the single-lane/budget/UI invariants and rejects reintroduction of the audited corpus-specific literals under `backend/src` or `backend/idp-skills`.
+- No supplier rule, invoice number, coordinate, expected invoice answer, arithmetic repair, or direct normalized-data write was added. Foundation 6 remains final promotion authority.
+
+Contracts:
+`docker compose -f compose.dev.yaml exec backend npx tsx scripts/idp/verifyFoundation825SingleSemanticLaneContract.ts`
+`docker compose -f compose.dev.yaml exec backend npx tsx scripts/idp/verifyFoundation8251VisionOutputBudgetContract.ts`
+`docker compose -f compose.dev.yaml exec backend npx tsx scripts/idp/verifyFoundation8252BatchReadinessContract.ts`
+
+### Foundation 8.25.3 — Pre-8.24 Runtime Baseline Restore
+- The post-8.24 slowdown was traced to two separate changes layered on top of the previously stable seven-invoice runtime: re-enabled Qwen3 specialist/field-resolution passes on the same Spark, followed by 8.25 injecting the full five-skill corpus into every Qwen-VL page request. The former caused model switching/queueing; the latter increased prompt/context pressure and exposed `done_reason=length` truncation on invoices that had previously parsed normally.
+- The normal production path is restored to the proven single Qwen-VL page-extraction shape: no full specialist skill corpus is injected through `verifiedKnowledge` on each page. The shared `invoiceExtractionSkill` remains the semantic instruction source and retains general table-role binding, package-vs-commercial quantity, product-vs-HS identity, source-truth coverage, party/commercial/logistics semantics and fail-closed behavior.
+- Vision defaults return to the pre-regression 8192 context / 4096 generation budget instead of paying a 32768 / 8192 budget to compensate for the temporary full-skill prompt injection. Both values remain configurable. `done_reason=length` classification is retained as a safety improvement so any future real truncation fails explicitly instead of surfacing as a misleading JSON parse error.
+- Qwen3 text specialists remain default-off and the legacy Foundation 8 field-LLM second pass remains bypassed. This keeps the 8.25 removal of VL↔text model swapping while restoring the prompt/budget shape that handled the original seven-invoice corpus in reasonable time.
+- The 8.25/8.25.1/8.25.2 contracts are made backend-container-safe: they assert only files actually mounted under `/app/backend`. Host-only compose/frontend files are not falsely assumed to exist inside the backend container.
+- No supplier, invoice, coordinate, expected answer or corpus-specific extraction rule is introduced. Foundation 6 remains the final promotion/write authority.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8253Pre824RuntimeBaselineContract.ts`

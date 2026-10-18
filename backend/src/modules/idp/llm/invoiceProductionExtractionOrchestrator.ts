@@ -107,7 +107,7 @@ function canonicalVisionDeliveryTerm(value: string): string | undefined {
   const upper = value.trim().toUpperCase();
   if (!upper) return undefined;
   // Delivery terms are a closed Incoterms 2020 vocabulary at this boundary.
-  // Location/payment suffixes are allowed ("FOB NINGBO", "DAP-30 DAYS"),
+  // Location/payment suffixes are allowed ("FOB SHANGHAI", "DAP-30 DAYS"),
   // but unrelated commercial tokens such as FOC must never become deliveryTerm.
   return INCOTERMS_2020.find((term) => new RegExp(`(?:^|[^A-Z])${term}(?:$|[^A-Z])`).test(upper));
 }
