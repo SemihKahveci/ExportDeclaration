@@ -479,3 +479,33 @@ Contract:
 ```powershell
 docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation821SpecialistEvidenceProjectionBundleContract.ts
 ```
+
+### Foundation 8.22 — Scalable GOODS Chunking + Local Recovery
+
+Foundation 8.22 removes the full-document GOODS specialist call as the normal multi-page path. GOODS is now planned as bounded target-page chunks. Each target page may see only a bounded prefix of the following page as continuation context, so a commercial row split at a page break can remain atomic without sending the whole invoice to Qwen at once.
+
+Key invariants:
+
+- A chunk owns only commercial rows whose row begins on its TARGET PAGE.
+- `goodsLines.*` indexes are chunk-local model output; the deterministic merge assigns stable global indexes in target-page/source order.
+- Fields from two different source rows are never combined to manufacture a complete row.
+- Neighbor-page context may complete a row that began on the target page, but it cannot create a new row owned by the wrong chunk.
+- Duplicate rows are removed only when they have a strong semantic identity (`productCode`, `hsCode`, or `description`) plus the same first evidence page. Numeric similarity alone never deduplicates rows.
+- `goodsTable.expectedRowCount`, when emitted by chunks, is defined as rows beginning on that target page and is deterministically aggregated only when every completed chunk supplied a count.
+- A failed chunk is retried once locally. It does not force already healthy chunks to be rerun or discarded. Remaining failure produces `REVIEW_REQUIRED` and `GOODS_CHUNK_FAILED`.
+- GOODS execution uses two bounded workers rather than an uncontrolled model swarm.
+- Qwen text-provider transport retries now allocate a fresh `AbortController` and timeout per attempt; a timed-out first attempt cannot poison the retry with an already-aborted signal.
+- Package/carton/pallet counts remain explicitly distinct from commercial goods quantity.
+- No supplier name, invoice number, fixed coordinate, expected invoice answer, or direct `normalizedData` write was added.
+- Foundation 6 remains the final candidate-resolution/write authority.
+
+Deterministic contract (no OCR/model call):
+
+```powershell
+npm run typecheck
+docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation822ScalableGoodsChunkingContract.ts
+```
+
+After this contract is green, the next real-model canary should prioritize a multi-page/high-row-count invoice. The purpose is to validate chunk timing, per-page row ownership, merge completeness, and bounded recovery before expanding the real-model corpus.
+
+8.22 also tightens the cutover boundary: GOODS is promotable only when reconciliation has no GOODS recovery request. Completed chunks remain visible in audit/reconciliation, but an incomplete table cannot partially replace legacy rows and create a mixed-authority production goods table.

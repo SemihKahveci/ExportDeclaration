@@ -906,6 +906,13 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         .filter(item => item.status === "COMPLETED" && item.response?.decision !== "REVIEW_REQUIRED")
         .map(item => item.domain)
     );
+    // 8.22: GOODS promotion is table-atomic, not merely specialist-call-local.
+    // Healthy chunk output remains in the audit/reconciliation artifact, but an
+    // incomplete table or targeted GOODS recovery cannot partially overwrite
+    // legacy rows and create a mixed-authority goods table.
+    if (foundation8SpecialistReconciliationAudit?.recoveryDomains.includes("GOODS")) {
+      foundation8PromotableDomains.delete("GOODS");
+    }
     const foundation8ReconciledCandidates = env.foundation8ReconciledPromotionEnabled && foundation8SpecialistReconciliationAudit
       ? bridgeReconciledFoundation8ToCandidates({
           segmentId: result.segmentId,

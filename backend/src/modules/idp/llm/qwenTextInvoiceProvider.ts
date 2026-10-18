@@ -267,14 +267,13 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
     if (!env.foundation8SpecialistModel.trim()) throw new Error("FOUNDATION8_SPECIALIST_MODEL is not configured.");
     if (request.evidenceMode !== "TEXT") throw new Error(`Foundation 8 text specialist accepts TEXT evidence only (received=${request.evidenceMode}).`);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), env.llmTimeoutMs);
     const startedAt = Date.now();
-    try {
-      const endpoint = `${ollamaBaseUrl(env.llmBaseUrl)}/api/chat`;
+    const endpoint = `${ollamaBaseUrl(env.llmBaseUrl)}/api/chat`;
       let response: Response | undefined;
       let lastTransportError: unknown;
       for (let attempt = 1; attempt <= 2; attempt += 1) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), env.llmTimeoutMs);
         try {
           response = await fetch(endpoint, {
         method: "POST",
@@ -323,9 +322,11 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
           break;
         } catch (error) {
           lastTransportError = error;
-          if (controller.signal.aborted || attempt >= 2) throw error;
+          if (attempt >= 2) throw error;
           console.warn("idp.foundation8_text_specialist.transport_retry", { documentId: request.documentId, model: env.foundation8SpecialistModel, attempt, error: error instanceof Error ? error.message : String(error) });
           await new Promise(resolve => setTimeout(resolve, 1500));
+        } finally {
+          clearTimeout(timeout);
         }
       }
       if (!response) throw lastTransportError instanceof Error ? lastTransportError : new Error("Foundation 8 text specialist transport failed.");
@@ -342,9 +343,6 @@ export class QwenTextInvoiceProvider implements InvoiceLlmExtractionProvider {
         fieldCount: parsed.fields.length
       });
       return { ...parsed, model: env.foundation8SpecialistModel, provider: this.name };
-    } finally {
-      clearTimeout(timeout);
-    }
   }
 }
 
