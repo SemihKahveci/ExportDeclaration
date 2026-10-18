@@ -9,7 +9,7 @@ import {
 } from "./invoiceUnderstanding.types.js";
 import type { Foundation8SpecialistModelExecutionAudit } from "./invoiceUnderstandingSpecialistModelExecution.js";
 
-export const FOUNDATION8_SPECIALIST_PROJECTION_VERSION = "8.16.0" as const;
+export const FOUNDATION8_SPECIALIST_PROJECTION_VERSION = "8.20.1" as const;
 
 function evidenceRef(ref: InvoiceLlmEvidenceRef): InvoiceUnderstandingEvidenceRef {
   return { pageNumber: ref.pageNumber, source: ref.source, quote: ref.quote, region: ref.region };
@@ -22,6 +22,53 @@ function grounded<T>(field: InvoiceLlmExtractedField | undefined, guard: (value:
 
 const isString = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+function scalarValue(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  return Object.prototype.hasOwnProperty.call(record, "value") ? record.value : value;
+}
+
+function localeNumber(value: unknown): number | undefined {
+  const raw = scalarValue(value);
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
+  if (typeof raw !== "string") return undefined;
+  let token = raw.trim().replace(/\s+/g, "");
+  const match = token.match(/[+-]?[0-9][0-9.,]*/);
+  if (!match) return undefined;
+  token = match[0];
+  const comma = token.lastIndexOf(",");
+  const dot = token.lastIndexOf(".");
+  if (comma >= 0 && dot >= 0) {
+    const decimal = comma > dot ? "," : ".";
+    const thousands = decimal === "," ? /\./g : /,/g;
+    token = token.replace(thousands, "").replace(decimal, ".");
+  } else if (comma >= 0) {
+    const decimals = token.length - comma - 1;
+    token = decimals === 3 && /^\d{1,3}(,\d{3})+$/.test(token) ? token.replace(/,/g, "") : token.replace(",", ".");
+  } else if (dot >= 0 && token.length - dot - 1 === 3 && /^\d{1,3}(\.\d{3})+$/.test(token)) {
+    token = token.replace(/\./g, "");
+  }
+  const parsed = Number(token);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  const raw = scalarValue(value);
+  return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+}
+
+function groundedString(field: InvoiceLlmExtractedField | undefined): GroundedValue<string> | undefined {
+  if (!field || !field.evidence.length) return undefined;
+  const value = stringValue(field.value);
+  return value === undefined ? undefined : { value, confidence: field.confidence, evidence: field.evidence.map(evidenceRef) };
+}
+
+function groundedNumber(field: InvoiceLlmExtractedField | undefined): GroundedValue<number> | undefined {
+  if (!field || !field.evidence.length) return undefined;
+  const value = localeNumber(field.value);
+  return value === undefined ? undefined : { value, confidence: field.confidence, evidence: field.evidence.map(evidenceRef) };
+}
 
 function fieldMap(audit: Foundation8SpecialistModelExecutionAudit, domain: "PARTIES" | "COMMERCIAL" | "GOODS" | "LOGISTICS"): Map<string, InvoiceLlmExtractedField> {
   const specialist = audit.specialists.find(item => item.domain === domain && item.status === "COMPLETED");
@@ -52,14 +99,14 @@ function projectGoodsRows(goods: Map<string, InvoiceLlmExtractedField>, issues: 
 
   return [...indexes].sort((a, b) => a - b).flatMap(index => {
     const prefix = `goodsLines.${index}.`;
-    const productCode = grounded(goods.get(`${prefix}productCode`), isString);
-    const description = grounded(goods.get(`${prefix}description`), isString);
-    const hsCode = grounded(goods.get(`${prefix}hsCode`), isString);
-    const quantity = grounded(goods.get(`${prefix}quantity`), isNumber);
-    const unit = grounded(goods.get(`${prefix}unit`), isString);
-    const unitPrice = grounded(goods.get(`${prefix}unitPrice`), isNumber);
-    const lineTotal = grounded(goods.get(`${prefix}lineTotal`), isNumber);
-    const origin = grounded(goods.get(`${prefix}origin`), isString);
+    const productCode = groundedString(goods.get(`${prefix}productCode`));
+    const description = groundedString(goods.get(`${prefix}description`));
+    const hsCode = groundedString(goods.get(`${prefix}hsCode`));
+    const quantity = groundedNumber(goods.get(`${prefix}quantity`));
+    const unit = groundedString(goods.get(`${prefix}unit`));
+    const unitPrice = groundedNumber(goods.get(`${prefix}unitPrice`));
+    const lineTotal = groundedNumber(goods.get(`${prefix}lineTotal`));
+    const origin = groundedString(goods.get(`${prefix}origin`));
     const rowEvidence = uniqueEvidence([productCode, description, hsCode, quantity, unit, unitPrice, lineTotal, origin]);
     if (!rowEvidence.length) return [];
 
@@ -96,7 +143,7 @@ export function projectSpecialistModelAuditToInvoiceUnderstanding(params: {
     .map(item => ({ code: "SPECIALIST_FAILED", message: `${item.domain}: ${item.error ?? "specialist failed"}`, scope: "DOCUMENT" }));
 
   const rows = projectGoodsRows(goods, issues);
-  const expectedRowCountField = grounded(goods.get("goodsTable.expectedRowCount"), isNumber);
+  const expectedRowCountField = groundedNumber(goods.get("goodsTable.expectedRowCount"));
   const expectedRowCount = expectedRowCountField && Number.isInteger(expectedRowCountField.value) && expectedRowCountField.value >= 0
     ? expectedRowCountField.value
     : undefined;

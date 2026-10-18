@@ -454,3 +454,16 @@ This addresses the general model-output-contract mismatch rather than Volta/YEM 
 
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8190DomainNativeGoodsShapeAdapterContract.ts`
+
+### Foundation 8.20 — Typed Specialist Scalar Projection
+
+The 8.19 Volta/YEM canary proved the provider contract is now healthy: GOODS completes and its grounded fields survive the provider boundary. The remaining loss occurred one layer later. Qwen structured output may represent a semantic scalar as a typed wrapper such as `{ "value": "1,0" }` or `{ "value": "560 EUR" }`; the atomic projection previously accepted only already-primitive JavaScript strings/numbers. As a result, valid grounded GOODS fields were visible in the specialist audit but `goodsTable.rows` became empty, so no Foundation 8 goods candidates reached Foundation 6.
+
+8.20 makes the projection tolerant of that general structured-output representation. Evidence remains mandatory. String wrappers are unwrapped; numeric wrappers and locale-formatted numeric strings are normalized deterministically before entering `InvoiceUnderstanding`. No arithmetic creates a value, no evidence is borrowed, and no invoice/supplier answer is encoded. The existing atomic-row completeness/arithmetic checks and Foundation 6 write boundary remain unchanged.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8200SpecialistScalarProjectionContract.ts`
+
+### Foundation 8.20.1 — Type guard hotfix
+
+Restores the finite-number type guard used by existing commercial/logistics projection paths after the 8.20 typed goods scalar projection refactor. No runtime authority, evidence, or promotion semantics changed.
