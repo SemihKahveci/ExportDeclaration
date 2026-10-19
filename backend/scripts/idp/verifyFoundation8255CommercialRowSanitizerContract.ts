@@ -415,6 +415,157 @@ assert.equal(wylCompleted[0]?.lineTotal, 760);
 assert.equal(wylCompleted[1]?.lineTotal, 2700);
 assert.equal(wylCompleted[0]?.origin ?? null, null);
 
+// VED-class: separator-dropped semantic + locale evidence → document token wins.
+// Arithmetic corroborates the evidence reading; it must not invent qty×price.
+assert.equal(
+  evidenceBoundGoodsNumericValue(
+    {
+      quantity: 1,
+      unitPrice: 29.57,
+      lineTotal: 295700,
+      evidence: { lineTotal: { header: "Amount", rawValue: "29,5700" } }
+    } as never,
+    "lineTotal"
+  ),
+  29.57
+);
+const vedEvidenceRecovered = sanitizeNaturalGoodsLines([
+  {
+    description: "A",
+    quantity: 1,
+    unitPrice: 28.77,
+    lineTotal: 28770,
+    unit: "ADET",
+    evidence: { lineTotal: { header: "Amount", rawValue: "28,7700" } }
+  },
+  {
+    description: "B",
+    quantity: 2,
+    unitPrice: 18.08,
+    lineTotal: 3616,
+    unit: "ADET",
+    evidence: { lineTotal: { header: "Amount", rawValue: "36,16" } }
+  }
+] as never[]);
+assert.equal(vedEvidenceRecovered[0]?.lineTotal, 28.77);
+assert.equal(vedEvidenceRecovered[1]?.lineTotal, 36.16);
+
+// Inflated totals with no recoverable amount evidence fail-closed (reject, not invent).
+const vedContradictionRejected = sanitizeNaturalGoodsLines([
+  { description: "A", quantity: 1, unitPrice: 28.77, lineTotal: 28770, unit: "ADET" },
+  { description: "B", quantity: 2, unitPrice: 18.08, lineTotal: 18080, unit: "ADET" },
+  { description: "C", quantity: 10, unitPrice: 9.72, lineTotal: 9720, unit: "ADET" },
+  { description: "D", quantity: 2, unitPrice: 900.2, lineTotal: 900200, unit: "ADET" },
+  // Mid-scale inflate (×7–9) still fail-closed; modest discount below stays.
+  { description: "E", quantity: 36, unitPrice: 106.8, lineTotal: 28770, unit: "ADET" }
+] as never[]);
+assert.equal(vedContradictionRejected[0]?.lineTotal ?? null, null);
+assert.equal(vedContradictionRejected[1]?.lineTotal ?? null, null);
+assert.equal(vedContradictionRejected[2]?.lineTotal ?? null, null);
+assert.equal(vedContradictionRejected[3]?.lineTotal ?? null, null);
+assert.equal(vedContradictionRejected[4]?.lineTotal ?? null, null);
+
+// Çelikel-class: evidence "1.600" + price×total → quantity 1600 (not 1.6).
+assert.equal(
+  evidenceBoundGoodsNumericValue(
+    {
+      quantity: 1600,
+      unitPrice: 24.9378,
+      lineTotal: 39900.48,
+      evidence: { quantity: { header: "Miktar", rawValue: "1.600", unit: "Adet" } }
+    } as never,
+    "quantity"
+  ),
+  1600
+);
+assert.equal(
+  evidenceBoundGoodsNumericValue(
+    {
+      quantity: 1.6,
+      unitPrice: 24.9378,
+      lineTotal: 39900.48,
+      evidence: { quantity: { header: "Miktar", rawValue: "1.600", unit: "Adet" } }
+    } as never,
+    "quantity"
+  ),
+  1600
+);
+
+// Origin/menşe footer with invented HS/product/price is still non-commercial.
+assert.equal(
+  isNonCommercialGoodsLine({
+    description: "MALLARIMIZ TÜRK MENŞEİLDİR.",
+    productCode: "301-11/1",
+    hsCode: "301-11/1",
+    quantity: 66,
+    unit: "PALET",
+    unitPrice: 151.51515151515153,
+    lineTotal: 10000,
+    origin: "TR"
+  } as never),
+  true
+);
+const celikelFooterDropped = sanitizeNaturalGoodsLines([
+  {
+    productCode: "A5E30095990SFCO",
+    description: "Inverter Housing",
+    hsCode: "761699909019",
+    quantity: 1600,
+    unit: "ADET",
+    unitPrice: 24.9378,
+    lineTotal: 39900.48,
+    origin: "Hungary"
+  },
+  {
+    description: "MALLARIMIZ TÜRK MENŞEİLDİR.",
+    productCode: "301-11/1",
+    hsCode: "301-11/1",
+    quantity: 66,
+    unit: "PALET",
+    unitPrice: 151.52,
+    lineTotal: 10000,
+    origin: "TR"
+  }
+] as never[]);
+assert.equal(celikelFooterDropped.length, 1);
+assert.equal(celikelFooterDropped[0]?.origin, "TR");
+assert.equal(celikelFooterDropped[0]?.quantity, 1600);
+
+// FOC / explicit zero totals must not be overwritten by qty×price.
+const focPreserved = sanitizeNaturalGoodsLines([
+  { description: "FOC", quantity: 200, unitPrice: 5.25, lineTotal: 0, unit: "PCS", origin: "IT" }
+] as never[]);
+assert.equal(focPreserved[0]?.lineTotal, 0);
+
+// Modest non-matching totals (discount) are not force-rejected.
+const discountKept = sanitizeNaturalGoodsLines([
+  { description: "Disc", quantity: 10, unitPrice: 9.72, lineTotal: 90, unit: "ADET" }
+] as never[]);
+assert.equal(discountKept[0]?.lineTotal, 90);
+
+// Healthy corroborating totals stay untouched (Volta/Derm class).
+const healthyKept = sanitizeNaturalGoodsLines([
+  { description: "Ok", quantity: 15, unitPrice: 106.8, lineTotal: 1602, unit: "ADET" },
+  { description: "Ok2", quantity: 2000, unitPrice: 5.25, lineTotal: 10500, unit: "PCS" }
+] as never[]);
+assert.equal(healthyKept[0]?.lineTotal, 1602);
+assert.equal(healthyKept[1]?.lineTotal, 10500);
+
+// YEM commercial total must survive: packaging qty would make qty×price invent 875.
+const yemTotalPreserved = sanitizeNaturalGoodsLines([{
+  description: "Tavuk",
+  productCode: "91101",
+  hsCode: "020714990012",
+  quantity: 1250,
+  unit: "Koli",
+  unitPrice: 0.7,
+  lineTotal: 17500,
+  origin: "TR",
+  evidence: { quantity: { header: "Miktar", rawValue: "1.250" } }
+}] as never[]);
+assert.equal(yemTotalPreserved[0]?.quantity, 25000);
+assert.equal(yemTotalPreserved[0]?.lineTotal, 17500);
+
 // Wrong-role lineTotal evidence must not survive when qty×price corroborates.
 const adaptedTotals = adaptNaturalInvoiceResponse(
   {
@@ -439,6 +590,55 @@ assert.deepEqual(
   [760]
 );
 assert.equal(sanitizeVisionUnit("P\uFFFD\uFFFDECES"), "PIECES");
+
+// Visible amount evidence recovers locale magnitude; wrong-role amount token fails closed.
+const adaptedVed = adaptNaturalInvoiceResponse(
+  {
+    goodsLines: [
+      {
+        description: "Breaker",
+        quantity: 2,
+        unitPrice: 18.08,
+        lineTotal: 3616,
+        unit: "ADET",
+        evidence: { lineTotal: { header: "Amount", rawValue: "36,16" } }
+      }
+    ]
+  } as never,
+  {
+    documentId: "contract-ved",
+    requestedFields: ["goodsLines[].lineTotal", "goodsLines[].quantity", "goodsLines[].unitPrice"]
+  } as never,
+  [{ pageNumber: 1, imageBase64: "", mimeType: "image/png" }] as never
+);
+assert.deepEqual(
+  adaptedVed.fields.find((field) => field.field === "goodsLines[].lineTotal")?.value,
+  [36.16]
+);
+const adaptedVedWrongEvidence = adaptNaturalInvoiceResponse(
+  {
+    goodsLines: [
+      {
+        description: "Breaker",
+        quantity: 2,
+        unitPrice: 18.08,
+        lineTotal: 18080,
+        unit: "ADET",
+        evidence: { lineTotal: { header: "Amount", rawValue: "18.080" } }
+      }
+    ]
+  } as never,
+  {
+    documentId: "contract-ved-wrong-evidence",
+    requestedFields: ["goodsLines[].lineTotal", "goodsLines[].quantity", "goodsLines[].unitPrice"]
+  } as never,
+  [{ pageNumber: 1, imageBase64: "", mimeType: "image/png" }] as never
+);
+// Fail-closed: broken amount candidate is omitted rather than published as qty×price.
+assert.equal(
+  adaptedVedWrongEvidence.fields.find((field) => field.field === "goodsLines[].lineTotal"),
+  undefined
+);
 
 // Cross-page document-scoped origin authority on fused candidates.
 const fusedOverride = applyDocumentScopedGoodsOriginAuthority(
@@ -505,6 +705,12 @@ console.log({
   apostropheThousandsEvidence: true,
   germanMengeStuckpreisHeaders: true,
   lineTotalFromQtyPriceWhenAmountMissing: true,
+  lineTotalEvidenceLocaleRecovery: true,
+  inflatedLineTotalContradictionReject: true,
+  wrongAmountEvidenceFailClosed: true,
+  yemLineTotalNotInventedFromPackagingQty: true,
+  focZeroLineTotalPreserved: true,
+  modestDiscountTotalPreserved: true,
   unitMojibakeRepair: true,
   fusedDocumentScopedOriginOverride: true,
   corpusSpecificRules: false

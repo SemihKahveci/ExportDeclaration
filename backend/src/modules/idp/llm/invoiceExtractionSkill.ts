@@ -6,7 +6,7 @@
  */
 import { INVOICE_EXTRACTION_VERIFIED_KNOWLEDGE } from "./invoiceExtractionKnowledge.js";
 
-export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v12" as const;
+export const INVOICE_EXTRACTION_SKILL_VERSION = "invoice-extraction-v14" as const;
 
 export const INVOICE_EXTRACTION_FIELDS = [
   "invoiceNumber", "invoiceDate", "seller", "sellerAddress", "sellerCountry",
@@ -142,5 +142,8 @@ Rules:
 34. AMOUNTS IN WORDS: currency amount-in-words / totals prose is a footer, not a goodsLines row — even if nearby package counts, prices or short numeric tokens look like HS/product codes.
 35. LOCALE NUMERIC TOKENS: thousands grouping may use apostrophe/prime (10’500.00 / 21'000.00). Preserve the full magnitude in evidence.rawValue; do not truncate to the digits before the apostrophe.
 36. GERMAN/SWISS COLUMN HEADERS: Menge → quantity, Einheit → unit, Stückpreis → unitPrice, Total/Betrag → lineTotal, Ursprung/Ursprug → origin, HS Codu/HS Code → hsCode. Bind cells to these headers before arithmetic checks.
+37. GOODS AMOUNT EVIDENCE FIDELITY: for each non-null goodsLines[].lineTotal, evidence.lineTotal.rawValue must copy the visible amount-cell token with its separators (for example 29,5700 or 36,16). The JSON lineTotal number must be the locale-aware parse of that same token (29.57 / 36.16). Never emit a separator-stripped integer such as 295700 when the page shows a decimal or grouped amount. quantity × unitPrice is only a post-binding sanity check — never compute or overwrite lineTotal from arithmetic when an amount cell is visible.
+38. QUANTITY LOCALE TOKENS: European/Turkish quantity tokens such as 1.600 / 1.368 mean one thousand six hundred / one thousand three hundred sixty-eight when that magnitude matches unit price × line total. Do not emit 1.6 when the visible token is 1.600 and the row total requires 1600. Keep evidence.quantity.rawValue locale-preserving.
+39. ORIGIN FOOTERS: sentences such as "MALLARIMIZ TÜRK MENŞEİLİDİR" / "goods are of … origin" are document-scoped origin statements, never goodsLines rows — even if nearby package counts or invented codes appear on the same line.
 `.trim();
 

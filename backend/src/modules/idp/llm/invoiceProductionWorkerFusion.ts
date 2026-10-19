@@ -19,6 +19,7 @@ import {
   sanitizeVisionPaymentType
 } from "./qwenVisionInvoiceProvider.js";
 import { discoverInvoiceOriginFieldCandidates } from "../candidates/invoiceOriginCandidateDiscovery.js";
+import { discoverInvoiceHsFieldCandidates } from "../candidates/invoiceHsCandidateDiscovery.js";
 import { createFoundation8SpecialistProvider } from "./qwenTextInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
@@ -899,10 +900,32 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         filled: Object.keys(originFillIn.fields).length
       });
     }
+    // Same pattern for HS/HSN: Vision often binds qty/price/origin but leaves the
+    // tariff column blank. Fill only empty hsCode from a stable digit column.
+    const visionBoundHs = discoverInvoiceHsFieldCandidates(
+      params.canonicalDocument,
+      result.segmentId,
+      guardedVisionCandidates
+    );
+    const hsFillIn: FieldCandidateEnvelope = {
+      version: "1",
+      fields: Object.fromEntries(
+        Object.entries(visionBoundHs.fields).filter(([field]) =>
+          !guardedVisionCandidates.fields[field]?.length
+        )
+      )
+    };
+    if (Object.keys(hsFillIn.fields).length) {
+      console.info("idp.hs.vision_fill_in", {
+        segmentId: result.segmentId,
+        filled: Object.keys(hsFillIn.fields).length
+      });
+    }
     const fusedCandidates = mergeInvoiceCandidateSources(
       primaryFused,
       roleBoundWithoutCompetingGoods,
-      originFillIn
+      originFillIn,
+      hsFillIn
     );
 
     const associatedCandidates = associateExplicitGoodsUnitsFromQuantity({

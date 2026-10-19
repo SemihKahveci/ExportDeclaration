@@ -102,34 +102,75 @@ function evidenceText(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function parseLocaleNumericEvidence(raw: unknown): number | undefined {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw !== "string") return undefined;
-  // Swiss/German invoices often group thousands with ' or ’ or ` (10’500.00).
+function extractLocaleNumericToken(raw: string): string | undefined {
   const normalizedRaw = raw
     .replace(/\u00a0/g, " ")
     .replace(/[\u2019\u2018'`´]/g, "");
   const match = normalizedRaw.match(/[-+]?\d[\d\s.,]*/);
   if (!match) return undefined;
-  let token = match[0]!.replace(/\s+/g, "");
+  return match[0]!.replace(/\s+/g, "");
+}
+
+function digitSkeleton(raw: string): string {
+  return raw.replace(/[^\d]/g, "");
+}
+
+/**
+ * Locale-aware numeric parse of a visible evidence token.
+ * Primary reading only — use parseLocaleNumericEvidenceCandidates when the
+ * single-separator thousands/decimal choice is ambiguous.
+ */
+export function parseLocaleNumericEvidence(raw: unknown): number | undefined {
+  const candidates = parseLocaleNumericEvidenceCandidates(raw);
+  return candidates[0];
+}
+
+/**
+ * All plausible locale readings of a visible numeric token.
+ * When a single separator has exactly three trailing digits, both thousands
+ * and decimal readings are offered so arithmetic can validate — not invent —
+ * which reading matches the row.
+ */
+export function parseLocaleNumericEvidenceCandidates(raw: unknown): number[] {
+  if (typeof raw === "number" && Number.isFinite(raw)) return [raw];
+  if (typeof raw !== "string") return [];
+  const token = extractLocaleNumericToken(raw);
+  if (!token) return [];
+
+  const out: number[] = [];
+  const push = (value: number | undefined) => {
+    if (value == null || !Number.isFinite(value)) return;
+    if (!out.some((existing) => Math.abs(existing - value) <= 1e-9)) out.push(value);
+  };
+
   const comma = token.lastIndexOf(",");
   const dot = token.lastIndexOf(".");
   if (comma >= 0 && dot >= 0) {
     const decimal = comma > dot ? "," : ".";
     const thousands = decimal === "," ? "." : ",";
-    token = token.split(thousands).join("").replace(decimal, ".");
-  } else if (comma >= 0 || dot >= 0) {
+    push(Number(token.split(thousands).join("").replace(decimal, ".")));
+    return out;
+  }
+
+  if (comma >= 0 || dot >= 0) {
     const sep = comma >= 0 ? "," : ".";
     const parts = token.split(sep);
-    // A single separator followed by exactly three digits is a thousands
-    // grouping when the integer side is non-zero and no second grouping exists.
-    // Evidence such as 0.700 remains decimal; 12.345 becomes 12345.
-    if (parts.length === 2 && parts[0] !== "0" && /^\d{3}$/.test(parts[1] ?? "")) token = parts.join("");
-    else if (parts.length > 2 && parts.slice(1).every((part) => /^\d{3}$/.test(part))) token = parts.join("");
-    else token = token.replace(sep, ".");
+    // Ambiguous: exactly three trailing digits may be thousands OR decimals.
+    if (parts.length === 2 && parts[0] !== "0" && /^\d{3}$/.test(parts[1] ?? "")) {
+      push(Number(parts.join(""))); // thousands: 18.080 → 18080
+      push(Number(`${parts[0]}.${parts[1]}`)); // decimal: 18.080 → 18.08
+      return out;
+    }
+    if (parts.length > 2 && parts.slice(1).every((part) => /^\d{3}$/.test(part))) {
+      push(Number(parts.join("")));
+      return out;
+    }
+    push(Number(token.replace(sep, ".")));
+    return out;
   }
-  const value = Number(token);
-  return Number.isFinite(value) ? value : undefined;
+
+  push(Number(token));
+  return out;
 }
 
 function isPackagingHeader(header: string): boolean {
@@ -137,7 +178,9 @@ function isPackagingHeader(header: string): boolean {
 }
 
 function isQuantityHeader(header: string): boolean {
-  return /\b(?:miktar|quantity|qty|menge|anzahl|amount)\b/i.test(header) && !isPackagingHeader(header);
+  // Bare "amount" is a line-total header on English invoices (Amount/Total),
+  // not commercial quantity — do not treat it as Miktar/Qty.
+  return /\b(?:miktar|quantity|qty|menge|anzahl)\b/i.test(header) && !isPackagingHeader(header);
 }
 
 function isUnitPriceHeader(header: string): boolean {
@@ -166,6 +209,22 @@ function isWeightLabel(label: string, role: "grossKg" | "netKg"): boolean {
  * This is document-generic: it knows only invoice column roles, never supplier,
  * layout coordinates, invoice identifiers, or expected corpus values.
  */
+/**
+ * True when the semantic number looks like the evidence token with separators
+ * stripped (e.g. visible "29,5700" → model 295700). In that case the locale
+ * parse of the raw token is document-backed; the bare semantic integer is not.
+ */
+export function semanticLooksLikeSeparatorDroppedEvidence(
+  semantic: number,
+  rawValue: unknown
+): boolean {
+  if (!Number.isFinite(semantic) || typeof rawValue !== "string") return false;
+  const rawDigits = digitSkeleton(rawValue);
+  if (rawDigits.length < 3) return false;
+  const semanticDigits = digitSkeleton(String(semantic));
+  return semanticDigits === rawDigits;
+}
+
 export function evidenceBoundGoodsNumericValue(
   line: NaturalGoodsLine,
   key: "quantity" | "unitPrice" | "lineTotal"
@@ -212,8 +271,84 @@ export function evidenceBoundGoodsNumericValue(
     return null;
   }
 
-  const parsed = parseLocaleNumericEvidence(rawValue);
-  return parsed != null ? preferArithmeticLocaleReading(line, key, parsed) : null;
+  const candidates = parseLocaleNumericEvidenceCandidates(rawValue);
+  if (!candidates.length) return null;
+
+  const quantity = key === "quantity" ? undefined : siblingRawNumeric(line, "quantity");
+  const unitPrice = key === "unitPrice" ? undefined : siblingRawNumeric(line, "unitPrice");
+  const lineTotal = key === "lineTotal" ? undefined : siblingRawNumeric(line, "lineTotal");
+
+  // Arithmetic validates candidate readings of the same visible token — it does
+  // not invent a magnitude that never appeared in evidence.
+  if (key === "quantity" && unitPrice != null && lineTotal != null) {
+    const corroborated = candidates.filter((candidate) =>
+      numericsCorroborate(candidate, unitPrice, lineTotal)
+    );
+    if (corroborated.length === 1) return corroborated[0];
+    if (corroborated.length === 0 && candidates.length > 1) return null;
+  }
+  if (key === "lineTotal" && quantity != null && unitPrice != null) {
+    const corroborated = candidates.filter((candidate) =>
+      numericsCorroborate(quantity, unitPrice, candidate)
+    );
+    if (corroborated.length === 1) return corroborated[0];
+    if (corroborated.length === 0 && candidates.length > 1) {
+      // Ambiguous locale token that matches neither reading → fail-closed.
+      return null;
+    }
+  }
+  if (key === "unitPrice" && quantity != null && lineTotal != null) {
+    const corroborated = candidates.filter((candidate) =>
+      numericsCorroborate(quantity, candidate, lineTotal)
+    );
+    if (corroborated.length === 1) return corroborated[0];
+  }
+
+  const semanticNumeric = typeof semanticValue === "number"
+    ? semanticValue
+    : parseLocaleNumericEvidence(semanticValue);
+  // Separator-dropped semantic vs locale evidence: prefer the reading that
+  // arithmetic corroborates. Do NOT blindly take the anti-semantic alternate
+  // (European "1.600" qty → 1600 must win over 1.6 when price×qty matches).
+  if (
+    semanticNumeric != null
+    && semanticLooksLikeSeparatorDroppedEvidence(semanticNumeric, rawValue)
+  ) {
+    const corroborated = candidates.filter((candidate) => {
+      const q = key === "quantity" ? candidate : quantity;
+      const p = key === "unitPrice" ? candidate : unitPrice;
+      const t = key === "lineTotal" ? candidate : lineTotal;
+      return q != null && p != null && t != null && numericsCorroborate(q, p, t);
+    });
+    if (corroborated.length === 1) return corroborated[0];
+    if (
+      key === "quantity"
+      && unitPrice != null
+      && lineTotal != null
+      && numericsCorroborate(semanticNumeric, unitPrice, lineTotal)
+    ) {
+      return preferArithmeticLocaleReading(line, key, semanticNumeric);
+    }
+    const localePrimary = candidates.find((candidate) =>
+      Math.abs(candidate - semanticNumeric) > 1e-9
+    );
+    if (localePrimary != null) {
+      const preferred = preferArithmeticLocaleReading(line, key, localePrimary);
+      if (
+        key === "lineTotal"
+        && quantity != null
+        && unitPrice != null
+        && typeof preferred === "number"
+        && !numericsCorroborate(quantity, unitPrice, preferred)
+      ) {
+        return null;
+      }
+      return preferred;
+    }
+  }
+
+  const parsed = candidates[0]!;
+  return preferArithmeticLocaleReading(line, key, parsed);
 }
 
 function lineNumeric(line: NaturalGoodsLine, key: "quantity" | "unitPrice" | "lineTotal"): number | undefined {
@@ -232,6 +367,36 @@ function numericsCorroborate(quantity: number, unitPrice: number, lineTotal: num
   const expected = quantity * unitPrice;
   const scale = Math.max(1, Math.abs(lineTotal));
   return Math.abs(expected - lineTotal) <= Math.max(1e-6 * scale, 0.01);
+}
+
+/**
+ * Severe inflate detector for fail-closed reject (not repair).
+ * - ×5+ vs qty×price (discount/surcharge stays below this)
+ * - clean ×100/×1000/×10000 scale mistakes
+ * - lineTotal digit-skeleton looks like unitPrice with extra trailing zeros
+ */
+function isSevereLineTotalInflation(
+  lineTotal: number,
+  expectedFromQtyPrice: number,
+  unitPrice: number
+): boolean {
+  if (!(lineTotal > 0) || !(expectedFromQtyPrice > 0)) return false;
+  if (lineTotal > expectedFromQtyPrice * 5) return true;
+  const ratio = lineTotal / expectedFromQtyPrice;
+  for (const factor of [100, 1000, 10000] as const) {
+    if (Math.abs(ratio - factor) / factor <= 0.02) return true;
+  }
+  const totalDigits = digitSkeleton(String(lineTotal));
+  const priceDigits = digitSkeleton(String(unitPrice));
+  if (
+    priceDigits.length >= 3
+    && totalDigits.length > priceDigits.length
+    && totalDigits.startsWith(priceDigits)
+    && /^0+$/.test(totalDigits.slice(priceDigits.length))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function commercialQuantityCorroborated(line: NaturalGoodsLine, quantity: number): boolean {
@@ -287,37 +452,24 @@ export function preferArithmeticLocaleReading(
   if (quantity == null || unitPrice == null || lineTotal == null) return parsed;
   if (numericsCorroborate(quantity, unitPrice, lineTotal)) return parsed;
 
+  // Unit-price locale scale only when siblings constrain the row.
+  // Do NOT upscale bare quantity here: an inflated lineTotal would recruit a
+  // fake qty (1 × 28.77 with total 28770 → qty 1000). Quantity thousands vs
+  // decimal is resolved in evidenceBound via locale candidates of the visible
+  // token (e.g. "1.600" → 1600 | 1.6).
   if (key === "unitPrice") {
     for (const factor of [1000, 100] as const) {
       const candidate = parsed / factor;
       if (candidate > 0 && numericsCorroborate(quantity, candidate, lineTotal)) {
-        const repairPayload = {
+        appendIdpRuntimeDiag("idp.vision.locale_numeric_repair", {
           field: key,
           from: parsed,
           to: candidate,
           factor,
           quantity,
           lineTotal
-        };
-        console.info("idp.vision.locale_numeric_repair", repairPayload);
-        appendIdpRuntimeDiag("idp.vision.locale_numeric_repair", repairPayload);
-        return candidate
-      }
-    }
-  }
-  if (key === "lineTotal") {
-    for (const factor of [1000, 100] as const) {
-      const down = parsed / factor;
-      if (numericsCorroborate(quantity, unitPrice, down)) {
-        console.info("idp.vision.locale_numeric_repair", {
-          field: key,
-          from: parsed,
-          to: down,
-          factor,
-          quantity,
-          unitPrice
         });
-        return down;
+        return candidate;
       }
     }
   }
@@ -348,7 +500,8 @@ export function foldInvoiceLatinText(text: string): string {
 function isOriginDeclarationText(text: string): boolean {
   const normalized = foldInvoiceLatinText(text);
   return /(?:mallarimiz|goods|products|ware|waren).{0,40}(?:mense|origin|ursprung)/i.test(normalized)
-    || /(?:menseilidir|of\s+\w+\s+origin|country\s+of\s+origin|made\s+in)\b/i.test(normalized);
+    // OCR/fold often yields MENŞEİLİDİR → menseilidir or menseildir.
+    || /(?:menseilidir|menseildir|of\s+\w+\s+origin|country\s+of\s+origin|made\s+in)\b/i.test(normalized);
 }
 
 /** Amount-in-words / currency prose is a totals footer, not a goods row. */
@@ -405,8 +558,9 @@ export function isNonCommercialGoodsLine(line: NaturalGoodsLine): boolean {
   // Amount-in-words is never a commercial goods description. Vision may invent
   // price/total/productCode/short numeric "HS" on that footer — still drop it.
   if (description && isAmountInWordsText(description)) return true;
-  // Origin declarations remain footers without HS/product catalog identity.
-  if (!hasCatalogGoodsIdentity(line) && description && isOriginDeclarationText(description)) return true;
+  // All-goods origin/menşe statements are footers even when Vision invents
+  // order-like HS/productCode/price on the same line (Çelikel page-2 class).
+  if (description && isOriginDeclarationText(description)) return true;
   // Packaging-unit export/shipment footers often invent price/total and order-like
   // "HS" tokens (e.g. 301-11/1). Valid digit HS keeps the row commercial.
   if (
@@ -812,47 +966,64 @@ export function sanitizeNaturalGoodsLines(lines: NaturalGoodsLine[]): NaturalGoo
     const quantity = lineNumeric(line, "quantity");
     const unitPrice = lineNumeric(line, "unitPrice");
     let lineTotal = lineNumeric(line, "lineTotal");
-    // When Vision bound qty+price but omitted a visible amount cell, complete the
-    // row only when the product is a clean commercial magnitude. Do not overwrite
-    // an explicit zero/FOC total or any other non-null lineTotal.
+    // Missing amount cell: complete from qty×price only when absent.
+    // When a non-null total exists, arithmetic may only reject severe
+    // contradictions (fail-closed) — never overwrite with qty×price.
     let completedLineTotalFromQtyPrice = false;
-    if (
-      lineTotal == null
-      && quantity != null
-      && unitPrice != null
-      && quantity > 0
-      && unitPrice > 0
-    ) {
+    let rejectedContradictoryLineTotal = false;
+    if (quantity != null && unitPrice != null && quantity > 0 && unitPrice > 0) {
       const computed = quantity * unitPrice;
       const cents = Math.round(computed * 100) / 100;
       if (Math.abs(computed - cents) <= 1e-6) {
-        lineTotal = cents;
-        completedLineTotalFromQtyPrice = true;
-        appendIdpRuntimeDiag("idp.vision.line_total_from_qty_price", {
-          quantity,
-          unitPrice,
-          lineTotal
-        });
+        if (lineTotal == null) {
+          lineTotal = cents;
+          completedLineTotalFromQtyPrice = true;
+          appendIdpRuntimeDiag("idp.vision.line_total_from_qty_price", {
+            quantity,
+            unitPrice,
+            lineTotal
+          });
+        } else if (
+          lineTotal !== 0
+          && !numericsCorroborate(quantity, unitPrice, lineTotal)
+          && isSevereLineTotalInflation(lineTotal, cents, unitPrice)
+        ) {
+          // Fail-closed only. Does not publish qty×price as the amount.
+          appendIdpRuntimeDiag("idp.vision.line_total_contradiction_reject", {
+            quantity,
+            unitPrice,
+            rejected: lineTotal,
+            expectedFromQtyPrice: cents
+          });
+          lineTotal = null;
+          rejectedContradictoryLineTotal = true;
+        }
       }
     }
     let next: NaturalGoodsLine = { ...line };
     if (quantity != null) next = { ...next, quantity };
     if (unitPrice != null) next = { ...next, unitPrice };
     if (lineTotal != null) next = { ...next, lineTotal };
-    // Drop lineTotal evidence that fails role binding when the numeric value is
-    // already corroborated by qty×price (or was just completed from it). Otherwise
-    // adaptNaturalInvoiceResponse's evidenceBound path nulls a good semantic total.
+    else if (rejectedContradictoryLineTotal) next = { ...next, lineTotal: null };
+    // Drop lineTotal evidence that fails binding, was completed without amount
+    // evidence, or was rejected as contradictory (so adapt cannot revive it).
     const lineTotalEvidenceRejects = Boolean(
       next.evidence?.lineTotal
       && evidenceBoundGoodsNumericValue(next, "lineTotal") == null
     );
     if (
       next.evidence?.lineTotal
-      && lineTotal != null
-      && quantity != null
-      && unitPrice != null
-      && (completedLineTotalFromQtyPrice || numericsCorroborate(quantity, unitPrice, lineTotal))
-      && (completedLineTotalFromQtyPrice || lineTotalEvidenceRejects)
+      && (
+        completedLineTotalFromQtyPrice
+        || rejectedContradictoryLineTotal
+        || (
+          lineTotal != null
+          && quantity != null
+          && unitPrice != null
+          && numericsCorroborate(quantity, unitPrice, lineTotal)
+          && lineTotalEvidenceRejects
+        )
+      )
     ) {
       const { lineTotal: _drop, ...restEvidence } = next.evidence;
       next = { ...next, evidence: restEvidence };
@@ -907,7 +1078,6 @@ export function sanitizeNaturalGoodsLines(lines: NaturalGoodsLine[]): NaturalGoo
     originBroadcastRows,
     originDocumentOverrideRows
   };
-  console.info("idp.vision.goods_sanitize", sanitizePayload);
   appendIdpRuntimeDiag("idp.vision.goods_sanitize", sanitizePayload);
 
   return result;

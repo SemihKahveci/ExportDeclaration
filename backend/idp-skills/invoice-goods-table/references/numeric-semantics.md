@@ -22,6 +22,7 @@ When structured evidence is returned for a goods numeric, treat its visible head
 - Do not emit a package-count value as commercial quantity when its evidence is bound to a packaging role.
 - Do not emit shipment gross/net weight as unit price or line total when the evidence label names a weight role.
 - Do not replace an evidence-backed line amount with a computed quantity × unit-price result. Arithmetic can flag a contradiction, but cannot rewrite the visible amount.
+- Evidence fidelity: if the model emits a separator-stripped integer (e.g. `295700`) while `evidence.rawValue` still shows the visible token (`29,5700`), the locale parse of the evidence token is authority. Role-correct but lexically unfaithful evidence must not become final F6 authority.
 - If explicit evidence contradicts the proposed field role, leave that field unresolved for fallback/review. If structured evidence is unavailable, preserve the ordinary semantic extraction path rather than inventing evidence.
 
 ## Packaging-reject commercial recovery
