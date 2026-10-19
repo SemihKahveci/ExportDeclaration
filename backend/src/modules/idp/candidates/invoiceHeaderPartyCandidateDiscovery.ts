@@ -9,8 +9,15 @@ import type {
   FieldCandidate,
   FieldCandidateEnvelope,
 } from "../domain/fieldCandidate.types.js";
+import { canonicalizeVisionCountry } from "../llm/qwenVisionInvoiceProvider.js";
 
 const EXTRACTOR = "invoice-header-party-generic-v6";
+
+function partyCountryValue(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  return canonicalizeVisionCountry(trimmed) ?? undefined;
+}
 
 type EvidenceLine = {
   text: string;
@@ -593,7 +600,10 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
     }};
     add(fields, candidate("parties.seller.address", explicitSeller.address.value, "party-seller-address-explicit-role", segmentId, ev, 0.97));
   }
-  if (explicitSeller?.country) add(fields, candidate("parties.seller.country", explicitSeller.country.value, "party-seller-country-explicit-role", segmentId, explicitSeller.country.line, 0.97));
+  if (explicitSeller?.country) {
+    const iso = partyCountryValue(explicitSeller.country.value);
+    if (iso) add(fields, candidate("parties.seller.country", iso, "party-seller-country-explicit-role", segmentId, explicitSeller.country.line, 0.97));
+  }
 
   if (seller && sayin && !explicitSeller) {
     const block=between(lines, centerY(seller.bbox), centerY(sayin.bbox), seller.pageNumber);
@@ -615,7 +625,10 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
     }};
     add(fields, candidate("parties.buyer.address", explicitBuyer.address.value, "party-buyer-address-explicit-role", segmentId, ev, 0.97));
   }
-  if (explicitBuyer?.country) add(fields, candidate("parties.buyer.country", explicitBuyer.country.value, "party-buyer-country-explicit-role", segmentId, explicitBuyer.country.line, 0.97));
+  if (explicitBuyer?.country) {
+    const iso = partyCountryValue(explicitBuyer.country.value);
+    if (iso) add(fields, candidate("parties.buyer.country", iso, "party-buyer-country-explicit-role", segmentId, explicitBuyer.country.line, 0.97));
+  }
 
   if (buyer && sayin && !explicitBuyer) {
     const nextBoundary = lines
@@ -633,7 +646,10 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
       }};
       add(fields,candidate("parties.buyer.address",address.value,"party-buyer-address",segmentId,ev,0.94));
     }
-    if (country) add(fields,candidate("parties.buyer.country",country.value,"party-buyer-country",segmentId,country.line,0.94));
+    if (country) {
+      const iso = partyCountryValue(country.value);
+      if (iso) add(fields,candidate("parties.buyer.country",iso,"party-buyer-country",segmentId,country.line,0.94));
+    }
   }
 
   return {

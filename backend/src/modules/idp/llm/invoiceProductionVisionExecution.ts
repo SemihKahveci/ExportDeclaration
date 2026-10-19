@@ -12,6 +12,7 @@ import {
   projectVisionResponseToFieldCandidates
 } from "./invoiceProductionExtractionOrchestrator.js";
 import { INVOICE_SCALAR_RECOVERY_FOCUS_INSTRUCTION } from "./invoiceExtractionSkill.js";
+import { parseVisionRawModelResponse } from "./qwenVisionInvoiceProvider.js";
 
 export interface InvoiceVisionPageRenderer {
   (pageNumber: number): Promise<InvoiceLlmPageImage>;
@@ -217,9 +218,93 @@ export async function executeInvoiceVisionByPage(params: {
   for (const pageNumber of params.pageNumbers) {
     const persisted = params.completedPages?.[pageNumber];
     if (persisted) {
-      sources.push(persisted.candidates);
-      checkpoints.push({ pageNumber, decision: persisted.decision, candidateCount: persisted.candidateCount, extractionArtifact: persisted.extractionArtifact });
-      const persistedGoodsCount = Object.keys(persisted.candidates.fields)
+      // Foundation 8.25.6: replay raw model JSON through the current sanitizer so
+      // packaging-qty recovery / footer drops apply without a fresh Vision call.
+      // Legacy recovery overlays are suppressed on the Foundation 8 path, so the
+      // primary page artifact is the authority for checkpointed goods rows.
+      let reusedCandidates = persisted.candidates;
+      let reusedDecision = persisted.decision;
+      let reusedCandidateCount = persisted.candidateCount;
+      let reusedArtifact = persisted.extractionArtifact;
+      const raw = persisted.extractionArtifact?.rawModelResponse?.trim();
+      if (raw && persisted.extractionArtifact) {
+        try {
+          const artifact = persisted.extractionArtifact;
+          const adapted = parseVisionRawModelResponse(
+            raw,
+            {
+              version: "1",
+              documentId: artifact.documentId,
+              evidenceMode: artifact.evidenceMode,
+              requestedFields: artifact.requestedFields
+            },
+            [{ pageNumber, mimeType: "image/png", bytes: Buffer.alloc(0) }]
+          );
+          const response = {
+            ...adapted,
+            model: artifact.model,
+            provider: artifact.provider,
+            extractionArtifact: {
+              ...artifact,
+              parsedSemanticResponse: {
+                version: adapted.version,
+                decision: adapted.decision,
+                fields: adapted.fields,
+                issues: adapted.issues
+              }
+            }
+          };
+          const resanitized = projectVisionResponseToFieldCandidates({
+            response,
+            segmentId: params.segmentId,
+            pageNumber,
+            goodsLineOffset
+          });
+          const beforeGoods = Object.keys(persisted.candidates.fields)
+            .filter((field) => /^goodsLines\.\d+\./.test(field)).length;
+          const afterGoods = Object.keys(resanitized.fields)
+            .filter((field) => /^goodsLines\.\d+\./.test(field)).length;
+          console.info("idp.vision.checkpoint_resanitize", {
+            segmentId: params.segmentId,
+            pageNumber,
+            beforeGoodsFieldKeys: beforeGoods,
+            afterGoodsFieldKeys: afterGoods,
+            decision: adapted.decision
+          });
+          reusedCandidates = resanitized;
+          reusedDecision = adapted.decision;
+          reusedCandidateCount = Object.values(resanitized.fields)
+            .reduce((sum, candidates) => sum + candidates.length, 0);
+          reusedArtifact = response.extractionArtifact;
+          await params.onPageCheckpoint?.({
+            pageNumber,
+            status: "COMPLETED",
+            decision: reusedDecision,
+            candidateCount: reusedCandidateCount,
+            candidates: reusedCandidates,
+            extractionArtifact: reusedArtifact
+          });
+        } catch (error) {
+          console.warn("idp.vision.checkpoint_resanitize_failed", {
+            segmentId: params.segmentId,
+            pageNumber,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      } else {
+        console.info("idp.vision.checkpoint_reuse_without_raw", {
+          segmentId: params.segmentId,
+          pageNumber
+        });
+      }
+      sources.push(reusedCandidates);
+      checkpoints.push({
+        pageNumber,
+        decision: reusedDecision,
+        candidateCount: reusedCandidateCount,
+        extractionArtifact: reusedArtifact
+      });
+      const persistedGoodsCount = Object.keys(reusedCandidates.fields)
         .map((field) => /^goodsLines\.(\d+)\./.exec(field)?.[1])
         .filter((value): value is string => Boolean(value))
         .reduce((max, value) => Math.max(max, Number(value) + 1), 0);

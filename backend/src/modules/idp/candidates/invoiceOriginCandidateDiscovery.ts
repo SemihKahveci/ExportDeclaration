@@ -27,6 +27,53 @@ function firstCandidate(fields: FieldCandidateEnvelope["fields"], field: string)
   return values.slice().sort((a, b) => b.confidence - a.confidence || a.candidateId.localeCompare(b.candidateId))[0];
 }
 
+function primaryCodeToken(value: unknown): string | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const first = value.trim().split(/\s+/)[0]!;
+  const compact = norm(first).replace(/[^A-Z0-9]/g, "");
+  return compact.length >= 4 ? compact : undefined;
+}
+
+/**
+ * Vision goods candidates often lack bbox evidence. Locate a row anchor by
+ * matching product/HS tokens in the canonical text layer (layout-independent).
+ */
+function locateTextAnchor(
+  canonical: CanonicalDocument,
+  preferredPage: number | undefined,
+  productValue: unknown,
+  hsValue: unknown
+): { page: CanonicalPage; word: CanonicalWord } | undefined {
+  const needles = [primaryCodeToken(productValue), primaryCodeToken(hsValue)].filter(
+    (value): value is string => Boolean(value)
+  );
+  if (!needles.length) return undefined;
+
+  const pages = preferredPage != null
+    ? [
+      ...canonical.pages.filter((page) => page.pageNumber === preferredPage),
+      ...canonical.pages.filter((page) => page.pageNumber !== preferredPage)
+    ]
+    : canonical.pages;
+
+  let best: { page: CanonicalPage; word: CanonicalWord; score: number } | undefined;
+  for (const page of pages) {
+    for (const word of page.words) {
+      const token = primaryCodeToken(word.text);
+      if (!token) continue;
+      for (const needle of needles) {
+        const exact = token === needle;
+        const nested = (needle.includes(token) && token.length >= 6)
+          || (token.includes(needle) && needle.length >= 6);
+        if (!exact && !nested) continue;
+        const score = exact ? needle.length + 100 : Math.min(token.length, needle.length);
+        if (!best || score > best.score) best = { page, word, score };
+      }
+    }
+  }
+  return best ? { page: best.page, word: best.word } : undefined;
+}
+
 type RowCell = { rowIndex: number; page: CanonicalPage; word: CanonicalWord; anchorX: number };
 type Cluster = { center: number; cells: RowCell[]; rows: Set<number> };
 
@@ -40,14 +87,12 @@ function goodsRowIndexes(fields: FieldCandidateEnvelope["fields"]): number[] {
 }
 
 /**
- * Foundation 5.5A.4 — row-level origin discovery.
+ * Foundation 5.5A.4 / 8.25.6 — row-level origin discovery.
  *
- * The canonical documents used by the invoice pipeline do not reliably expose
- * the table header, so this extractor learns stable compact-text columns from
- * already-proven goods rows. It does not use supplier names, country names, or
- * fixed x coordinates. The left-most stable compact-text column is selected as
- * the row-origin column; if the structure is not stable enough, no candidate is
- * emitted and normalization/review fails closed.
+ * Learns a stable compact-text column left of proven goods-row anchors.
+ * Anchors may come from candidate bbox evidence or, when Vision omitted bbox,
+ * from product/HS token matches in the canonical text layer. No supplier names,
+ * country allow-lists, or fixed coordinates.
  */
 export function discoverInvoiceOriginFieldCandidates(
   canonical: CanonicalDocument,
@@ -58,17 +103,36 @@ export function discoverInvoiceOriginFieldCandidates(
   const rowIndexes = goodsRowIndexes(goodsCandidates.fields);
   if (!rowIndexes.length) return { version: "1", fields };
 
+  let bboxAnchors = 0;
+  let textAnchors = 0;
   const rowCells: RowCell[] = [];
   for (const rowIndex of rowIndexes) {
     const hs = firstCandidate(goodsCandidates.fields, `goodsLines.${rowIndex}.hsCode`);
     const product = firstCandidate(goodsCandidates.fields, `goodsLines.${rowIndex}.productCode`);
     const anchor = hs ?? product;
     const evidence = anchor?.evidence?.[0];
-    if (!evidence?.bbox) continue;
-    const page = canonical.pages.find(item => item.pageNumber === evidence.pageNumber);
-    if (!page) continue;
+    let page: CanonicalPage | undefined;
+    let anchorBox: CanonicalBBox | undefined;
 
-    const anchorBox = evidence.bbox;
+    if (evidence?.bbox) {
+      page = canonical.pages.find(item => item.pageNumber === evidence.pageNumber);
+      anchorBox = evidence.bbox;
+      if (page && anchorBox) bboxAnchors += 1;
+    }
+
+    if (!page || !anchorBox) {
+      const located = locateTextAnchor(
+        canonical,
+        evidence?.pageNumber,
+        product?.value,
+        hs?.value
+      );
+      if (!located) continue;
+      page = located.page;
+      anchorBox = located.word.bbox;
+      textAnchors += 1;
+    }
+
     const tolerance = Math.max(0.018, (anchorBox.y1 - anchorBox.y0) * 1.8);
     for (const word of page.words) {
       if (Math.abs(cy(word.bbox) - cy(anchorBox)) > tolerance) continue;
@@ -99,7 +163,18 @@ export function discoverInvoiceOriginFieldCandidates(
     .filter(cluster => cluster.rows.size >= minimumCoverage)
     .sort((a, b) => a.center - b.center);
   const originCluster = stable[0];
-  if (!originCluster) return { version: "1", fields };
+  if (!originCluster) {
+    console.info("idp.origin.discovery", {
+      segmentId,
+      rowCount: rowIndexes.length,
+      bboxAnchors,
+      textAnchors,
+      rowCells: rowCells.length,
+      stableClusters: 0,
+      emitted: 0
+    });
+    return { version: "1", fields };
+  }
 
   const xTolerance = Math.max(
     0.025,
@@ -132,6 +207,16 @@ export function discoverInvoiceOriginFieldCandidates(
     };
     fields[field] = [candidate];
   }
+
+  console.info("idp.origin.discovery", {
+    segmentId,
+    rowCount: rowIndexes.length,
+    bboxAnchors,
+    textAnchors,
+    rowCells: rowCells.length,
+    stableClusters: stable.length,
+    emitted: Object.keys(fields).length
+  });
 
   return { version: "1", fields };
 }

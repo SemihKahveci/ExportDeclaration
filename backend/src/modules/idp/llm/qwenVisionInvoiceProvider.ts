@@ -10,6 +10,7 @@ import {
   type InvoiceLlmPageImage
 } from "../domain/invoiceLlmExtraction.types.js";
 import { INVOICE_EXTRACTION_SKILL_VERSION, INVOICE_EXTRACTION_SYSTEM_PROMPT } from "./invoiceExtractionSkill.js";
+import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 
 function stripFence(value: string): string {
   return value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -148,17 +149,436 @@ function isWeightLabel(label: string, role: "grossKg" | "netKg"): boolean {
     : /\b(?:net)(?:\s+(?:kg|weight|ağırlık|agirlik))?\b/i.test(label);
 }
 
+/**
+ * Foundation 8.25.4: evidence-role binding for goods numerics.
+ *
+ * When the model supplies explicit row-local evidence, the visible header/raw
+ * token is stronger authority than a derived/repaired numeric value. A value
+ * whose evidence names a different semantic role is rejected fail-closed.
+ * When no structured evidence was supplied we preserve the existing semantic
+ * value so documents that do not expose this optional evidence do not regress.
+ *
+ * This is document-generic: it knows only invoice column roles, never supplier,
+ * layout coordinates, invoice identifiers, or expected corpus values.
+ */
+export function evidenceBoundGoodsNumericValue(
+  line: NaturalGoodsLine,
+  key: "quantity" | "unitPrice" | "lineTotal"
+): string | number | null | undefined {
+  const semanticValue = naturalScalar(line[key]);
+  const evidence = line.evidence?.[key];
+  if (!evidence) return semanticValue;
+
+  const header = evidenceText(evidence.header) ?? evidenceText(evidence.label);
+  const rawValue = evidence.rawValue;
+  if (!header || rawValue === undefined || rawValue === null) return null;
+
+  const roleOk = key === "quantity"
+    ? isQuantityHeader(header)
+    : key === "unitPrice"
+      ? isUnitPriceHeader(header)
+      : isLineTotalHeader(header);
+  if (!roleOk) {
+    // Wrong-role evidence cannot authorize the field. For quantity, packaging
+    // evidence must not fall through to a packaging-equal semantic value either.
+    if (key === "quantity" && isPackagingHeader(header)) {
+      const rejected = parseLocaleNumericEvidence(rawValue);
+      const semanticNumeric = typeof semanticValue === "number"
+        ? semanticValue
+        : parseLocaleNumericEvidence(semanticValue);
+      if (
+        semanticNumeric != null &&
+        rejected != null &&
+        Math.abs(semanticNumeric - rejected) > 1e-9 &&
+        commercialQuantityCorroborated(line, semanticNumeric)
+      ) {
+        return semanticNumeric;
+      }
+      return null;
+    }
+    return null;
+  }
+
+  return parseLocaleNumericEvidence(rawValue) ?? null;
+}
+
+function lineNumeric(line: NaturalGoodsLine, key: "quantity" | "unitPrice" | "lineTotal"): number | undefined {
+  const bound = evidenceBoundGoodsNumericValue(
+    key === "quantity" ? { ...line, evidence: { ...line.evidence, quantity: undefined } } : line,
+    key
+  );
+  if (typeof bound === "number" && Number.isFinite(bound)) return bound;
+  const raw = naturalScalar(line[key]);
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  return parseLocaleNumericEvidence(raw);
+}
+
+function commercialQuantityCorroborated(line: NaturalGoodsLine, quantity: number): boolean {
+  const price = lineNumeric(line, "unitPrice");
+  const total = lineNumeric(line, "lineTotal");
+  if (price == null || total == null || !(price > 0) || !(quantity > 0)) return false;
+  const expected = quantity * price;
+  const scale = Math.max(1, Math.abs(total));
+  return Math.abs(expected - total) <= Math.max(1e-6 * scale, 0.01);
+}
+
+function isCleanCommercialQuantity(value: number): boolean {
+  if (!Number.isFinite(value) || !(value > 0)) return false;
+  const rounded = Math.round(value * 1000) / 1000;
+  return Math.abs(value - rounded) <= 1e-9;
+}
+
+function isPackagingUnit(unit: unknown): boolean {
+  if (typeof unit !== "string" || !unit.trim()) return false;
+  return /\b(?:koli|kol[iı]|package|packages|box|boxes|carton|cartons|pallet|palet|ctn|pkg)\b/i.test(unit);
+}
+
+function isOriginDeclarationText(text: string): boolean {
+  const normalized = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+  return /(?:mallarimiz|goods|products|ware|waren).{0,40}(?:mense|origin|ursprung)/i.test(normalized)
+    || /(?:menseilidir|of\s+\w+\s+origin|country\s+of\s+origin|made\s+in)\b/i.test(normalized);
+}
+
+/** Amount-in-words / currency prose is a totals footer, not a goods row. */
+export function isAmountInWordsText(text: string): boolean {
+  const normalized = text.normalize("NFKD").replace(/[\u0300-\u036f]/g, " ");
+  if (!/\b(?:EUR|EURO|USD|GBP|TRY|TL|CENT|CENTS)\b/i.test(normalized)) return false;
+  const words = normalized.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 3) return false;
+  if (/\b(?:BIN|BİN|YUZ|YÜZ|MILYON|THOUSAND|HUNDRED|MILLION|VE|AND|ONLY)\b/i.test(normalized)) {
+    return true;
+  }
+  // OCR often glues Turkish number-words into one token (…BIRBIN…).
+  return words.some((word) => word.length >= 10 && /(?:BIN|BIR|YUZ|THOUSAND|HUNDRED)/i.test(word));
+}
+
+/** HS code is the strongest commercial-row catalog signal. */
+function hasHsGoodsIdentity(line: NaturalGoodsLine): boolean {
+  const hs = naturalScalar(line.hsCode);
+  return typeof hs === "string" && hs.trim().length > 0;
+}
+
+function hasCatalogGoodsIdentity(line: NaturalGoodsLine): boolean {
+  const product = naturalScalar(line.productCode);
+  return hasHsGoodsIdentity(line)
+    || (typeof product === "string" && product.trim().length > 0);
+}
+
+function hasCommercialGoodsIdentity(line: NaturalGoodsLine): boolean {
+  const price = lineNumeric(line, "unitPrice");
+  const total = lineNumeric(line, "lineTotal");
+  return hasCatalogGoodsIdentity(line) || price != null || total != null;
+}
+
+/** Footer / legal / package-summary lines are not commercial goods rows. */
+export function isNonCommercialGoodsLine(line: NaturalGoodsLine): boolean {
+  const description = typeof line.description === "string" ? line.description.trim() : "";
+  // Amount-in-words is a totals footer even when Vision invents price/total or a
+  // stray reference token as productCode. An HS code is required to keep the row.
+  if (description && isAmountInWordsText(description) && !hasHsGoodsIdentity(line)) return true;
+  // Origin declarations remain footers without HS/product catalog identity.
+  if (!hasCatalogGoodsIdentity(line) && description && isOriginDeclarationText(description)) return true;
+  // Package/shipment summary rows: packaging unit, optional count, no commercial money/code.
+  if (
+    !hasCommercialGoodsIdentity(line)
+    && isPackagingUnit(line.unit)
+    && lineNumeric(line, "unitPrice") == null
+    && lineNumeric(line, "lineTotal") == null
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
+  TURKIYE: "TR", TURKEY: "TR", TR: "TR",
+  ESTONYA: "EE", ESTONIA: "EE", EE: "EE",
+  POLAND: "PL", POLONYA: "PL", PL: "PL",
+  CHINA: "CN", CIN: "CN", CN: "CN",
+  GERMANY: "DE", ALMANYA: "DE", DEUTSCHLAND: "DE", DE: "DE",
+  FRANCE: "FR", FRANSA: "FR", FR: "FR",
+  ITALY: "IT", ITALYA: "IT", ITALIA: "IT", IT: "IT",
+  SPAIN: "ES", ISPANYA: "ES", ES: "ES",
+  NETHERLANDS: "NL", HOLLANDA: "NL", NL: "NL",
+  BELGIUM: "BE", BELCIKA: "BE", BE: "BE",
+  AUSTRIA: "AT", AVUSTURYA: "AT", AT: "AT",
+  UNITEDKINGDOM: "GB", UK: "GB", ENGLAND: "GB", GB: "GB",
+  UNITEDSTATES: "US", USA: "US", US: "US",
+  RUSSIA: "RU", RUSYA: "RU", RU: "RU",
+  UKRAINE: "UA", UKRAYNA: "UA", UA: "UA",
+  ROMANIA: "RO", ROMANYA: "RO", RO: "RO",
+  BULGARIA: "BG", BULGARISTAN: "BG", BG: "BG",
+  GREECE: "GR", YUNANISTAN: "GR", GR: "GR",
+  HUNGARY: "HU", MACARISTAN: "HU", HU: "HU",
+  CZECHIA: "CZ", CZECHREPUBLIC: "CZ", CEKYA: "CZ", CZ: "CZ",
+  SWEDEN: "SE", ISVEC: "SE", SE: "SE",
+  NORWAY: "NO", NORVEC: "NO", NO: "NO",
+  DENMARK: "DK", DANIMARKA: "DK", DK: "DK",
+  FINLAND: "FI", FINLANDIYA: "FI", FI: "FI",
+  SWITZERLAND: "CH", ISVICRE: "CH", CH: "CH",
+  INDIA: "IN", HINDISTAN: "IN", IN: "IN",
+  JAPAN: "JP", JAPONYA: "JP", JP: "JP",
+  KOREA: "KR", SOUTHKOREA: "KR", GUNEYKORE: "KR", KR: "KR",
+  UAE: "AE", UNITEDARABEMIRATES: "AE", AE: "AE",
+  SAUDIARABIA: "SA", SUUDIARABISTAN: "SA", SA: "SA"
+};
+
+/** Normalize unambiguous country tokens to ISO-3166-1 alpha-2. Fail closed otherwise. */
+export function canonicalizeVisionCountry(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^[A-Za-z]{2}$/.test(trimmed)) return trimmed.toUpperCase();
+  const key = trimmed
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z]/g, "");
+  return COUNTRY_NAME_TO_ISO2[key];
+}
+
+const COUNTRY_CANDIDATE_FIELDS = new Set([
+  "parties.seller.country",
+  "parties.buyer.country",
+  "originCountry",
+  "exitCountry",
+  "arrivalCountry",
+  "destinationCountry",
+  "tradeCountry"
+]);
+
+/** Defense-in-depth: canonicalize country-valued candidates from any extractor. */
+export function canonicalizeCountryFieldCandidates(envelope: FieldCandidateEnvelope): FieldCandidateEnvelope {
+  const fields: FieldCandidateEnvelope["fields"] = {};
+  let rewritten = 0;
+  let dropped = 0;
+  for (const [field, candidates] of Object.entries(envelope.fields)) {
+    const isGoodsOrigin = /^goodsLines\.\d+\.origin$/.test(field);
+    if (!COUNTRY_CANDIDATE_FIELDS.has(field) && !isGoodsOrigin) {
+      fields[field] = candidates;
+      continue;
+    }
+    const next = [];
+    for (const candidate of candidates) {
+      if (typeof candidate.value !== "string") {
+        next.push(candidate);
+        continue;
+      }
+      const iso = canonicalizeVisionCountry(candidate.value);
+      if (!iso) {
+        dropped += 1;
+        continue;
+      }
+      if (iso !== candidate.value) rewritten += 1;
+      next.push({ ...candidate, value: iso });
+    }
+    if (next.length) fields[field] = next;
+  }
+  if (rewritten || dropped) {
+    console.info("idp.country.canonicalize_candidates", { rewritten, dropped });
+  }
+  return { version: "1", fields };
+}
+
+function extractOriginFromDeclaration(line: NaturalGoodsLine): string | undefined {
+  const fromField = canonicalizeVisionCountry(naturalScalar(line.origin));
+  if (fromField) return fromField;
+  const description = typeof line.description === "string" ? line.description : "";
+  if (!description) return undefined;
+  const normalized = description.normalize("NFKD").replace(/[\u0300-\u036f]/g, " ");
+  const madeIn = normalized.match(/\b(?:made\s+in|origin|mense|ursprung)\s*[:\-]?\s*([A-Za-z\u00C0-\u017F ]{2,40})/i);
+  if (madeIn?.[1]) return canonicalizeVisionCountry(madeIn[1]);
+  // "MALLARIMIZ TURK MENSEILIDIR" / "goods are of Turkish origin"
+  const adjectival = normalized.match(/\b(?:TURK|TURKISH|POLISH|CHINESE|GERMAN|FRENCH|ITALIAN|SPANISH|DUTCH|HUNGARIAN|INDIAN|JAPANESE|KOREAN)\b/i);
+  if (adjectival) {
+    const map: Record<string, string> = {
+      TURK: "TR", TURKISH: "TR", POLISH: "PL", CHINESE: "CN", GERMAN: "DE",
+      FRENCH: "FR", ITALIAN: "IT", SPANISH: "ES", DUTCH: "NL", HUNGARIAN: "HU",
+      INDIAN: "IN", JAPANESE: "JP", KOREAN: "KR"
+    };
+    const iso = map[adjectival[0]!.toUpperCase()];
+    if (iso) return iso;
+  }
+  return undefined;
+}
+
+/**
+ * Foundation 8.25.5/8.25.6: recover commercial quantity when packaging confused
+ * the row — either packaging-role quantity evidence, or a packaging unit with a
+ * missing/non-corroborated quantity — and unitPrice + lineTotal already agree on
+ * one clean commercial quantity distinct from the packaging count.
+ */
+export function recoverCommercialQuantityAfterPackagingReject(line: NaturalGoodsLine): NaturalGoodsLine {
+  const evidence = line.evidence?.quantity;
+  const header = evidenceText(evidence?.header) ?? evidenceText(evidence?.label);
+  const packagingEvidence = Boolean(evidence && header && isPackagingHeader(header));
+  const packagingUnit = isPackagingUnit(line.unit);
+  if (!packagingEvidence && !packagingUnit) return line;
+
+  const nextEvidence = { ...line.evidence };
+  if (packagingEvidence) delete nextEvidence.quantity;
+
+  const stripped: NaturalGoodsLine = { ...line, evidence: nextEvidence };
+  const packagingRaw = packagingEvidence
+    ? parseLocaleNumericEvidence(evidence?.rawValue)
+    : lineNumeric(stripped, "quantity");
+  const price = lineNumeric(stripped, "unitPrice");
+  const total = lineNumeric(stripped, "lineTotal");
+  const currentQty = lineNumeric(stripped, "quantity");
+
+  const qtyLooksLikePackaging = currentQty != null
+    && packagingRaw != null
+    && Math.abs(currentQty - packagingRaw) <= 1e-9;
+  const qtyMissing = currentQty == null;
+  const qtyFailsCorroboration = currentQty != null
+    && price != null
+    && total != null
+    && !commercialQuantityCorroborated(stripped, currentQty);
+  const needsRecovery = qtyMissing || qtyLooksLikePackaging || (packagingUnit && qtyFailsCorroboration);
+
+  if (!needsRecovery) {
+    return packagingUnit && currentQty != null && commercialQuantityCorroborated(stripped, currentQty)
+      ? { ...stripped, ...(packagingUnit ? { unit: null } : {}) }
+      : stripped;
+  }
+
+  if (price == null || total == null || !(price > 0)) {
+    console.info("idp.vision.qty_recovery", {
+      outcome: "cleared_without_recovery",
+      reason: "missing_price_total",
+      packagingEvidence,
+      packagingUnit,
+      packagingRaw,
+      currentQty,
+      qtyMissing,
+      qtyLooksLikePackaging,
+      qtyFailsCorroboration
+    });
+    return {
+      ...stripped,
+      quantity: qtyLooksLikePackaging || packagingEvidence ? null : currentQty ?? null,
+      ...(packagingUnit ? { unit: null } : {})
+    };
+  }
+
+  const recovered = total / price;
+  if (
+    !isCleanCommercialQuantity(recovered)
+    || (packagingRaw != null && Math.abs(recovered - packagingRaw) <= 1e-9)
+    || !commercialQuantityCorroborated({ ...stripped, quantity: recovered }, recovered)
+  ) {
+    console.info("idp.vision.qty_recovery", {
+      outcome: "cleared_without_recovery",
+      reason: "recovered_not_corroborated",
+      packagingEvidence,
+      packagingUnit,
+      packagingRaw,
+      currentQty,
+      recovered,
+      price,
+      total
+    });
+    return {
+      ...stripped,
+      quantity: null,
+      ...(packagingUnit ? { unit: null } : {})
+    };
+  }
+
+  console.info("idp.vision.qty_recovery", {
+    outcome: "recovered",
+    packagingEvidence,
+    packagingUnit,
+    packagingRaw,
+    currentQty,
+    recovered,
+    price,
+    total,
+    clearedPackagingUnit: packagingUnit
+  });
+  return {
+    ...stripped,
+    quantity: recovered,
+    ...(packagingUnit ? { unit: null } : {})
+  };
+}
+
+/**
+ * Drop non-commercial footer/legal rows, recover packaging-confused quantities,
+ * and broadcast explicit document-scoped goods origin onto commercial rows that
+ * lack row-local origin. Layout/supplier independent.
+ */
+export function sanitizeNaturalGoodsLines(lines: NaturalGoodsLine[]): NaturalGoodsLine[] {
+  const documentOrigins: string[] = [];
+  const commercial: NaturalGoodsLine[] = [];
+  let recoveredQuantityRows = 0;
+  let droppedRows = 0;
+
+  for (const line of lines) {
+    if (isNonCommercialGoodsLine(line)) {
+      droppedRows += 1;
+      const description = typeof line.description === "string" ? line.description.trim() : "";
+      const dropReason = description && isOriginDeclarationText(description)
+        ? "origin_declaration"
+        : description && isAmountInWordsText(description)
+          ? "amount_in_words"
+          : isPackagingUnit(line.unit)
+            ? "packaging_summary"
+            : "non_commercial";
+      console.info("idp.vision.goods_row_dropped", {
+        reason: dropReason,
+        unit: typeof line.unit === "string" ? line.unit : null,
+        descriptionPreview: description.slice(0, 80) || null
+      });
+      const origin = extractOriginFromDeclaration(line);
+      if (origin) documentOrigins.push(origin);
+      continue;
+    }
+    const beforeQty = lineNumeric(line, "quantity");
+    const recovered = recoverCommercialQuantityAfterPackagingReject(line);
+    const afterQty = typeof recovered.quantity === "number" ? recovered.quantity : lineNumeric(recovered, "quantity");
+    if (beforeQty == null && afterQty != null) recoveredQuantityRows += 1;
+    else if (beforeQty != null && afterQty != null && Math.abs(beforeQty - afterQty) > 1e-9) recoveredQuantityRows += 1;
+    commercial.push(recovered);
+  }
+
+  const uniqueOrigins = [...new Set(documentOrigins)];
+  const documentOrigin = uniqueOrigins.length === 1 ? uniqueOrigins[0] : undefined;
+  let originBroadcastRows = 0;
+
+  const result = commercial.map((line) => {
+    const originRaw = naturalScalar(line.origin);
+    const canonical = canonicalizeVisionCountry(originRaw);
+    if (canonical) return { ...line, origin: canonical };
+    if ((originRaw == null || originRaw === "") && documentOrigin) {
+      originBroadcastRows += 1;
+      return { ...line, origin: documentOrigin };
+    }
+    // Free-text non-canonical origin tokens stay fail-closed.
+    if (typeof originRaw === "string" && originRaw.trim()) {
+      return { ...line, origin: null };
+    }
+    return line;
+  });
+
+  console.info("idp.vision.goods_sanitize", {
+    inputRows: lines.length,
+    commercialRows: result.length,
+    droppedRows,
+    recoveredQuantityRows,
+    documentOrigin: documentOrigin ?? null,
+    originBroadcastRows
+  });
+
+  return result;
+}
+
 function evidenceBackedRecoveryValue(
   line: NaturalGoodsLine,
   key: "quantity" | "unitPrice" | "lineTotal"
 ): number | null | undefined {
-  const evidence = line.evidence?.[key];
-  const header = evidenceText(evidence?.header) ?? evidenceText(evidence?.label);
-  const rawValue = evidence?.rawValue;
-  if (!header || rawValue === undefined || rawValue === null) return null;
-  const roleOk = key === "quantity" ? isQuantityHeader(header) : key === "unitPrice" ? isUnitPriceHeader(header) : isLineTotalHeader(header);
-  if (!roleOk) return null;
-  return parseLocaleNumericEvidence(rawValue) ?? null;
+  const value = evidenceBoundGoodsNumericValue(line, key);
+  return typeof value === "number" ? value : null;
 }
 
 function naturalScalar(value: unknown): string | number | null | undefined {
@@ -288,9 +708,11 @@ export function adaptNaturalInvoiceResponse(
   request: InvoiceLlmExtractionRequest,
   pageImages: InvoiceLlmPageImage[]
 ): Omit<InvoiceLlmExtractionResponse, "model" | "provider"> {
-  const goodsLines: NaturalGoodsLine[] = Array.isArray(parsed.goodsLines)
-    ? parsed.goodsLines.filter((line): line is NaturalGoodsLine => Boolean(line) && typeof line === "object" && !Array.isArray(line))
-    : [];
+  const goodsLines: NaturalGoodsLine[] = sanitizeNaturalGoodsLines(
+    Array.isArray(parsed.goodsLines)
+      ? parsed.goodsLines.filter((line): line is NaturalGoodsLine => Boolean(line) && typeof line === "object" && !Array.isArray(line))
+      : []
+  );
 
   const pageNumber = pageImages.length === 1 ? pageImages[0]!.pageNumber : undefined;
   const fields: InvoiceLlmExtractionResponse["fields"] = [];
@@ -301,11 +723,16 @@ export function adaptNaturalInvoiceResponse(
       const key = requestedField.slice(GOODS_PREFIX.length) as keyof NaturalGoodsLine;
       const evidenceRecovery = request.documentId.endsWith(":goods-numeric-semantic-recovery");
       value = goodsLines.map((line) => {
-        if (evidenceRecovery && (key === "quantity" || key === "unitPrice" || key === "lineTotal")) {
-          return evidenceBackedRecoveryValue(line, key) ?? null;
+        if (key === "quantity" || key === "unitPrice" || key === "lineTotal") {
+          // Evidence-role authority applies on the primary semantic pass too.
+          // Recovery uses the same boundary, so the two paths cannot disagree.
+          return evidenceRecovery
+            ? evidenceBackedRecoveryValue(line, key) ?? null
+            : evidenceBoundGoodsNumericValue(line, key) ?? null;
         }
         const raw = naturalScalar(line[key]);
         if (key === "hsCode") return canonicalizeVisionHsCode(raw) ?? null;
+        if (key === "origin") return canonicalizeVisionCountry(raw) ?? null;
         if (key === "productCode") {
           const hs = canonicalizeVisionHsCode(naturalScalar(line.hsCode));
           const product = raw;
@@ -322,6 +749,17 @@ export function adaptNaturalInvoiceResponse(
         value = label && isWeightLabel(label, requestedField) ? parseLocaleNumericEvidence(evidence?.rawValue) : undefined;
       }
       if (requestedField === "invoiceNumber") value = canonicalizeVisionInvoiceNumber(value);
+      if (
+        requestedField === "buyerCountry"
+        || requestedField === "sellerCountry"
+        || requestedField === "origin"
+        || requestedField === "exitCountry"
+        || requestedField === "arrivalCountry"
+        || requestedField === "destinationCountry"
+        || requestedField === "tradeCountry"
+      ) {
+        value = canonicalizeVisionCountry(value) ?? undefined;
+      }
       if (requestedField === "sellerAddress" || requestedField === "buyerAddress") value = sanitizeVisionPartyAddress(value);
       if (requestedField === "paymentType") value = sanitizeVisionPaymentType(value);
       if (requestedField === "bankInfo") value = sanitizeVisionBankInfo(value);
@@ -359,6 +797,16 @@ export function adaptNaturalInvoiceResponse(
     fields,
     issues: []
   };
+}
+
+/** Re-run current natural-invoice guards over a persisted raw model payload. */
+export function parseVisionRawModelResponse(
+  content: string,
+  request: InvoiceLlmExtractionRequest,
+  pageImages: InvoiceLlmPageImage[],
+  diagnostics?: { doneReason?: string; done?: boolean; evalCount?: number }
+): Omit<InvoiceLlmExtractionResponse, "model" | "provider"> {
+  return parseResponse(content, request, pageImages, diagnostics);
 }
 
 function parseResponse(

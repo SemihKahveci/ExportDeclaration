@@ -9,7 +9,13 @@ import type { DocumentSegment } from "../domain/documentSegment.types.js";
 import type { SegmentClassification } from "../domain/segmentClassification.types.js";
 import { ClassifiedDocumentType } from "../domain/segmentClassification.types.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
-import { QwenVisionInvoiceProvider, sanitizeVisionBankInfo, sanitizeVisionPaymentType } from "./qwenVisionInvoiceProvider.js";
+import {
+  canonicalizeCountryFieldCandidates,
+  QwenVisionInvoiceProvider,
+  sanitizeVisionBankInfo,
+  sanitizeVisionPaymentType
+} from "./qwenVisionInvoiceProvider.js";
+import { discoverInvoiceOriginFieldCandidates } from "../candidates/invoiceOriginCandidateDiscovery.js";
 import { createFoundation8SpecialistProvider } from "./qwenTextInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
@@ -812,7 +818,36 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         !/^goodsLines\.\d+\./.test(field) || !(guardedVisionCandidates.fields[field]?.length)
       ))
     };
-    const fusedCandidates = mergeInvoiceCandidateSources(primaryFused, roleBoundWithoutCompetingGoods);
+    // Vision-primary rows often omit origin and lack bbox evidence, so the
+    // generic VALID-row origin gate never sees them. Re-bind a native origin
+    // column to the Vision goods row set (text-anchor fallback) and fill only
+    // fields Vision left empty. Fail-closed when the column is unstable.
+    const visionBoundOrigins = canonicalizeCountryFieldCandidates(
+      discoverInvoiceOriginFieldCandidates(
+        params.canonicalDocument,
+        result.segmentId,
+        guardedVisionCandidates
+      )
+    );
+    const originFillIn: FieldCandidateEnvelope = {
+      version: "1",
+      fields: Object.fromEntries(
+        Object.entries(visionBoundOrigins.fields).filter(([field]) =>
+          !guardedVisionCandidates.fields[field]?.length
+        )
+      )
+    };
+    if (Object.keys(originFillIn.fields).length) {
+      console.info("idp.origin.vision_fill_in", {
+        segmentId: result.segmentId,
+        filled: Object.keys(originFillIn.fields).length
+      });
+    }
+    const fusedCandidates = mergeInvoiceCandidateSources(
+      primaryFused,
+      roleBoundWithoutCompetingGoods,
+      originFillIn
+    );
 
     const associatedCandidates = associateExplicitGoodsUnitsFromQuantity({
       canonicalDocument: params.canonicalDocument,
@@ -963,9 +998,11 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
           promotableDomains: foundation8PromotableDomains
         })
       : { version: "1" as const, fields: {} };
-    const productionCandidates = env.foundation8ReconciledPromotionEnabled
-      ? overlayReconciledFoundation8Candidates(finalRoleGuardedCandidates, foundation8ReconciledCandidates)
-      : finalRoleGuardedCandidates;
+    const productionCandidates = canonicalizeCountryFieldCandidates(
+      env.foundation8ReconciledPromotionEnabled
+        ? overlayReconciledFoundation8Candidates(finalRoleGuardedCandidates, foundation8ReconciledCandidates)
+        : finalRoleGuardedCandidates
+    );
 
     result.data = {
       ...result.data,

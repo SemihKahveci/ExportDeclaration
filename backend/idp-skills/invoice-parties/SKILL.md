@@ -15,4 +15,5 @@ Identify seller and buyer as role-bound entities with names, addresses and expli
 - Table headers, unrelated registration/legal metadata and banking text terminate or interrupt party blocks when semantics indicate a new section.
 - A buyer block may be introduced by `TO:` or by layout rather than a literal Buyer label; use the document role, not a supplier-specific phrase.
 - Do not infer customs country roles from a party address.
+- Normalize unambiguous party countries to ISO-3166-1 alpha-2; do not leave localized country names when the mapping is certain.
 - Preserve uncertainty when a party or address boundary cannot be established from evidence.

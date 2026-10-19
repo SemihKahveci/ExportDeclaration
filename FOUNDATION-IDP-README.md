@@ -586,3 +586,40 @@ Contracts:
 
 Contract:
 `docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8253Pre824RuntimeBaselineContract.ts`
+
+### Foundation 8.25.4 — Semantic Evidence-Role Guard
+
+- 8.25.3 remains the protected runtime baseline: single Qwen-VL semantic lane, no default Qwen3 text-specialist second pass, and no broad prompt/context expansion.
+- Goods numeric projection now treats **explicit row-local evidence** as stronger authority than the model's repaired/derived numeric. If evidence is present, its visible header must match the requested semantic role and its raw token becomes the numeric value.
+- Explicit role contradictions fail closed. Packaging-count evidence cannot become commercial quantity; shipment-weight evidence cannot become unit price/line total; arithmetic cannot overwrite a visible evidence-backed amount.
+- The guard is deliberately compatibility-preserving: when structured numeric evidence is absent, the existing 8.25.3 semantic value is retained. This protects invoices/layouts that do not emit optional evidence.
+- `invoice-goods-table/references/numeric-semantics.md` now records the same portable rule so future unseen invoices benefit from the capability without supplier names, invoice IDs, coordinates, corpus values, or expected answers.
+- Added `verifyFoundation8254SemanticEvidenceRoleGuardContract.ts` with synthetic corpus-neutral cases for package-vs-quantity, weight-vs-price, visible line amount authority, and evidence-absent baseline preservation.
+- Acceptance gate: impacted canaries must remove the semantic-role regressions while the 8.25.3 Volta/VED behavior and runtime remain unchanged. No old specialist lane or broad recovery fan-out is re-enabled by this checkpoint.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8254SemanticEvidenceRoleGuardContract.ts`
+
+### Foundation 8.25.5 — Commercial-row sanitizer + country ISO
+
+- Builds on 8.25.4 without reopening the Qwen3 specialist lane or broadening Vision prompt context.
+- When packaging-role evidence rejects goods quantity, recover a commercial quantity only if unit price and line total already corroborate one clean quantity distinct from the packaging count; clear packaging units from the commercial row.
+- Drop non-commercial footer/legal/package-summary lines (including document-scoped origin declarations) from `goodsLines`; broadcast a unique document-scoped goods origin onto commercial rows that lack row-local origin.
+- Canonicalize unambiguous party/goods/customs country tokens to ISO-3166-1 alpha-2; leave ambiguous free-text countries fail-closed.
+- Portable skills updated: `numeric-semantics.md` (packaging-reject recovery), `row-identity.md` (non-commercial rows), `customs-field-semantics.md` + `invoice-parties` (ISO country), and short Vision skill reminders.
+- No supplier/invoice constants, coordinates, expected corpus answers, or direct `normalizedData` writes. Foundation 6 remains final promotion authority.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8255CommercialRowSanitizerContract.ts`
+
+### Foundation 8.25.6 — Packaging-unit recovery + footer class + checkpoint re-sanitize
+
+- Extends 8.25.5 recovery when structured packaging evidence is absent: a packaging **unit** with null/non-corroborated quantity still recovers commercial qty from corroborated unitPrice×lineTotal and clears the packaging unit.
+- Treats amount-in-words / currency-prose totals as non-commercial footer rows even when Vision invents price/total or a stray productCode token; an HS code is required to keep the row. Dropped footers may still broadcast document-scoped origin onto commercial rows.
+- Defense-in-depth country ISO also runs on fusion candidates and native party discovery.
+- Vision checkpoint resume replays `rawModelResponse` through the current sanitizer so guard fixes apply without a fresh model call (`idp.vision.checkpoint_resanitize`).
+- Vision-primary goods rows: re-bind native origin-column discovery to the Vision row set (bbox or product/HS text-anchor), fill only missing `goodsLines.N.origin`, canonicalize to ISO. Logs: `idp.vision.qty_recovery`, `idp.vision.goods_row_dropped`, `idp.origin.discovery`, `idp.origin.vision_fill_in`.
+- No supplier/invoice constants. Volta baseline must remain green.
+
+Contract:
+`docker compose -f compose.dev.yaml exec backend npx tsx backend/scripts/idp/verifyFoundation8255CommercialRowSanitizerContract.ts`
