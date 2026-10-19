@@ -10,7 +10,10 @@ import type { SegmentClassification } from "../domain/segmentClassification.type
 import { ClassifiedDocumentType } from "../domain/segmentClassification.types.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 import {
+  applyDocumentScopedGoodsOriginAuthority,
   canonicalizeCountryFieldCandidates,
+  canonicalizeVisionCountry,
+  discoverDocumentScopedGoodsOriginIso,
   QwenVisionInvoiceProvider,
   sanitizeVisionBankInfo,
   sanitizeVisionPaymentType
@@ -498,10 +501,46 @@ export function enforceVisionDocumentRoleAuthority(
   keepOnlyWithRole("tradeCountry", /\b(?:TICARET\s+YAPILAN\s+ULKE|COUNTRY\s+OF\s+TRADE)\b/);
 
   // Goods origin is not the seller/buyer country. PAGE_IMAGE row origin needs
-  // an explicit origin role/statement on its own evidence page.
+  // an explicit origin-column role. Table continuations often repeat country
+  // cells without reprinting the header — allow document-scoped header proof
+  // only when the value is an unambiguous ISO country and is visible on the
+  // evidence page (or is already a 2-letter ISO token).
+  const goodsOriginRole = /\b(?:MENSEI|MENSE\s*I|ORIJIN|URSPRUG|URSPRUNG|COUNTRY\s+OF\s+ORIGIN(?:\s+OF\s+GOODS)?|ORIGIN\s+OF\s+GOODS|MADE\s+IN|MENSEILIDIR|ORIGIN|COO)\b/;
+  const documentHasGoodsOriginRole = [...pageText.values()].some((text) => goodsOriginRole.test(text));
+  let goodsOriginKept = 0;
+  let goodsOriginDropped = 0;
   for (const field of Object.keys(fields)) {
     if (!/^goodsLines\.\d+\.origin$/.test(field)) continue;
-    keepOnlyWithRole(field, /\b(?:MENSEI|MENSE\s*I|URSPRUG|URSPRUNG|COUNTRY\s+OF\s+ORIGIN(?:\s+OF\s+GOODS)?|ORIGIN\s+OF\s+GOODS|MADE\s+IN|MENSEILIDIR)\b/);
+    const source = fields[field];
+    if (!source?.length) continue;
+    const retained = source.filter((candidate) => {
+      const imageEvidence = candidate.evidence.filter((evidence) => evidence.contentSource === "PAGE_IMAGE");
+      if (imageEvidence.length === 0) return true;
+      const iso = canonicalizeVisionCountry(candidate.value);
+      if (!iso) return false;
+      return imageEvidence.some((evidence) => {
+        const page = pageText.get(evidence.pageNumber) ?? "";
+        if (goodsOriginRole.test(page)) return true;
+        if (!documentHasGoodsOriginRole) return false;
+        const pageNorm = normalized(page);
+        const valueNorm = normalized(candidate.value);
+        return pageNorm.includes(iso) || (valueNorm.length >= 2 && pageNorm.includes(valueNorm));
+      });
+    });
+    if (retained.length > 0) {
+      fields[field] = retained;
+      goodsOriginKept += retained.length;
+    } else {
+      delete fields[field];
+      goodsOriginDropped += source.length;
+    }
+  }
+  if (goodsOriginKept || goodsOriginDropped) {
+    console.info("idp.vision.goods_origin_role_guard", {
+      documentHasGoodsOriginRole,
+      kept: goodsOriginKept,
+      dropped: goodsOriginDropped
+    });
   }
 
   // Header/shipment scalars that are especially prone to numeric-role
@@ -796,12 +835,29 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       canonicalValidatedNativeGoodsRowCandidatesOf(currentAuthorityData),
       canonicalValidatedNativeGoodsOriginCandidatesOf(currentAuthorityData)
     );
-    const guardedVisionCandidates = enforceVisionSourceBackedCommercialNumericAuthority(
+    const roleGuardedVisionCandidates = enforceVisionSourceBackedCommercialNumericAuthority(
       enforceVisionDocumentRoleAuthority(
         sanitizeVisionCommercialSemanticCandidates(execution.candidates),
         params.canonicalDocument
       ),
       roleBoundDeterministic
+    );
+    // Cross-page: sanitize is page-local, so a footer origin statement on page N
+    // must still correct uniform party-leak row origins from page 1.
+    const documentScopedOrigin = discoverDocumentScopedGoodsOriginIso(
+      params.canonicalDocument.pages
+        .map((page) => page.nativeText || page.ocrText || "")
+        .join("\n")
+    );
+    console.info("idp.origin.document_scoped_discover", {
+      segmentId: result.segmentId,
+      iso: documentScopedOrigin ?? null,
+      pageCount: params.canonicalDocument.pages.length
+    });
+    const guardedVisionCandidates = applyDocumentScopedGoodsOriginAuthority(
+      roleGuardedVisionCandidates,
+      documentScopedOrigin,
+      result.segmentId
     );
     const primaryFused = plan.route === "LLM_VISION_PRIMARY"
       ? mergeInvoicePrimaryWithFallback(guardedVisionCandidates, deterministicFallback)

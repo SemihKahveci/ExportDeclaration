@@ -615,7 +615,8 @@ Contract:
 ### Foundation 8.25.6 — Packaging-unit recovery + footer class + checkpoint re-sanitize
 
 - Extends 8.25.5 recovery when structured packaging evidence is absent: a packaging **unit** with null/non-corroborated quantity still recovers commercial qty from corroborated unitPrice×lineTotal and clears the packaging unit.
-- Treats amount-in-words / currency-prose totals as non-commercial footer rows even when Vision invents price/total or a stray productCode token; an HS code is required to keep the row. Dropped footers may still broadcast document-scoped origin onto commercial rows.
+- Treats amount-in-words / currency-prose totals as non-commercial footer rows even when Vision invents price/total, stray productCode, or a short numeric pseudo-HS. Dropped footers may still broadcast document-scoped origin onto commercial rows.
+- Vision goods-origin role guard: continuation pages may keep ISO-canonical row origins when the document has an origin-column header and the country token is visible on the evidence page (`idp.vision.goods_origin_role_guard`).
 - Defense-in-depth country ISO also runs on fusion candidates and native party discovery.
 - Vision checkpoint resume replays `rawModelResponse` through the current sanitizer so guard fixes apply without a fresh model call (`idp.vision.checkpoint_resanitize`).
 - Vision-primary goods rows: re-bind native origin-column discovery to the Vision row set (bbox or product/HS text-anchor), fill only missing `goodsLines.N.origin`, canonicalize to ISO. Logs: `idp.vision.qty_recovery`, `idp.vision.goods_row_dropped`, `idp.origin.discovery`, `idp.origin.vision_fill_in`.
