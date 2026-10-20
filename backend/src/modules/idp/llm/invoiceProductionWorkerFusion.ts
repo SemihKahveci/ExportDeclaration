@@ -19,6 +19,7 @@ import {
   sanitizeVisionPaymentType
 } from "./qwenVisionInvoiceProvider.js";
 import { discoverInvoiceOriginFieldCandidates } from "../candidates/invoiceOriginCandidateDiscovery.js";
+import { discoverCorroboratedGoodsNumericFill } from "../candidates/invoiceGoodsTokenFill.js";
 import { discoverInvoiceHsFieldCandidates } from "../candidates/invoiceHsCandidateDiscovery.js";
 import { createFoundation8SpecialistProvider } from "./qwenTextInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
@@ -1082,10 +1083,41 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         ? overlayReconciledFoundation8Candidates(finalRoleGuardedCandidates, foundation8ReconciledCandidates)
         : finalRoleGuardedCandidates
     );
+    const absentGoodsFields = (envelope: FieldCandidateEnvelope): FieldCandidateEnvelope => ({
+      version: "1",
+      fields: Object.fromEntries(
+        Object.entries(envelope.fields).filter(([field]) => !productionCandidates.fields[field]?.length)
+      )
+    });
+    const tokenNumericFill = absentGoodsFields(discoverCorroboratedGoodsNumericFill(
+      params.canonicalDocument,
+      result.segmentId,
+      productionCandidates
+    ));
+    const lateOriginFill = absentGoodsFields(canonicalizeCountryFieldCandidates(discoverInvoiceOriginFieldCandidates(
+      params.canonicalDocument,
+      result.segmentId,
+      productionCandidates,
+      { requireCountryColumn: true }
+    )));
+    if (Object.keys(tokenNumericFill.fields).length > 0 || Object.keys(lateOriginFill.fields).length > 0) {
+      console.info("idp.goods.token_fill", {
+        segmentId: result.segmentId,
+        numeric: Object.keys(tokenNumericFill.fields).length,
+        origin: Object.keys(lateOriginFill.fields).length,
+        numericFields: Object.keys(tokenNumericFill.fields).slice(0, 8),
+        originFields: Object.keys(lateOriginFill.fields).slice(0, 8)
+      });
+    }
+    const tokenCompletedCandidates = mergeInvoiceCandidateSources(
+      productionCandidates,
+      tokenNumericFill,
+      lateOriginFill
+    );
 
     result.data = {
       ...result.data,
-      fieldCandidates: productionCandidates,
+      fieldCandidates: tokenCompletedCandidates,
       foundation8ShadowAudit,
       ...(foundation8SpecialistModelAudit ? { foundation8SpecialistModelAudit } : {}),
       ...(foundation8SpecialistReconciliationAudit ? { foundation8SpecialistReconciliationAudit } : {}),

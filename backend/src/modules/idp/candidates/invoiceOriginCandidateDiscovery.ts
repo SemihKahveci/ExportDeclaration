@@ -129,6 +129,7 @@ export function discoverInvoiceOriginFieldCandidates(
   canonical: CanonicalDocument,
   segmentId: string,
   goodsCandidates: FieldCandidateEnvelope,
+  options?: { requireCountryColumn?: boolean }
 ): FieldCandidateEnvelope {
   const fields: Record<string, FieldCandidate[]> = {};
   const rowIndexes = goodsRowIndexes(goodsCandidates.fields);
@@ -211,8 +212,8 @@ export function discoverInvoiceOriginFieldCandidates(
       if (countryDelta !== 0) return countryDelta;
       return a.center - b.center;
     });
-  const originCluster = stable.find((cluster) => cluster.countryLikeRows >= Math.max(3, Math.ceil(minimumCoverage * 0.5)))
-    ?? stable[0];
+  const countryColumn = stable.find((cluster) => cluster.countryLikeRows >= Math.max(3, Math.ceil(minimumCoverage * 0.5)));
+  const originCluster = options?.requireCountryColumn ? countryColumn : (countryColumn ?? stable[0]);
   if (!originCluster) {
     console.info("idp.origin.discovery", {
       segmentId,
@@ -220,7 +221,7 @@ export function discoverInvoiceOriginFieldCandidates(
       bboxAnchors,
       textAnchors,
       rowCells: rowCells.length,
-      stableClusters: 0,
+      stableClusters: stable.length,
       emitted: 0
     });
     return { version: "1", fields };
