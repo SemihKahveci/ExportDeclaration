@@ -77,7 +77,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
         <div className="flex gap-3 flex-wrap items-end mb-4">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-[.06em] text-muted mb-1">İşlem Tipi</label>
-            <Select value={filterTip} onChange={(e) => setFilterTip(e.target.value)} className="!w-auto !py-[7px]">
+            <Select value={filterTip} onChange={(e) => setFilterTip(e.target.value)} className="!w-auto !h-[34px] !py-0">
               <option>Tümü</option>
               <option>İhracat</option>
               <option>İthalat</option>
@@ -87,7 +87,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
           </div>
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-[.06em] text-muted mb-1">Taşıma Şekli</label>
-            <Select value={filterTas} onChange={(e) => setFilterTas(e.target.value)} className="!w-auto !py-[7px]">
+            <Select value={filterTas} onChange={(e) => setFilterTas(e.target.value)} className="!w-auto !h-[34px] !py-0">
               <option>Tümü</option>
               <option>Karayolu</option>
               <option>Denizyolu</option>
@@ -96,13 +96,13 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
           </div>
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-[.06em] text-muted mb-1">Durum</label>
-            <Select value={filterSt} onChange={(e) => setFilterSt(e.target.value)} className="!w-auto !py-[7px]">
+            <Select value={filterSt} onChange={(e) => setFilterSt(e.target.value)} className="!w-auto !h-[34px] !py-0">
               <option>Tümü</option>
               <option>Aktif</option>
               <option>Pasif</option>
             </Select>
           </div>
-          <Button size="sm" onClick={clearFilters}>Temizle</Button>
+          <Button className="!h-[34px] !px-3 !text-[13px]" onClick={clearFilters}>Temizle</Button>
         </div>
       </CardBody>
       <Table>

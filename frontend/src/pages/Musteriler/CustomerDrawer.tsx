@@ -39,6 +39,12 @@ interface CustomerDrawerProps {
 
 const SELECT_PLACEHOLDER = '';
 
+function domainFromEmail(email: string): string {
+  const at = email.trim().lastIndexOf('@');
+  if (at < 1 || at === email.trim().length - 1) return '';
+  return email.trim().slice(at).toLowerCase();
+}
+
 const NOTIFICATION_PROCESS_LIST = [
   'GTİP Eksik · Kontrollü',
   'GTİP Hatalı · Kontrollü',
@@ -165,7 +171,6 @@ export default function CustomerDrawer({
   const [dNote, setDNote]           = useState('');
 
   const [mEmail, setMEmail]         = useState('');
-  const [mDomain, setMDomain]       = useState('');
   const [mOwner, setMOwner]         = useState('');
   const [mMatch, setMMatch]         = useState<'active' | 'passive'>('active');
   const [mProcesses, setMProcesses] = useState<string[]>([]);
@@ -208,14 +213,12 @@ export default function CustomerDrawer({
     }
     if (mode === 'mail' && initialMail) {
       setMEmail(initialMail.email);
-      setMDomain(initialMail.domain);
       setMOwner(initialMail.owner);
       setMMatch(initialMail.matchStatus);
       setMProcesses(initialMail.notificationProcesses);
       setMStatus(initialMail.status);
     } else if (mode === 'mail') {
       setMEmail('');
-      setMDomain('');
       setMOwner('');
       setMMatch('active');
       setMProcesses([]);
@@ -274,7 +277,6 @@ export default function CustomerDrawer({
     if (mode === 'mail') {
       return (
         mEmail.trim() !== '' &&
-        mDomain.trim() !== '' &&
         mOwner.trim() !== '' &&
         mProcesses.length > 0
       );
@@ -300,7 +302,7 @@ export default function CustomerDrawer({
     return true;
   }, [
     mode, companyName, aAddrLines, aCity, aCountry, aTaxNo,
-    dDomain, mEmail, mDomain, mOwner, mProcesses,
+    dDomain, mEmail, mOwner, mProcesses,
     rTip, rTas, rDocs, rReminder, rFreq, rStatus,
     nProcess, nMode, nRecipient, nStatus,
   ]);
@@ -340,7 +342,7 @@ export default function CustomerDrawer({
         mode: 'mail',
         data: {
           email: mEmail.trim(),
-          domain: mDomain.trim(),
+          domain: domainFromEmail(mEmail),
           owner: mOwner.trim(),
           matchStatus: mMatch,
           notificationProcesses: mProcesses,
@@ -470,15 +472,6 @@ export default function CustomerDrawer({
               value={mEmail}
               onChange={(e) => setMEmail(e.target.value)}
               placeholder="ad@firma.com"
-            />
-          </Field>
-          <Field label="Mail Domain" htmlFor="m-domain" required>
-            <Input
-              id="m-domain"
-              value={mDomain}
-              onChange={(e) => setMDomain(e.target.value)}
-              placeholder="@firma.com"
-              className="font-mono"
             />
           </Field>
           <Field label="Kişi / Birim" htmlFor="m-owner" required>
