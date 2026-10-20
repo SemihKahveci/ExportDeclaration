@@ -106,13 +106,15 @@ export interface PersistedPageEvidence {
   pageNumber: number;
   bbox: { x0: number; y0: number; x1: number; y1: number };
   text?: string;
-  contentSource?: "NATIVE_TEXT" | "OCR";
+  contentSource?: "NATIVE_TEXT" | "OCR" | "PAGE_IMAGE";
 }
 
 function evidenceCandidateEnvelopes(run: any): any[] {
   const result: any[] = [];
   for (const segment of run?.candidates?.segments ?? []) {
-    const audit = segment?.data?.genericCandidateAudit;
+    const data = segment?.data;
+    if (data?.fieldCandidates?.fields) result.push(data.fieldCandidates);
+    const audit = data?.genericCandidateAudit;
     if (!audit) continue;
     for (const key of ["candidates", "headerPartyCandidates", "commercialTermsCandidates", "shipmentCandidates", "originCandidates"]) {
       if (audit[key]?.fields) result.push(audit[key]);

@@ -124,7 +124,7 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
     if (!evidence || evidence.contentSource === 'DERIVED') return;
     setViewer({
       uploadedFileId: candidate.uploadedFileId,
-      evidence: { ...evidence, label: `${documentLabel(candidate.documentType)} · ${candidate.field}` },
+      evidence: { ...evidence, field: candidate.field, label: `${documentLabel(candidate.documentType)} · ${candidate.field}` },
     });
   }
 
