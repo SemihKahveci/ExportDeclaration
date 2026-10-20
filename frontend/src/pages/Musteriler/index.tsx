@@ -16,6 +16,9 @@ import { declarationFieldRulesService } from '../../services/declarationFieldRul
 import { useToast } from '../../components/ui/Toast';
 import { ApiError } from '../../api/apiClient';
 import Tabs from '../../components/ui/Tabs';
+import Modal from '../../components/ui/Modal';
+import Button from '../../components/ui/Button';
+import Note from '../../components/ui/Note';
 import { useCan } from '../../permissions/useCan';
 import CustomerSidePanel from './CustomerSidePanel';
 import AddressTab from './AddressTab';
@@ -68,6 +71,8 @@ export default function MusterilerPage() {
   const [editAddrIdx, setEditAddrIdx] = useState<number | null>(null);
   const [editDomainIdx, setEditDomainIdx] = useState<number | null>(null);
   const [editMailIdx, setEditMailIdx] = useState<number | null>(null);
+  const [mailPendingDelete, setMailPendingDelete] = useState<CustomerMail | null>(null);
+  const [deletingMail, setDeletingMail] = useState(false);
   const [editRuleIdx, setEditRuleIdx] = useState<number | null>(null);
   const [editNotifyIdx, setEditNotifyIdx] = useState<number | null>(null);
 
@@ -313,6 +318,21 @@ export default function MusterilerPage() {
     }
   }
 
+  async function handleDeleteMail() {
+    if (!mailPendingDelete) return;
+    setDeletingMail(true);
+    try {
+      await customersService.deleteMail(mailPendingDelete.id);
+      setMails((prev) => prev.filter((m) => m.id !== mailPendingDelete.id));
+      setMailPendingDelete(null);
+      toast('Mail adresi silindi');
+    } catch (err) {
+      toast(errorMessage(err, 'Mail silinemedi'));
+    } finally {
+      setDeletingMail(false);
+    }
+  }
+
   async function handleDfrDelete(id: string) {
     try {
       await declarationFieldRulesService.delete(id);
@@ -412,6 +432,7 @@ export default function MusterilerPage() {
                     onEditDomain={(i) => openDrawer('domain', i)}
                     onNewMail={() => openDrawer('mail')}
                     onEditMail={(i) => openDrawer('mail', i)}
+                    onDeleteMail={(i) => setMailPendingDelete(mails[i] ?? null)}
                   />
                 )}
                 {activeTab === 'rule' && (
@@ -459,6 +480,26 @@ export default function MusterilerPage() {
         onClose={closeDrawer}
         onSave={handleSave}
       />
+      <Modal
+        open={mailPendingDelete !== null}
+        onClose={() => !deletingMail && setMailPendingDelete(null)}
+        title="Mail Adresini Sil"
+        footer={
+          <>
+            <Button onClick={() => setMailPendingDelete(null)} disabled={deletingMail}>Vazgeç</Button>
+            <Button variant="danger" onClick={handleDeleteMail} disabled={deletingMail}>
+              {deletingMail ? 'Siliniyor…' : 'Evet, sil'}
+            </Button>
+          </>
+        }
+      >
+        <Note variant="warn">
+          <p className="font-semibold">Bu işlem geri alınamaz.</p>
+          <p className="mt-1">
+            <strong>{mailPendingDelete?.email}</strong> kalıcı olarak silinecek.
+          </p>
+        </Note>
+      </Modal>
       <DeclFieldRuleDrawer
         open={dfrDrawerOpen}
         initial={editDfrId ? declFieldRules.find((r) => r.id === editDfrId) : undefined}

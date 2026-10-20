@@ -1,4 +1,4 @@
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import type { MailDomain, CustomerMail } from '../../types';
 import { Card, CardHead } from '../../components/ui/Card';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
@@ -23,6 +23,7 @@ interface MailTabProps {
   onEditDomain: (idx: number) => void;
   onNewMail: () => void;
   onEditMail: (idx: number) => void;
+  onDeleteMail: (idx: number) => void;
 }
 
 export default function MailTab({
@@ -32,6 +33,7 @@ export default function MailTab({
   onEditDomain,
   onNewMail,
   onEditMail,
+  onDeleteMail,
 }: MailTabProps) {
   const { can } = useCan();
   return (
@@ -129,17 +131,30 @@ export default function MailTab({
                   </Td>
                   <Td><StatusBadge active={m.status === 'active'} /></Td>
                   <Td className="w-px">
-                    <button
-                      onClick={() => onEditMail(i)}
-                      disabled={!can('musteriler.edit')}
-                      title={!can('musteriler.edit') ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : undefined}
-                      className={[
-                        'text-muted-2 hover:text-accent transition-colors',
-                        !can('musteriler.edit') ? 'opacity-40 pointer-events-none' : '',
-                      ].join(' ')}
-                    >
-                      <Pencil size={15} strokeWidth={2} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onEditMail(i)}
+                        disabled={!can('musteriler.edit')}
+                        title={!can('musteriler.edit') ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Düzenle'}
+                        className={[
+                          'text-muted-2 hover:text-accent transition-colors',
+                          !can('musteriler.edit') ? 'opacity-40 pointer-events-none' : '',
+                        ].join(' ')}
+                      >
+                        <Pencil size={15} strokeWidth={2} />
+                      </button>
+                      <button
+                        onClick={() => onDeleteMail(i)}
+                        disabled={!can('musteriler.edit')}
+                        title={!can('musteriler.edit') ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Sil'}
+                        className={[
+                          'text-muted-2 hover:text-hat-red transition-colors',
+                          !can('musteriler.edit') ? 'opacity-40 pointer-events-none' : '',
+                        ].join(' ')}
+                      >
+                        <Trash2 size={15} strokeWidth={2} />
+                      </button>
+                    </div>
                   </Td>
                 </Tr>
               ))
