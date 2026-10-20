@@ -453,6 +453,7 @@ export default function MusterilerPage() {
         initialAddress={initAddr}
         initialDomain={initDomain}
         initialMail={initMail}
+        mailDomains={domains}
         initialRule={initRule}
         initialNotify={initNotify}
         onClose={closeDrawer}

@@ -32,6 +32,7 @@ interface CustomerDrawerProps {
   initialAddress?: CustomerAddress;
   initialDomain?: MailDomain;
   initialMail?: CustomerMail;
+  mailDomains?: MailDomain[];
   initialRule?: DocumentRule;
   initialNotify?: NotificationRule;
   onClose: () => void;
@@ -40,10 +41,17 @@ interface CustomerDrawerProps {
 
 const SELECT_PLACEHOLDER = '';
 
-function domainFromEmail(email: string): string {
-  const at = email.trim().lastIndexOf('@');
-  if (at < 1 || at === email.trim().length - 1) return '';
-  return email.trim().slice(at).toLowerCase();
+function domainsInAddOrder(domains: MailDomain[]): string[] {
+  return [...domains]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((item) => item.domain.trim())
+    .filter(Boolean);
+}
+
+function defaultDefinedDomain(domains: MailDomain[], current?: string): string {
+  const ordered = domainsInAddOrder(domains);
+  if (current && ordered.includes(current)) return current;
+  return ordered[0] ?? '';
 }
 
 const NOTIFICATION_PROCESS_LIST = [
@@ -198,6 +206,7 @@ export default function CustomerDrawer({
   initialAddress,
   initialDomain,
   initialMail,
+  mailDomains = [],
   initialRule,
   initialNotify,
   onClose,
@@ -215,6 +224,7 @@ export default function CustomerDrawer({
   const [dNote, setDNote]           = useState('');
 
   const [mEmail, setMEmail]         = useState('');
+  const [mDomain, setMDomain]       = useState('');
   const [mOwner, setMOwner]         = useState('');
   const [mMatch, setMMatch]         = useState<'active' | 'passive'>('active');
   const [mProcesses, setMProcesses] = useState<string[]>([]);
@@ -257,12 +267,14 @@ export default function CustomerDrawer({
     }
     if (mode === 'mail' && initialMail) {
       setMEmail(initialMail.email);
+      setMDomain(defaultDefinedDomain(mailDomains, initialMail.domain));
       setMOwner(initialMail.owner);
       setMMatch(initialMail.matchStatus);
       setMProcesses(initialMail.notificationProcesses);
       setMStatus(initialMail.status);
     } else if (mode === 'mail') {
       setMEmail('');
+      setMDomain(defaultDefinedDomain(mailDomains));
       setMOwner('');
       setMMatch('active');
       setMProcesses([]);
@@ -296,7 +308,7 @@ export default function CustomerDrawer({
       setNRecipient(SELECT_PLACEHOLDER);
       setNStatus(SELECT_PLACEHOLDER);
     }
-  }, [open, mode, initialAddress, initialDomain, initialMail, initialRule, initialNotify]);
+  }, [open, mode, initialAddress, initialDomain, initialMail, mailDomains, initialRule, initialNotify]);
 
   useEffect(() => {
     if (mode !== 'notify') return;
@@ -321,6 +333,7 @@ export default function CustomerDrawer({
     if (mode === 'mail') {
       return (
         mEmail.trim() !== '' &&
+        mDomain.trim() !== '' &&
         mOwner.trim() !== '' &&
         mProcesses.length > 0
       );
@@ -345,7 +358,7 @@ export default function CustomerDrawer({
     return true;
   }, [
     mode, companyName, aAddrLines, aCity, aCountry, aTaxNo,
-    dDomain, mEmail, mOwner, mProcesses,
+    dDomain, mEmail, mDomain, mOwner, mProcesses,
     rTip, rTas, rDocs, rReminder, rFreq, rStatus,
     nProcess, nMode, nRecipient, nStatus,
   ]);
@@ -385,7 +398,7 @@ export default function CustomerDrawer({
         mode: 'mail',
         data: {
           email: mEmail.trim(),
-          domain: domainFromEmail(mEmail),
+          domain: mDomain.trim(),
           owner: mOwner.trim(),
           matchStatus: mMatch,
           notificationProcesses: mProcesses,
@@ -517,14 +530,30 @@ export default function CustomerDrawer({
               placeholder="ad@firma.com"
             />
           </Field>
-          <Field label="Mail Domain" htmlFor="m-domain" hint="Adresten alınır, elle değiştirilmez.">
-            <Input
-              id="m-domain"
-              value={domainFromEmail(mEmail)}
-              readOnly
-              placeholder="@firma.com"
-              className="font-mono bg-surface-2"
-            />
+          <Field
+            label="Mail Domain"
+            htmlFor="m-domain"
+            hint={mailDomains.length > 1 ? 'İlk eklenen domain hazır gelir. Başka bir tanımı da seçebilirsin.' : 'Mail Domain Tanımlarından gelir.'}
+          >
+            {mailDomains.length > 1 ? (
+              <Select
+                id="m-domain"
+                value={mDomain}
+                onChange={(e) => setMDomain(e.target.value)}
+                className="font-mono"
+              >
+                {domainsInAddOrder(mailDomains).map((domain) => (
+                  <option key={domain} value={domain}>{domain}</option>
+                ))}
+              </Select>
+            ) : (
+              <Input
+                id="m-domain"
+                value={mDomain}
+                readOnly
+                className="font-mono bg-surface-2"
+              />
+            )}
           </Field>
           <Field label="Kişi / Birim" htmlFor="m-owner" required>
             <Input id="m-owner" value={mOwner} onChange={(e) => setMOwner(e.target.value)} />

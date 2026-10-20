@@ -7,12 +7,6 @@ import { useCan } from '../../permissions/useCan';
 
 // ─── Small status badge ───────────────────────────────────────────────────────
 
-function domainFromEmail(email: string): string {
-  const at = email.trim().lastIndexOf('@');
-  if (at < 1 || at === email.trim().length - 1) return '';
-  return email.trim().slice(at).toLowerCase();
-}
-
 function StatusBadge({ active }: { active: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1.5 text-[12px] font-semibold ${active ? 'text-ok' : 'text-muted'}`}>
@@ -81,7 +75,15 @@ export default function MailTab({
           title="Müşteri Mail Adresleri"
           sub="Bu mailler Evrim'e gönderilmez. Bildirim süreçleri Ayarlar > Bildirim Süreçleri'nden gelir."
           actions={
-            <Button variant="primary" size="sm" icon={Plus} onClick={onNewMail} writeCap="musteriler.edit">
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Plus}
+              onClick={onNewMail}
+              writeCap="musteriler.edit"
+              disabled={domains.length === 0}
+              title={domains.length === 0 ? 'Önce bir mail domain tanımlayın' : undefined}
+            >
               Yeni Mail
             </Button>
           }
@@ -111,7 +113,7 @@ export default function MailTab({
                   <Td><span className="font-semibold text-text-strong">{m.email}</span></Td>
                   <Td>
                     <span className="font-mono text-[12px] font-semibold bg-line px-2 py-1 rounded-[6px] text-text-strong">
-                      {m.domain?.trim() || domainFromEmail(m.email)}
+                      {m.domain}
                     </span>
                   </Td>
                   <Td><span className="text-[13px]">{m.owner}</span></Td>
