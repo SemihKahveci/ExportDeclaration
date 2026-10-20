@@ -257,7 +257,7 @@ export default function AyarlarPage() {
   );
 
   return (
-    <div className="px-7 pt-6 pb-12 overflow-y-auto">
+    <div className="px-7 pt-6 pb-12">
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
           <h1 className="text-[23px] font-extrabold text-text-strong tracking-tight">Ayarlar</h1>

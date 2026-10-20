@@ -318,7 +318,7 @@ export default function UsersTab({
         {/* ── Right: Permission detail ────────────────────────────────────── */}
         <Card>
           <CardHead
-            className="sticky top-0 z-20 bg-surface"
+            className="sticky top-0 z-20 bg-surface shadow-sm"
             title="Kullanıcı Yetki Tanımı"
             sub={sel ? sel.name : 'Sol listeden kullanıcı seçin'}
             actions={
