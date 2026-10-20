@@ -1,12 +1,90 @@
 import { resolveCrossDocumentField } from "./crossDocumentFieldResolver.js";
 import type { CrossDocumentFieldRule } from "./crossDocumentFieldResolution.types.js";
 import type { DeclarationFieldCandidate } from "./declarationFieldCandidate.types.js";
+import { classifyGoodsLineTotalScale } from "./goodsLineTotalScale.js";
+import { appendIdpRuntimeDiag } from "../diagnostics/idpRuntimeDiagFile.js";
 import type {
   DeclarationFieldResolutionEnvelope,
   ResolveDeclarationFieldsParams,
   ResolvedDeclarationField,
   DeclarationCandidateAuthoritySelection
 } from "./declarationFieldResolution.types.js";
+
+function resolvedGoodsNumber(field: ResolvedDeclarationField | undefined): number | undefined {
+  if (!field || field.status !== "RESOLVED") return undefined;
+  return typeof field.value === "number" && Number.isFinite(field.value) ? field.value : undefined;
+}
+
+/**
+ * Last net for a goods triple that was split after vision: a correct commercial
+ * quantity and unit price beside a clean scale-blown line total is repaired to
+ * their product. A severe mismatch that is not a clean scale stays
+ * REVIEW_REQUIRED so promotion does not write it and Belge İncelemesi lists it.
+ */
+function applyGoodsLineTotalScaleAuthority(
+  fields: Record<string, ResolvedDeclarationField>,
+  reviewRequiredFields: string[]
+): void {
+  const indexes = new Set<string>();
+  for (const name of Object.keys(fields)) {
+    const match = /^goodsLines\.(\d+)\.(?:quantity|unitPrice|lineTotal)$/.exec(name);
+    if (match?.[1]) indexes.add(match[1]);
+  }
+
+  const repairSamples: Array<{ index: string; quantity: number; unitPrice: number; rejected: number; repaired: number }> = [];
+  const reviewSamples: Array<{ index: string; quantity: number; unitPrice: number; rejected: number }> = [];
+  let repaired = 0;
+  let review = 0;
+
+  for (const index of [...indexes].sort((left, right) => Number(left) - Number(right))) {
+    const quantity = resolvedGoodsNumber(fields[`goodsLines.${index}.quantity`]);
+    const unitPrice = resolvedGoodsNumber(fields[`goodsLines.${index}.unitPrice`]);
+    const totalField = fields[`goodsLines.${index}.lineTotal`];
+    const lineTotal = resolvedGoodsNumber(totalField);
+    if (quantity == null || unitPrice == null || lineTotal == null || !totalField) continue;
+
+    const decision = classifyGoodsLineTotalScale(quantity, unitPrice, lineTotal);
+    if (decision.action === "repair") {
+      repaired += 1;
+      fields[`goodsLines.${index}.lineTotal`] = { ...totalField, value: decision.value };
+      if (repairSamples.length < 8) {
+        repairSamples.push({
+          index,
+          quantity,
+          unitPrice,
+          rejected: decision.rejected,
+          repaired: decision.value
+        });
+      }
+    } else if (decision.action === "review") {
+      review += 1;
+      const fieldName = `goodsLines.${index}.lineTotal`;
+      fields[fieldName] = {
+        ...totalField,
+        status: "REVIEW_REQUIRED",
+        method: "CONFLICT_REVIEW",
+        value: undefined,
+        reason: "LINE_TOTAL_SCALE_REVIEW",
+        conflict: true,
+        conflictCandidateIds: totalField.candidateIds
+      };
+      if (!reviewRequiredFields.includes(fieldName)) reviewRequiredFields.push(fieldName);
+      if (reviewSamples.length < 8) {
+        reviewSamples.push({ index, quantity, unitPrice, rejected: decision.rejected });
+      }
+    }
+  }
+
+  if (repaired === 0 && review === 0) return;
+  const payload = {
+    repaired,
+    review,
+    repairSamples,
+    reviewSamples
+  };
+  console.info("idp.declaration.line_total_scale", payload);
+  appendIdpRuntimeDiag("idp.declaration.line_total_scale", payload);
+}
 
 function assertUniqueCandidateIds(candidates: DeclarationFieldCandidate[]): void {
   const seen = new Set<string>();
@@ -100,6 +178,8 @@ export function resolveDeclarationFields(
     };
     if (resolution.status === "REVIEW_REQUIRED") reviewRequiredFields.push(field);
   }
+
+  applyGoodsLineTotalScaleAuthority(fields, reviewRequiredFields);
 
   for (const selection of params.candidateSelections ?? []) {
     if (!Object.prototype.hasOwnProperty.call(params.candidates.fields, selection.field)) {

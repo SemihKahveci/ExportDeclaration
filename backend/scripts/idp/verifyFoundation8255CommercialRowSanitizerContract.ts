@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { DocumentType } from "../../src/common/enums/documentType.js";
+import { resolveDeclarationFields } from "../../src/modules/idp/domain/declarationFieldResolver.js";
+import type { DeclarationFieldCandidateEnvelope } from "../../src/modules/idp/domain/declarationFieldCandidate.types.js";
 import {
   adaptNaturalInvoiceResponse,
   applyDocumentScopedGoodsOriginAuthority,
@@ -450,20 +453,23 @@ const vedEvidenceRecovered = sanitizeNaturalGoodsLines([
 assert.equal(vedEvidenceRecovered[0]?.lineTotal, 28.77);
 assert.equal(vedEvidenceRecovered[1]?.lineTotal, 36.16);
 
-// Inflated totals with no recoverable amount evidence fail-closed (reject, not invent).
-const vedContradictionRejected = sanitizeNaturalGoodsLines([
+// Clean scale blows of an already-present qty and unit price repair to that product.
+// A non-scale severe mismatch stays unchanged for declaration review.
+const vedScaleRepaired = sanitizeNaturalGoodsLines([
   { description: "A", quantity: 1, unitPrice: 28.77, lineTotal: 28770, unit: "ADET" },
   { description: "B", quantity: 2, unitPrice: 18.08, lineTotal: 18080, unit: "ADET" },
   { description: "C", quantity: 10, unitPrice: 9.72, lineTotal: 9720, unit: "ADET" },
   { description: "D", quantity: 2, unitPrice: 900.2, lineTotal: 900200, unit: "ADET" },
-  // Mid-scale inflate (×7–9) still fail-closed; modest discount below stays.
-  { description: "E", quantity: 36, unitPrice: 106.8, lineTotal: 28770, unit: "ADET" }
+  { description: "E", quantity: 4, unitPrice: 106.8, lineTotal: 427200, unit: "ADET" },
+  // Mid-scale inflate (×7–9) is not a clean scale and is not rewritten.
+  { description: "F", quantity: 36, unitPrice: 106.8, lineTotal: 28770, unit: "ADET" }
 ] as never[]);
-assert.equal(vedContradictionRejected[0]?.lineTotal ?? null, null);
-assert.equal(vedContradictionRejected[1]?.lineTotal ?? null, null);
-assert.equal(vedContradictionRejected[2]?.lineTotal ?? null, null);
-assert.equal(vedContradictionRejected[3]?.lineTotal ?? null, null);
-assert.equal(vedContradictionRejected[4]?.lineTotal ?? null, null);
+assert.equal(vedScaleRepaired[0]?.lineTotal, 28.77);
+assert.equal(vedScaleRepaired[1]?.lineTotal, 36.16);
+assert.equal(vedScaleRepaired[2]?.lineTotal, 97.2);
+assert.equal(vedScaleRepaired[3]?.lineTotal, 1800.4);
+assert.equal(vedScaleRepaired[4]?.lineTotal, 427.2);
+assert.equal(vedScaleRepaired[5]?.lineTotal, 28770);
 
 // Çelikel-class: evidence "1.600" + price×total → quantity 1600 (not 1.6).
 assert.equal(
@@ -615,6 +621,22 @@ assert.deepEqual(
   adaptedVed.fields.find((field) => field.field === "goodsLines[].lineTotal")?.value,
   [36.16]
 );
+const adaptedScaleRepair = adaptNaturalInvoiceResponse(
+  {
+    goodsLines: [
+      { description: "Scale", quantity: 4, unitPrice: 106.8, lineTotal: 427200, unit: "ADET" }
+    ]
+  } as never,
+  {
+    documentId: "contract-scale-repair",
+    requestedFields: ["goodsLines[].lineTotal"]
+  } as never,
+  [{ pageNumber: 1, imageBase64: "", mimeType: "image/png" }] as never
+);
+assert.deepEqual(
+  adaptedScaleRepair.fields.find((field) => field.field === "goodsLines[].lineTotal")?.value,
+  [427.2]
+);
 const adaptedVedWrongEvidence = adaptNaturalInvoiceResponse(
   {
     goodsLines: [
@@ -685,6 +707,50 @@ const fusedOverride = applyDocumentScopedGoodsOriginAuthority(
 assert.equal(fusedOverride.fields["goodsLines.0.origin"]?.[0]?.value, "TR");
 assert.equal(fusedOverride.fields["goodsLines.1.origin"]?.[0]?.value, "TR");
 
+function goodsScaleCandidate(field: string, value: number) {
+  return {
+    candidateId: field,
+    field,
+    value,
+    confidence: 0.9,
+    extractor: "invoice",
+    logicalDocumentId: "ld-scale",
+    uploadedFileId: "file-scale",
+    documentType: DocumentType.INVOICE,
+    evidence: [{ segmentId: "seg-scale", pageNumber: 1, contentSource: "PAGE_IMAGE" as const }]
+  };
+}
+function goodsScaleEnvelope(rows: Array<{ quantity: number; unitPrice: number; lineTotal: number }>): DeclarationFieldCandidateEnvelope {
+  const fields: DeclarationFieldCandidateEnvelope["fields"] = {};
+  rows.forEach((row, index) => {
+    fields[`goodsLines.${index}.quantity`] = [goodsScaleCandidate(`goodsLines.${index}.quantity`, row.quantity)];
+    fields[`goodsLines.${index}.unitPrice`] = [goodsScaleCandidate(`goodsLines.${index}.unitPrice`, row.unitPrice)];
+    fields[`goodsLines.${index}.lineTotal`] = [goodsScaleCandidate(`goodsLines.${index}.lineTotal`, row.lineTotal)];
+  });
+  return { version: "1", companyId: "company-scale", declarationId: "declaration-scale", fields };
+}
+const scaleResolution = resolveDeclarationFields({
+  candidates: goodsScaleEnvelope([
+    { quantity: 4, unitPrice: 106.8, lineTotal: 427200 },
+    { quantity: 36, unitPrice: 106.8, lineTotal: 28770 },
+    { quantity: 25000, unitPrice: 0.7, lineTotal: 17500 },
+    { quantity: 1250, unitPrice: 0.7, lineTotal: 17500 },
+    { quantity: 10, unitPrice: 9.72, lineTotal: 90 }
+  ])
+});
+assert.equal(scaleResolution.fields["goodsLines.0.lineTotal"]?.status, "RESOLVED");
+assert.equal(scaleResolution.fields["goodsLines.0.lineTotal"]?.value, 427.2);
+assert.equal(scaleResolution.fields["goodsLines.1.lineTotal"]?.status, "REVIEW_REQUIRED");
+assert.equal(scaleResolution.fields["goodsLines.1.lineTotal"]?.reason, "LINE_TOTAL_SCALE_REVIEW");
+assert.equal(scaleResolution.fields["goodsLines.1.lineTotal"]?.value, undefined);
+assert.equal(scaleResolution.fields["goodsLines.1.lineTotal"]?.candidates.length, 1);
+assert.ok(scaleResolution.reviewRequiredFields.includes("goodsLines.1.lineTotal"));
+assert.equal(scaleResolution.fields["goodsLines.2.lineTotal"]?.value, 17500);
+assert.equal(scaleResolution.fields["goodsLines.3.lineTotal"]?.value, 17500);
+assert.equal(scaleResolution.fields["goodsLines.3.lineTotal"]?.status, "RESOLVED");
+assert.equal(scaleResolution.fields["goodsLines.4.lineTotal"]?.value, 90);
+assert.equal(scaleResolution.fields["goodsLines.4.lineTotal"]?.status, "RESOLVED");
+
 console.log({
   event: "foundation-8.25.5.commercial-row-sanitizer.contract.passed",
   packagingRejectRecoversCorroboratedQuantity: true,
@@ -706,7 +772,8 @@ console.log({
   germanMengeStuckpreisHeaders: true,
   lineTotalFromQtyPriceWhenAmountMissing: true,
   lineTotalEvidenceLocaleRecovery: true,
-  inflatedLineTotalContradictionReject: true,
+  lineTotalCleanScaleRepair: true,
+  nonScaleLineTotalLeftForReview: true,
   wrongAmountEvidenceFailClosed: true,
   yemLineTotalNotInventedFromPackagingQty: true,
   focZeroLineTotalPreserved: true,

@@ -12,6 +12,7 @@ import {
 import { INVOICE_EXTRACTION_SKILL_VERSION, INVOICE_EXTRACTION_SYSTEM_PROMPT } from "./invoiceExtractionSkill.js";
 import type { FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 import { appendIdpRuntimeDiag } from "../diagnostics/idpRuntimeDiagFile.js";
+import { classifyGoodsLineTotalScale } from "../domain/goodsLineTotalScale.js";
 
 function stripFence(value: string): string {
   return value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -367,36 +368,6 @@ function numericsCorroborate(quantity: number, unitPrice: number, lineTotal: num
   const expected = quantity * unitPrice;
   const scale = Math.max(1, Math.abs(lineTotal));
   return Math.abs(expected - lineTotal) <= Math.max(1e-6 * scale, 0.01);
-}
-
-/**
- * Severe inflate detector for fail-closed reject (not repair).
- * - ×5+ vs qty×price (discount/surcharge stays below this)
- * - clean ×100/×1000/×10000 scale mistakes
- * - lineTotal digit-skeleton looks like unitPrice with extra trailing zeros
- */
-function isSevereLineTotalInflation(
-  lineTotal: number,
-  expectedFromQtyPrice: number,
-  unitPrice: number
-): boolean {
-  if (!(lineTotal > 0) || !(expectedFromQtyPrice > 0)) return false;
-  if (lineTotal > expectedFromQtyPrice * 5) return true;
-  const ratio = lineTotal / expectedFromQtyPrice;
-  for (const factor of [100, 1000, 10000] as const) {
-    if (Math.abs(ratio - factor) / factor <= 0.02) return true;
-  }
-  const totalDigits = digitSkeleton(String(lineTotal));
-  const priceDigits = digitSkeleton(String(unitPrice));
-  if (
-    priceDigits.length >= 3
-    && totalDigits.length > priceDigits.length
-    && totalDigits.startsWith(priceDigits)
-    && /^0+$/.test(totalDigits.slice(priceDigits.length))
-  ) {
-    return true;
-  }
-  return false;
 }
 
 function commercialQuantityCorroborated(line: NaturalGoodsLine, quantity: number): boolean {
@@ -960,6 +931,8 @@ export function sanitizeNaturalGoodsLines(lines: NaturalGoodsLine[]): NaturalGoo
   const documentOrigin = uniqueOrigins.length === 1 ? uniqueOrigins[0] : undefined;
   let originBroadcastRows = 0;
   let originDocumentOverrideRows = 0;
+  const scaleRepairs: Array<{ quantity: number; unitPrice: number; rejected: number; repaired: number }> = [];
+  const scaleReviews: Array<{ quantity: number; unitPrice: number; rejected: number }> = [];
 
   let result = commercial.map((line) => {
     // Locale thousands/decimal ambiguity on semantic numbers (no evidence).
@@ -967,46 +940,52 @@ export function sanitizeNaturalGoodsLines(lines: NaturalGoodsLine[]): NaturalGoo
     const unitPrice = lineNumeric(line, "unitPrice");
     let lineTotal = lineNumeric(line, "lineTotal");
     // Missing amount cell: complete from qty×price only when absent.
-    // When a non-null total exists, arithmetic may only reject severe
-    // contradictions (fail-closed) — never overwrite with qty×price.
+    // A present total is repaired only for a clean ×100/×1000/×10000/×100000
+    // scale blow. Other severe contradictions stay for declaration review.
     let completedLineTotalFromQtyPrice = false;
-    let rejectedContradictoryLineTotal = false;
+    let repairedScaleLineTotal = false;
+    let rejectedEvidenceLineTotal = false;
     if (quantity != null && unitPrice != null && quantity > 0 && unitPrice > 0) {
       const computed = quantity * unitPrice;
       const cents = Math.round(computed * 100) / 100;
-      if (Math.abs(computed - cents) <= 1e-6) {
-        if (lineTotal == null) {
-          lineTotal = cents;
-          completedLineTotalFromQtyPrice = true;
-          appendIdpRuntimeDiag("idp.vision.line_total_from_qty_price", {
+      if (lineTotal == null && Math.abs(computed - cents) <= 1e-6) {
+        lineTotal = cents;
+        completedLineTotalFromQtyPrice = true;
+        appendIdpRuntimeDiag("idp.vision.line_total_from_qty_price", {
+          quantity,
+          unitPrice,
+          lineTotal
+        });
+      } else if (typeof lineTotal === "number") {
+        const decision = classifyGoodsLineTotalScale(quantity, unitPrice, lineTotal);
+        const evidenceRejected = Boolean(line.evidence?.lineTotal)
+          && evidenceBoundGoodsNumericValue(line, "lineTotal") == null;
+        if (evidenceRejected && (decision.action === "repair" || decision.action === "review")) {
+          // The visible amount token does not support this number. Do not
+          // replace it with qty×price; omit it.
+          rejectedEvidenceLineTotal = true;
+        } else if (decision.action === "repair") {
+          lineTotal = decision.value;
+          repairedScaleLineTotal = true;
+          scaleRepairs.push({
             quantity,
             unitPrice,
-            lineTotal
+            rejected: decision.rejected,
+            repaired: decision.value
           });
-        } else if (
-          lineTotal !== 0
-          && !numericsCorroborate(quantity, unitPrice, lineTotal)
-          && isSevereLineTotalInflation(lineTotal, cents, unitPrice)
-        ) {
-          // Fail-closed only. Does not publish qty×price as the amount.
-          appendIdpRuntimeDiag("idp.vision.line_total_contradiction_reject", {
-            quantity,
-            unitPrice,
-            rejected: lineTotal,
-            expectedFromQtyPrice: cents
-          });
-          lineTotal = null;
-          rejectedContradictoryLineTotal = true;
+        } else if (decision.action === "review") {
+          scaleReviews.push({ quantity, unitPrice, rejected: decision.rejected });
         }
       }
     }
     let next: NaturalGoodsLine = { ...line };
     if (quantity != null) next = { ...next, quantity };
     if (unitPrice != null) next = { ...next, unitPrice };
-    if (lineTotal != null) next = { ...next, lineTotal };
-    else if (rejectedContradictoryLineTotal) next = { ...next, lineTotal: null };
+    if (rejectedEvidenceLineTotal) next = { ...next, lineTotal: null };
+    else if (lineTotal != null) next = { ...next, lineTotal };
     // Drop lineTotal evidence that fails binding, was completed without amount
-    // evidence, or was rejected as contradictory (so adapt cannot revive it).
+    // evidence, or was replaced by a clean scale repair (so adapt cannot revive
+    // the blown integer from the old token).
     const lineTotalEvidenceRejects = Boolean(
       next.evidence?.lineTotal
       && evidenceBoundGoodsNumericValue(next, "lineTotal") == null
@@ -1015,7 +994,8 @@ export function sanitizeNaturalGoodsLines(lines: NaturalGoodsLine[]): NaturalGoo
       next.evidence?.lineTotal
       && (
         completedLineTotalFromQtyPrice
-        || rejectedContradictoryLineTotal
+        || repairedScaleLineTotal
+        || rejectedEvidenceLineTotal
         || (
           lineTotal != null
           && quantity != null
@@ -1079,6 +1059,16 @@ export function sanitizeNaturalGoodsLines(lines: NaturalGoodsLine[]): NaturalGoo
     originDocumentOverrideRows
   };
   appendIdpRuntimeDiag("idp.vision.goods_sanitize", sanitizePayload);
+  if (scaleRepairs.length > 0 || scaleReviews.length > 0) {
+    const scalePayload = {
+      repaired: scaleRepairs.length,
+      review: scaleReviews.length,
+      repairSamples: scaleRepairs.slice(0, 8),
+      reviewSamples: scaleReviews.slice(0, 8)
+    };
+    console.info("idp.vision.line_total_scale", scalePayload);
+    appendIdpRuntimeDiag("idp.vision.line_total_scale", scalePayload);
+  }
 
   return result;
 }
