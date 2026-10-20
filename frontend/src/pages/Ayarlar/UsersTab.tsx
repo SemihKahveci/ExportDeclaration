@@ -167,7 +167,7 @@ function PermissionRow({
     <div className="flex items-center gap-3 px-3 py-2 rounded-lg border border-line bg-surface-2">
       <span className="flex-1 text-[12.5px] font-medium text-text leading-snug">{label}</span>
       <PermToggle label="Görüntüleme"     checked={perm.view}    onChange={toggleView} />
-      <PermToggle label="İşlem Yapabilme" checked={perm.operate} disabled={!perm.view} onChange={toggleOperate} />
+      <PermToggle label="İşlem Yapabilme" checked={perm.operate} onChange={toggleOperate} />
     </div>
   );
 }
@@ -318,12 +318,17 @@ export default function UsersTab({
         {/* ── Right: Permission detail ────────────────────────────────────── */}
         <Card>
           <CardHead
+            className="sticky top-0 z-20 bg-surface"
             title="Kullanıcı Yetki Tanımı"
             sub={sel ? sel.name : 'Sol listeden kullanıcı seçin'}
             actions={
               sel && (
-                <div className="flex items-center gap-1.5">
-                  <Button size="sm" icon={Pencil} onClick={onEdit}>
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                  <Button size="sm" onClick={onResetPerms} disabled={saving}>Vazgeç</Button>
+                  <Button variant="primary" size="sm" onClick={onSavePerms} disabled={saving}>
+                    {saving ? 'Kaydediliyor…' : 'Yetkileri Kaydet'}
+                  </Button>
+                  <Button size="sm" icon={Pencil} onClick={onEdit} disabled={saving}>
                     Düzenle
                   </Button>
                   {canDelete && (
@@ -471,13 +476,6 @@ export default function UsersTab({
                 </div>
               </section>
 
-              {/* ── Save / Reset ─────────────────────────────────────────── */}
-              <div className="flex gap-2.5 pt-1 border-t border-line">
-                <Button size="sm" onClick={onResetPerms}>Vazgeç</Button>
-                <Button variant="primary" size="sm" onClick={onSavePerms} disabled={saving || !sel}>
-                  {saving ? 'Kaydediliyor…' : 'Yetkileri Kaydet'}
-                </Button>
-              </div>
             </CardBody>
           ) : (
             <CardBody>

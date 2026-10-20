@@ -14,11 +14,12 @@ interface CardHeadProps {
   title: string;
   sub?: string;
   actions?: ReactNode;
+  className?: string;
 }
 
-export function CardHead({ title, sub, actions }: CardHeadProps) {
+export function CardHead({ title, sub, actions, className = '' }: CardHeadProps) {
   return (
-    <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-line">
+    <div className={`flex items-start justify-between gap-4 px-5 py-4 border-b border-line ${className}`}>
       <div className="min-w-0">
         <h3 className="text-[14px] font-semibold text-text-strong leading-snug">{title}</h3>
         {sub && <p className="text-[12px] text-muted mt-0.5">{sub}</p>}
