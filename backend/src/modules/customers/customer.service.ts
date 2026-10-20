@@ -359,6 +359,18 @@ export async function deleteMail(companyId: mongoose.Types.ObjectId, id: string)
   if (!deleted) throw new HttpError(404, "Mail tanımı bulunamadı.");
 }
 
+const DOCUMENT_RULE_TRANSPORTS = ["Karayolu", "Denizyolu", "Havayolu"] as const;
+
+function normalizeTransportMode(value: unknown): string {
+  const raw = typeof value === "string" ? value : "";
+  const parts = raw.split(",").map((item) => item.trim()).filter(Boolean);
+  if (parts.length === 0 || parts.includes("Tümü")) return "Tümü";
+  const selected = DOCUMENT_RULE_TRANSPORTS.filter((mode) => parts.includes(mode));
+  if (selected.length === 0) throw new HttpError(400, "Taşıma şekli gerekli.");
+  if (selected.length === DOCUMENT_RULE_TRANSPORTS.length) return "Tümü";
+  return selected.join(", ");
+}
+
 // ─── Document rules ───────────────────────────────────────────────────────────
 
 export async function listDocumentRules(
@@ -382,9 +394,7 @@ export async function createDocumentRule(
   await assertCustomerExists(companyId, cid);
   const transactionType =
     typeof body.transactionType === "string" ? body.transactionType.trim() : "";
-  const transportMode = typeof body.transportMode === "string" && body.transportMode.trim()
-    ? body.transportMode.trim()
-    : "Tümü";
+  const transportMode = normalizeTransportMode(body.transportMode);
   if (!transactionType) throw new HttpError(400, "İşlem tipi gerekli.");
 
   const reminderType =
@@ -422,7 +432,7 @@ export async function updateDocumentRule(
     existing.transactionType = v;
   }
   if (body.transportMode !== undefined) {
-    existing.transportMode = String(body.transportMode).trim() || "Tümü";
+    existing.transportMode = normalizeTransportMode(body.transportMode);
   }
   if (body.scenario !== undefined) existing.scenario = String(body.scenario).trim();
   if (body.requiredDocs !== undefined) existing.requiredDocs = asStringArray(body.requiredDocs);

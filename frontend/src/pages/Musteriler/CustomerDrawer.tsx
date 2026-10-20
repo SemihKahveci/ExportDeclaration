@@ -12,6 +12,7 @@ import type {
   NotificationRule,
   NotifyWorkingMode,
 } from '../../types';
+import { ALL_TRANSPORT, SPECIFIC_TRANSPORTS, parseTransportModes, serializeTransportModes } from './documentRuleTransport';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,8 +89,6 @@ function normalizeWorkingMode(mode: NotifyWorkingMode): string {
 }
 
 const TRANSACTION_TYPES = ['İhracat', 'İthalat', 'Transit', 'Antrepo'];
-const ALL_TRANSPORT = 'Tümü';
-const TRANSPORT_MODES = [ALL_TRANSPORT, 'Karayolu', 'Denizyolu', 'Havayolu'];
 const REMINDER_TYPES = ['Otomatik', 'Kontrollü', 'Manuel'] as const;
 const FREQUENCY_OPTIONS = [
   'Her 2 saatte bir',
@@ -140,6 +139,50 @@ function CheckGrid({
           </label>
         );
       })}
+    </div>
+  );
+}
+
+function TransportChecks({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const selected = parseTransportModes(value);
+  const allOn = selected.includes(ALL_TRANSPORT);
+
+  function toggleAll() {
+    onChange(ALL_TRANSPORT);
+  }
+
+  function toggleMode(mode: string) {
+    const current = allOn ? [] : selected.filter((item) => item !== ALL_TRANSPORT);
+    const next = current.includes(mode) ? current.filter((item) => item !== mode) : [...current, mode];
+    onChange(serializeTransportModes(next));
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {[{ id: ALL_TRANSPORT, on: allOn, toggle: toggleAll }, ...SPECIFIC_TRANSPORTS.map((mode) => ({
+        id: mode,
+        on: !allOn && selected.includes(mode),
+        toggle: () => toggleMode(mode),
+      }))].map((item) => (
+        <label
+          key={item.id}
+          className={[
+            'flex items-center gap-2 text-[13px] font-medium px-2.5 py-2 border rounded-[7px] cursor-pointer transition-colors',
+            item.on ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong bg-surface text-text hover:border-accent',
+          ].join(' ')}
+        >
+          <span
+            onClick={item.toggle}
+            className={[
+              'w-[15px] h-[15px] rounded-[4px] border flex items-center justify-center shrink-0 transition-colors',
+              item.on ? 'bg-accent border-accent' : 'border-line-strong',
+            ].join(' ')}
+          >
+            {item.on && <Check size={10} strokeWidth={3} className="text-white" />}
+          </span>
+          <span onClick={item.toggle} className="flex-1 leading-snug">{item.id}</span>
+        </label>
+      ))}
     </div>
   );
 }
@@ -354,7 +397,7 @@ export default function CustomerDrawer({
         mode: 'rule',
         data: {
           transactionType: rTip,
-          transportMode: rTas.trim() || ALL_TRANSPORT,
+          transportMode: serializeTransportModes(parseTransportModes(rTas)),
           scenario: '',
           requiredDocs: rDocs,
           reminderType: rReminder as DocumentRule['reminderType'],
@@ -512,12 +555,8 @@ export default function CustomerDrawer({
                 ))}
               </Select>
             </Field>
-            <Field label="Taşıma Şekli" htmlFor="r-tas" hint="Tümü, kuralın her taşıma şekli için geçerli olduğunu belirtir.">
-              <Select id="r-tas" value={rTas || ALL_TRANSPORT} onChange={(e) => setRTas(e.target.value)}>
-                {TRANSPORT_MODES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </Select>
+            <Field label="Taşıma Şekli" hint="Tümü her taşımayı kapsar. Bir veya iki şekil de seçilebilir.">
+              <TransportChecks value={rTas} onChange={setRTas} />
             </Field>
           </div>
           <Field

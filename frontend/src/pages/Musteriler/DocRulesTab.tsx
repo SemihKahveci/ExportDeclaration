@@ -6,6 +6,7 @@ import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Select } from '../../components/ui/Fields';
 import Button from '../../components/ui/Button';
 import { useCan } from '../../permissions/useCan';
+import { parseTransportModes, transportMatchesFilter } from './documentRuleTransport';
 
 // ─── Mode badge ───────────────────────────────────────────────────────────────
 
@@ -22,6 +23,15 @@ function ModeBadge({ mode }: { mode: string }) {
       <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
       {mode}
     </span>
+  );
+}
+
+function TransportLines({ value }: { value: string }) {
+  const modes = parseTransportModes(value);
+  return (
+    <div className="flex flex-col gap-0.5 text-[13px]">
+      {modes.map((mode) => <span key={mode}>{mode}</span>)}
+    </div>
   );
 }
 
@@ -51,8 +61,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
 
   const visible = rules.filter((r) => {
     if (filterTip !== 'Tümü' && r.transactionType !== filterTip) return false;
-    const transport = r.transportMode?.trim() || 'Tümü';
-    if (filterTas !== 'Tümü' && transport !== 'Tümü' && transport !== filterTas) return false;
+    if (!transportMatchesFilter(r.transportMode, filterTas)) return false;
     if (filterSt !== 'Tümü' && r.status !== filterSt) return false;
     return true;
   });
@@ -131,7 +140,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
               return (
                 <Tr key={r.id}>
                   <Td><span className="font-semibold text-text-strong">{r.transactionType}</span></Td>
-                  <Td><span className="text-[13px]">{r.transportMode?.trim() || 'Tümü'}</span></Td>
+                  <Td><TransportLines value={r.transportMode} /></Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
                       {r.requiredDocs.map((d) => (
