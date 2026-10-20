@@ -20,9 +20,11 @@ import DocProcessesTab from './DocProcessesTab';
 import DocDrawer from './DocDrawer';
 import ApprovalRulesTab from './ApprovalRulesTab';
 
+const SHOW_DOC_PROCESSES = false;
+
 const ALL_TABS = [
   { key: 'users',           label: 'Kullanıcılar ve Yetkileri'  },
-  { key: 'docs',            label: 'Doküman Süreçleri'           },
+  ...(SHOW_DOC_PROCESSES ? [{ key: 'docs', label: 'Doküman Süreçleri' }] : []),
   { key: 'approval-rules',  label: 'Beyanname Onay Kuralları'    },
 ];
 
@@ -62,7 +64,9 @@ export default function AyarlarPage() {
   const isSuperAdmin = role === 'super_admin';
   const tabs = isSuperAdmin ? ALL_TABS : ALL_TABS.filter((t) => t.key !== 'users');
 
-  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'users' : 'docs');
+  const [activeTab, setActiveTab] = useState(
+    isSuperAdmin ? 'users' : SHOW_DOC_PROCESSES ? 'docs' : 'approval-rules',
+  );
 
   const [users,           setUsers]           = useState<AppUser[]>([]);
   const [selectedUserIdx, setSelectedUserIdx] = useState(0);
@@ -258,7 +262,7 @@ export default function AyarlarPage() {
         <div>
           <h1 className="text-[23px] font-extrabold text-text-strong tracking-tight">Ayarlar</h1>
           <p className="text-[12.5px] text-muted mt-1">
-            Kullanıcı yetkileri, doküman süreç tanımları ve onay kuralları.
+            Kullanıcı yetkileri ve onay kuralları.
           </p>
         </div>
       </div>
@@ -289,7 +293,7 @@ export default function AyarlarPage() {
             />
           )}
 
-          {activeTab === 'docs' && (
+          {SHOW_DOC_PROCESSES && activeTab === 'docs' && (
             <DocProcessesTab
               docs={docs}
               onNew={() => openDocDrawer(null)}
