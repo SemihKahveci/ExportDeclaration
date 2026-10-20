@@ -88,7 +88,8 @@ function normalizeWorkingMode(mode: NotifyWorkingMode): string {
 }
 
 const TRANSACTION_TYPES = ['İhracat', 'İthalat', 'Transit', 'Antrepo'];
-const TRANSPORT_MODES = ['Karayolu', 'Denizyolu', 'Havayolu'];
+const ALL_TRANSPORT = 'Tümü';
+const TRANSPORT_MODES = [ALL_TRANSPORT, 'Karayolu', 'Denizyolu', 'Havayolu'];
 const REMINDER_TYPES = ['Otomatik', 'Kontrollü', 'Manuel'] as const;
 const FREQUENCY_OPTIONS = [
   'Her 2 saatte bir',
@@ -233,7 +234,7 @@ export default function CustomerDrawer({
       setRStatus(initialRule.status);
     } else if (mode === 'rule') {
       setRTip(SELECT_PLACEHOLDER);
-      setRTas(SELECT_PLACEHOLDER);
+      setRTas(ALL_TRANSPORT);
       setRDocs([]);
       setRReminder(SELECT_PLACEHOLDER);
       setRFreq(SELECT_PLACEHOLDER);
@@ -284,7 +285,6 @@ export default function CustomerDrawer({
     if (mode === 'rule') {
       return (
         rTip !== SELECT_PLACEHOLDER &&
-        rTas !== SELECT_PLACEHOLDER &&
         rDocs.length > 0 &&
         rReminder !== SELECT_PLACEHOLDER &&
         rFreq !== SELECT_PLACEHOLDER &&
@@ -354,7 +354,7 @@ export default function CustomerDrawer({
         mode: 'rule',
         data: {
           transactionType: rTip,
-          transportMode: rTas,
+          transportMode: rTas.trim() || ALL_TRANSPORT,
           scenario: '',
           requiredDocs: rDocs,
           reminderType: rReminder as DocumentRule['reminderType'],
@@ -512,9 +512,8 @@ export default function CustomerDrawer({
                 ))}
               </Select>
             </Field>
-            <Field label="Taşıma Şekli" htmlFor="r-tas" required>
-              <Select id="r-tas" value={rTas} onChange={(e) => setRTas(e.target.value)}>
-                <PlaceholderOption />
+            <Field label="Taşıma Şekli" htmlFor="r-tas" hint="Tümü, kuralın her taşıma şekli için geçerli olduğunu belirtir.">
+              <Select id="r-tas" value={rTas || ALL_TRANSPORT} onChange={(e) => setRTas(e.target.value)}>
                 {TRANSPORT_MODES.map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}

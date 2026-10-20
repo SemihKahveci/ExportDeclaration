@@ -382,9 +382,10 @@ export async function createDocumentRule(
   await assertCustomerExists(companyId, cid);
   const transactionType =
     typeof body.transactionType === "string" ? body.transactionType.trim() : "";
-  const transportMode = typeof body.transportMode === "string" ? body.transportMode.trim() : "";
+  const transportMode = typeof body.transportMode === "string" && body.transportMode.trim()
+    ? body.transportMode.trim()
+    : "Tümü";
   if (!transactionType) throw new HttpError(400, "İşlem tipi gerekli.");
-  if (!transportMode) throw new HttpError(400, "Taşıma şekli gerekli.");
 
   const reminderType =
     typeof body.reminderType === "string" &&
@@ -421,9 +422,7 @@ export async function updateDocumentRule(
     existing.transactionType = v;
   }
   if (body.transportMode !== undefined) {
-    const v = String(body.transportMode).trim();
-    if (!v) throw new HttpError(400, "Taşıma şekli gerekli.");
-    existing.transportMode = v;
+    existing.transportMode = String(body.transportMode).trim() || "Tümü";
   }
   if (body.scenario !== undefined) existing.scenario = String(body.scenario).trim();
   if (body.requiredDocs !== undefined) existing.requiredDocs = asStringArray(body.requiredDocs);

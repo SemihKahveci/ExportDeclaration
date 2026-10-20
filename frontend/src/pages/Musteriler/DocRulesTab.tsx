@@ -51,7 +51,8 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
 
   const visible = rules.filter((r) => {
     if (filterTip !== 'Tümü' && r.transactionType !== filterTip) return false;
-    if (filterTas !== 'Tümü' && r.transportMode !== filterTas) return false;
+    const transport = r.transportMode?.trim() || 'Tümü';
+    if (filterTas !== 'Tümü' && transport !== 'Tümü' && transport !== filterTas) return false;
     if (filterSt !== 'Tümü' && r.status !== filterSt) return false;
     return true;
   });
@@ -130,7 +131,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
               return (
                 <Tr key={r.id}>
                   <Td><span className="font-semibold text-text-strong">{r.transactionType}</span></Td>
-                  <Td><span className="text-[13px]">{r.transportMode}</span></Td>
+                  <Td><span className="text-[13px]">{r.transportMode?.trim() || 'Tümü'}</span></Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
                       {r.requiredDocs.map((d) => (
