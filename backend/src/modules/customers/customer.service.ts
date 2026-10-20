@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { CustomsMasterDataModel } from "../customs-master-data/customsMasterData.model.js";
+import { AppUserModel } from "../users/user.model.js";
 import {
   CustomerAddressModel,
   CustomerDocumentRuleModel,
@@ -272,6 +273,10 @@ async function assertMailAvailable(
     ...(exceptId ? { _id: { $ne: exceptId } } : {})
   });
   if (taken) throw new HttpError(409, "Bu mail adresi zaten tanımlı.");
+  const firmUser = await AppUserModel.exists({ companyId, email });
+  if (firmUser) {
+    throw new HttpError(409, "Bu e-posta bir firma kullanıcısına ait. Müşteri maili olarak eklenemez.");
+  }
 }
 
 export async function createDomain(

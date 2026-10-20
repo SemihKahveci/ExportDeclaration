@@ -11,7 +11,7 @@ import {
 import { toAppUserDto, type AppUserDto } from "./user.mapper.js";
 import { setPassword } from "../auth/auth.service.js";
 import { sendNewUserCredentialsMail } from "../mail/mail.service.js";
-import { CustomerModel } from "../customers/customer.models.js";
+import { CustomerMailModel, CustomerModel } from "../customers/customer.models.js";
 
 export type CreateAppUserInput = Omit<AppUserDto, "id" | "createdAt" | "updatedAt" | "systemRole"> & { password?: string };
 export type UpdateAppUserInput = Partial<Omit<CreateAppUserInput, "password">> & { password?: string };
@@ -95,12 +95,17 @@ export async function createAppUser(companyId: mongoose.Types.ObjectId, body: Cr
   assertApproverLevel(body.approverLevel ?? "none");
 
   const fullName = body.name.trim();
+  const email = normalizeEmail(body.email);
+  const customerMail = await CustomerMailModel.exists({ companyId, email });
+  if (customerMail) {
+    throw new HttpError(409, "Bu e-posta bir müşteri maili olarak kayıtlı. Firma kullanıcısı olamaz.");
+  }
   const password = generateSixDigitPassword();
 
   const created = new AppUserModel({
     companyId,
     name: fullName,
-    email: normalizeEmail(body.email),
+    email,
     systemRole: "USER",
     role: body.role,
     status: body.status ?? "Aktif",
