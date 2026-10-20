@@ -517,6 +517,15 @@ export default function CustomerDrawer({
               placeholder="ad@firma.com"
             />
           </Field>
+          <Field label="Mail Domain" htmlFor="m-domain" hint="Adresten alınır, elle değiştirilmez.">
+            <Input
+              id="m-domain"
+              value={domainFromEmail(mEmail)}
+              readOnly
+              placeholder="@firma.com"
+              className="font-mono bg-surface-2"
+            />
+          </Field>
           <Field label="Kişi / Birim" htmlFor="m-owner" required>
             <Input id="m-owner" value={mOwner} onChange={(e) => setMOwner(e.target.value)} />
           </Field>

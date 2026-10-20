@@ -7,6 +7,12 @@ import { useCan } from '../../permissions/useCan';
 
 // ─── Small status badge ───────────────────────────────────────────────────────
 
+function domainFromEmail(email: string): string {
+  const at = email.trim().lastIndexOf('@');
+  if (at < 1 || at === email.trim().length - 1) return '';
+  return email.trim().slice(at).toLowerCase();
+}
+
 function StatusBadge({ active }: { active: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1.5 text-[12px] font-semibold ${active ? 'text-ok' : 'text-muted'}`}>
@@ -105,7 +111,7 @@ export default function MailTab({
                   <Td><span className="font-semibold text-text-strong">{m.email}</span></Td>
                   <Td>
                     <span className="font-mono text-[12px] font-semibold bg-line px-2 py-1 rounded-[6px] text-text-strong">
-                      {m.domain}
+                      {m.domain?.trim() || domainFromEmail(m.email)}
                     </span>
                   </Td>
                   <Td><span className="text-[13px]">{m.owner}</span></Td>
