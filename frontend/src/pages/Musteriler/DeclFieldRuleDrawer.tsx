@@ -4,7 +4,7 @@ import Button from '../../components/ui/Button';
 import { Field, Select, Textarea } from '../../components/ui/Fields';
 import type { DeclarationFieldRule, DeclFieldConflictAction } from '../../types';
 import {
-  FIELD_GROUPS,
+  CONFIGURABLE_FIELD_GROUPS as FIELD_GROUPS,
   SOURCE_DOCUMENT_OPTIONS,
   CONFLICT_ACTION_OPTIONS,
 } from '../../services/declarationFieldRules';

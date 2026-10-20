@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import type { DeclarationFieldRule } from '../../types';
-import { FIELD_GROUPS } from '../../services/declarationFieldRules';
+import { CONFIGURABLE_FIELD_GROUPS } from '../../services/declarationFieldRules';
 import { Card, CardHead } from '../../components/ui/Card';
 import { useCan } from '../../permissions/useCan';
 
@@ -208,12 +208,12 @@ interface DeclFieldRulesTabProps {
 
 // ─── Default-expanded groups ──────────────────────────────────────────────────
 
-const DEFAULT_OPEN = new Set(['Genel Beyan Bilgileri', 'Kalem / Malzeme Bilgileri']);
-
 export default function DeclFieldRulesTab({ rules, onNew, onEdit, onDelete }: DeclFieldRulesTabProps) {
-  const totalFields     = FIELD_GROUPS.reduce((sum, g) => sum + g.fields.length, 0);
-  const configuredCount = rules.length;
-  const activeCount     = rules.filter((r) => r.status === 'Aktif').length;
+  const visibleFields = new Set(CONFIGURABLE_FIELD_GROUPS.flatMap((group) => group.fields));
+  const visibleRules = rules.filter((rule) => visibleFields.has(rule.fieldName));
+  const totalFields     = visibleFields.size;
+  const configuredCount = visibleRules.length;
+  const activeCount     = visibleRules.filter((r) => r.status === 'Aktif').length;
   const { can } = useCan();
   const canEdit = can('musteriler.edit');
 
@@ -222,7 +222,7 @@ export default function DeclFieldRulesTab({ rules, onNew, onEdit, onDelete }: De
       {/* Summary row */}
       <div className="grid grid-cols-4 gap-3">
         {[
-          { value: FIELD_GROUPS.length, label: 'Alan Grubu'      },
+          { value: CONFIGURABLE_FIELD_GROUPS.length, label: 'Alan Grubu'      },
           { value: totalFields,          label: 'Toplam Alan'     },
           { value: configuredCount,      label: 'Tanımlı Kural'   },
           { value: activeCount,          label: 'Aktif Kural'     },
@@ -257,15 +257,14 @@ export default function DeclFieldRulesTab({ rules, onNew, onEdit, onDelete }: De
         />
 
         <div className="px-5 py-4 space-y-2">
-          {FIELD_GROUPS.map((group) => {
-            const groupRules = rules.filter((r) => r.fieldGroup === group.label);
+          {CONFIGURABLE_FIELD_GROUPS.map((group) => {
+            const groupRules = rules.filter((r) => r.fieldGroup === group.label && group.fields.includes(r.fieldName));
             return (
               <GroupSection
                 key={group.label}
                 groupLabel={group.label}
                 fields={group.fields}
                 rules={groupRules}
-                defaultOpen={DEFAULT_OPEN.has(group.label)}
                 onNew={onNew}
                 onEdit={onEdit}
                 onDelete={onDelete}

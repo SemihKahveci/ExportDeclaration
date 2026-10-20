@@ -5,6 +5,7 @@ import {
   listDeclarationFieldRules,
   updateDeclarationFieldRule,
 } from '../api/customerApi';
+import { sourceAuthorityFor } from './declarationFieldSourceAuthority';
 
 export const FIELD_GROUPS: { label: string; fields: string[] }[] = [
   {
@@ -116,6 +117,14 @@ export const FIELD_GROUPS: { label: string; fields: string[] }[] = [
     ],
   },
 ];
+
+/** Evrim'in gönderdiği alanlar müşteri kuralı olmaz. Beyanname yazım formu tam listeyi kullanır. */
+export const CONFIGURABLE_FIELD_GROUPS = FIELD_GROUPS
+  .map((group) => ({
+    ...group,
+    fields: group.fields.filter((field) => sourceAuthorityFor(field)?.source !== 'EVRIM'),
+  }))
+  .filter((group) => group.fields.length > 0);
 
 export const SOURCE_DOCUMENT_OPTIONS: string[] = [
   'Fatura',
