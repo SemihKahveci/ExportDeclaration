@@ -239,6 +239,41 @@ export async function listDomains(
   return rows.map(toDomainDto);
 }
 
+function domainKey(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return "";
+  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+}
+
+async function assertDomainAvailable(
+  companyId: mongoose.Types.ObjectId,
+  customerId: string,
+  domain: string,
+  exceptId?: string
+): Promise<void> {
+  const key = domainKey(domain);
+  const rows = await CustomerMailDomainModel.find({ companyId, customerId }).select({ domain: 1 });
+  const taken = rows.some(
+    (row) => String(row._id) !== exceptId && domainKey(row.domain) === key
+  );
+  if (taken) throw new HttpError(409, "Bu domain zaten tanımlı.");
+}
+
+async function assertMailAvailable(
+  companyId: mongoose.Types.ObjectId,
+  customerId: string,
+  email: string,
+  exceptId?: string
+): Promise<void> {
+  const taken = await CustomerMailModel.exists({
+    companyId,
+    customerId,
+    email,
+    ...(exceptId ? { _id: { $ne: exceptId } } : {})
+  });
+  if (taken) throw new HttpError(409, "Bu mail adresi zaten tanımlı.");
+}
+
 export async function createDomain(
   companyId: mongoose.Types.ObjectId,
   customerId: string,
@@ -248,6 +283,7 @@ export async function createDomain(
   await assertCustomerExists(companyId, cid);
   const domain = typeof body.domain === "string" ? body.domain.trim() : "";
   if (!domain) throw new HttpError(400, "Domain gerekli.");
+  await assertDomainAvailable(companyId, cid, domain);
 
   const created = await CustomerMailDomainModel.create({
     companyId,
@@ -271,6 +307,7 @@ export async function updateDomain(
   if (body.domain !== undefined) {
     const domain = String(body.domain).trim();
     if (!domain) throw new HttpError(400, "Domain gerekli.");
+    await assertDomainAvailable(companyId, existing.customerId, domain, String(existing._id));
     existing.domain = domain;
   }
   if (body.matchStatus !== undefined) {
@@ -309,6 +346,7 @@ export async function createMail(
   await assertCustomerExists(companyId, cid);
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   if (!email) throw new HttpError(400, "E-posta gerekli.");
+  await assertMailAvailable(companyId, cid, email);
 
   const created = await CustomerMailModel.create({
     companyId,
@@ -335,6 +373,7 @@ export async function updateMail(
   if (body.email !== undefined) {
     const email = String(body.email).trim().toLowerCase();
     if (!email) throw new HttpError(400, "E-posta gerekli.");
+    await assertMailAvailable(companyId, existing.customerId, email, String(existing._id));
     existing.email = email;
   }
   if (body.domain !== undefined) existing.domain = String(body.domain).trim();
