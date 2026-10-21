@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, FileSearch, History, Loader2, Pencil, RefreshCw, RotateCcw, Send, UserRound } from 'lucide-react';
+import { ApiError } from '../../api/apiClient';
 import { getDeclarationControlProjection, type ControlProvenanceEntry, type DeclarationControlProjection } from '../../api/declarationControlApi';
 import { appendCustomsSupplementDecision, listCustomsSupplementDecisions, type CustomsSupplementDecision } from '../../api/customsSupplementApi';
 import DocumentEvidenceViewer, { type DocumentEvidenceSelection } from '../../components/documents/DocumentEvidenceViewer';
@@ -138,7 +139,7 @@ export default function ControlTab({ declarationId, onSistemeGonder }: ControlTa
       setActivePath((current) => current && data.entries.some((x) => x.path === current) ? current : data.entries[0]?.path ?? null);
     } catch (err) {
       console.error(err);
-      setError('MT kontrol verisi yüklenemedi.');
+      setError(err instanceof ApiError && err.message ? err.message : 'MT kontrol verisi yüklenemedi.');
     } finally {
       setLoading(false);
     }

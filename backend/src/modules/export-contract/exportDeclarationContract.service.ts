@@ -47,17 +47,20 @@ export function buildExportDeclarationContract(
   supplements: ExportDeclarationSupplements = {},
 ): ExportDeclarationContract {
   const issues: ExportContractIssue[] = [];
+  const packageInfo = normalized.packageInfo ?? {};
+  const goodsLines = normalized.goodsLines ?? [];
+  const header = normalized.header ?? {};
 
-  requireValue(issues, "package.totalPackage", normalized.packageInfo.totalPackage, "NORMALIZED_DECLARATION");
-  requireValue(issues, "package.packageType", normalized.packageInfo.packageType, "NORMALIZED_DECLARATION");
-  requireValue(issues, "package.grossKg", normalized.packageInfo.grossKg, "NORMALIZED_DECLARATION");
-  requireValue(issues, "package.netKg", normalized.packageInfo.netKg, "NORMALIZED_DECLARATION");
+  requireValue(issues, "package.totalPackage", packageInfo.totalPackage, "NORMALIZED_DECLARATION");
+  requireValue(issues, "package.packageType", packageInfo.packageType, "NORMALIZED_DECLARATION");
+  requireValue(issues, "package.grossKg", packageInfo.grossKg, "NORMALIZED_DECLARATION");
+  requireValue(issues, "package.netKg", packageInfo.netKg, "NORMALIZED_DECLARATION");
 
-  if (!normalized.goodsLines.length) {
+  if (!goodsLines.length) {
     issues.push(issue("lines", "NORMALIZED_DECLARATION"));
   }
 
-  const lines = normalized.goodsLines.map((line, index) => {
+  const lines = goodsLines.map((line, index) => {
     const lineNo = line.lineNo || index + 1;
     const prefix = `lines.${index}`;
 
@@ -97,9 +100,9 @@ export function buildExportDeclarationContract(
   });
 
   if (
-    normalized.packageInfo.grossKg !== undefined &&
-    normalized.packageInfo.netKg !== undefined &&
-    normalized.packageInfo.netKg > normalized.packageInfo.grossKg
+    packageInfo.grossKg !== undefined &&
+    packageInfo.netKg !== undefined &&
+    packageInfo.netKg > packageInfo.grossKg
   ) {
     issues.push({
       code: "INVALID_VALUE",
@@ -112,19 +115,19 @@ export function buildExportDeclarationContract(
   return {
     version: "1",
     invoice: {
-      invoiceNo: normalized.header.invoiceNo,
-      invoiceDate: normalized.header.invoiceDate,
-      currency: normalized.header.currency,
-      totalAmount: normalized.header.totalAmount
+      invoiceNo: header.invoiceNo,
+      invoiceDate: header.invoiceDate,
+      currency: header.currency,
+      totalAmount: header.totalAmount
     },
-    parties: normalized.parties,
-    trade: normalized.trade,
-    transport: normalized.transport,
+    parties: normalized.parties ?? {},
+    trade: normalized.trade ?? {},
+    transport: normalized.transport ?? {},
     package: {
-      totalPackage: normalized.packageInfo.totalPackage ?? 0,
-      packageType: normalized.packageInfo.packageType ?? "",
-      grossKg: normalized.packageInfo.grossKg ?? 0,
-      netKg: normalized.packageInfo.netKg ?? 0
+      totalPackage: packageInfo.totalPackage ?? 0,
+      packageType: packageInfo.packageType ?? "",
+      grossKg: packageInfo.grossKg ?? 0,
+      netKg: packageInfo.netKg ?? 0
     },
     customs: {
       declarationType: supplements.declarationType ?? normalized.evrimHeader?.declarationType,

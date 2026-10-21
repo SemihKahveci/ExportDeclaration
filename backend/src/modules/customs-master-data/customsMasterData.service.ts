@@ -81,7 +81,7 @@ export async function resolveCustomsMasterData(companyId:mongoose.Types.ObjectId
  const supplements:ExportDeclarationSupplements={lines:{}}; const trace:Record<string,MasterDataTraceEntry>={};
  const defaults=rows.filter(r=>r.scope==="DECLARATION_DEFAULT"&&r.key==="DEFAULT").sort((a,b)=>specificity(a,customerId)-specificity(b,customerId));
  for(const row of defaults)for(const field of ["declarationType","exportType","customsOffice","regimeCode"] as const){const value=clean(row.values[field]);if(!value)continue;(supplements as any)[field]=value;trace[`customs.${field}`]={source:"MASTER_DATA",masterDataId:String(row._id),scope:row.scope,key:row.key,customerId:row.customerId};}
- for(const line of normalized.goodsLines){
+ for(const line of normalized.goodsLines ?? []){
   const k=`line:${line.lineNo}`;let effective:ExportLineSupplement={};const applied:CustomsMasterDataDoc[]=[];
   const hs=rows.filter(r=>r.scope==="HS"&&r.key===line.hsCode).sort((a,b)=>specificity(a,customerId)-specificity(b,customerId));
   const product=rows.filter(r=>r.scope==="PRODUCT"&&r.key===line.productCode).sort((a,b)=>specificity(a,customerId)-specificity(b,customerId));

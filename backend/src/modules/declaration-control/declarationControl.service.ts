@@ -50,7 +50,7 @@ function candidatePathForContract(path:string,normalized:NormalizedDeclaration):
  if(NORMALIZED_CANDIDATE_PATH[path])return NORMALIZED_CANDIDATE_PATH[path];
  const m=/^lines\.(\d+)\.(hsCode|productCode|description|quantity|unit|unitPrice|lineTotal|origin)$/.exec(path);
  if(!m)return undefined;
- const lineNo=Number(m[1]);const index=normalized.goodsLines.findIndex(x=>x.lineNo===lineNo);
+ const lineNo=Number(m[1]);const index=(normalized.goodsLines??[]).findIndex(x=>x.lineNo===lineNo);
  return index>=0?`goodsLines.${index}.${m[2]}`:undefined;
 }
 function candidateEnvelopes(run:any):any[]{
@@ -63,18 +63,23 @@ function candidateEnvelopes(run:any):any[]{
   // Declaration normalization already reconstructs these from the persisted
   // CanonicalDocument. Provenance projection must use the same source of truth,
   // otherwise normalized values exist while their physical evidence appears lost.
-  const origin=audit.originCandidates??discoverInvoiceOriginFieldCandidates(
+  const discover=(existing:unknown,build:()=>unknown)=>{
+   if(existing)return existing;
+   if(!run.canonicalDocument)return undefined;
+   try{return build();}catch{return undefined;}
+  };
+  const origin=discover(audit.originCandidates,()=>discoverInvoiceOriginFieldCandidates(
     run.canonicalDocument as any,segmentId,audit.candidates
-  );
-  const shipment=audit.shipmentCandidates??discoverInvoiceShipmentFieldCandidates(
+  ));
+  const shipment=discover(audit.shipmentCandidates,()=>discoverInvoiceShipmentFieldCandidates(
     run.canonicalDocument as any,segmentId
-  );
-  const headerParty=audit.headerPartyCandidates??discoverInvoiceHeaderPartyFieldCandidates(
+  ));
+  const headerParty=discover(audit.headerPartyCandidates,()=>discoverInvoiceHeaderPartyFieldCandidates(
     run.canonicalDocument as any,segmentId
-  );
-  const commercial=audit.commercialTermsCandidates??discoverInvoiceCommercialTermsFieldCandidates(
+  ));
+  const commercial=discover(audit.commercialTermsCandidates,()=>discoverInvoiceCommercialTermsFieldCandidates(
     run.canonicalDocument as any,segmentId
-  );
+  ));
 
   for(const envelope of [audit.candidates,headerParty,commercial,shipment,origin])
    if(envelope?.fields)out.push(envelope);
