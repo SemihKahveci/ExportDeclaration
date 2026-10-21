@@ -166,8 +166,16 @@ function transportName(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
 
+type CustomerRuleRow = {
+  customerId?: string;
+  transactionType?: string;
+  transportMode?: string;
+  status?: string;
+  requiredDocs?: string[];
+};
+
 function ruleCoversFile(
-  rule: { transactionType?: string; transportMode?: string; status?: string },
+  rule: CustomerRuleRow,
   operationType: string | null | undefined,
   transportMode: string | null | undefined
 ): boolean {
@@ -199,7 +207,7 @@ async function missingDocumentsByDeclaration(
   const [rules, documents] = await Promise.all([
     CustomerDocumentRuleModel.find({ companyId, customerId: { $in: customerIds }, status: "Aktif" })
       .select({ customerId: 1, transactionType: 1, transportMode: 1, requiredDocs: 1, status: 1 })
-      .lean(),
+      .lean<CustomerRuleRow[]>(),
     UploadedDocumentModel.find({ companyId, declarationId: { $in: rows.map((row) => row._id) } })
       .select({ declarationId: 1, type: 1 })
       .lean()
