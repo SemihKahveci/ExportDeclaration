@@ -141,7 +141,7 @@ export default function BeyannameYazimPage() {
       navigate(`/beyanname-onay?declarationId=${encodeURIComponent(selected.id)}&ref=${encodeURIComponent(selected.ref)}`);
     } catch (error) {
       console.error(error);
-      toast(actionError(error, 'Beyanname onaya gönderilemedi'));
+      toast(actionError(error, 'Beyanname onaya gönderilemedi'), { duration: 7000 });
     }
   }
 

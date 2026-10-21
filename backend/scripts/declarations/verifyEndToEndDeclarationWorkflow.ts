@@ -16,7 +16,8 @@ async function main(){
   const d=await DeclarationModel.create({
    companyId:base.companyId,status:"DRAFT",createdBy:base.createdBy,
    operation:{...base.operation,ref:`WF-E2E-${Date.now()}`,fileStatus:"evrak-bekleniyor",tescilStatus:null,tescilNo:null,declarationNo:null,line:null,hasSecondNotif:false,kapanisStatus:null,kapanicDurumu:"",isArchived:false,closedAt:null,workflowHistory:[]},
-   approvalWorkflow:{status:"FIRST_PENDING",requiresSecondApproval:false,note:"",history:[],updatedAt:new Date()}
+   approvalWorkflow:{status:"FIRST_PENDING",requiresSecondApproval:false,note:"",history:[],updatedAt:new Date()},
+   normalizedData:{goodsLines:[{lineNo:1,hsCode:"853890990000"}]}
   }); id=d._id as mongoose.Types.ObjectId;
   await UploadedFileModel.insertMany([
    {companyId:base.companyId,declarationId:id,type:"INVOICE",fileName:"e2e-invoice.pdf",storageKey:`e2e/${id}/invoice.pdf`,mimeType:"application/pdf",size:100,sha256:`e2e-${id}-invoice`,extractionStatus:"SUCCESS",parseErrors:[]},

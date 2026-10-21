@@ -3,39 +3,23 @@ import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { DeclarationStatus } from "../../common/enums/declarationStatus.js";
 import { DeclarationModel } from "./declaration.model.js";
 import { toDeclarationDto } from "./declaration.mapper.js";
-import { MaterialRecordModel } from "../material-records/materialRecord.model.js";
 
 export type WritingWorkflowAction="SUBMIT_TO_MT"|"APPROVE_MT";
 
-function gtipDigits(value: unknown): string {
-  return String(value ?? "").replace(/\D/g, "");
+function parsedGtip(value: unknown): boolean {
+  return String(value ?? "").replace(/\D/g, "").length >= 4;
 }
 
-function gtipRegistered(code: string, known: string[]): boolean {
-  return code.length >= 4 && known.some((item) => item === code || item.startsWith(code) || code.startsWith(item));
-}
-
-async function assertGoodsGtipsRegistered(
-  companyId: mongoose.Types.ObjectId,
-  declaration: { operation?: { customerId?: string } | null; normalizedData?: unknown }
-): Promise<void> {
-  const lines = (declaration.normalizedData as { goodsLines?: Array<{ hsCode?: string }> } | undefined)?.goodsLines ?? [];
-  if (!Array.isArray(lines) || lines.length === 0) return;
-  const customerId = declaration.operation?.customerId;
-  const records = await MaterialRecordModel.find({
-    companyId,
-    ...(customerId ? { customerId } : {}),
-    status: { $ne: "rejected" }
-  }).select({ gtipNo: 1 }).lean();
-  const known = records.map((row) => gtipDigits(row.gtipNo)).filter(Boolean);
-  const missing = lines.flatMap((line, index) => {
-    const code = gtipDigits(line?.hsCode);
-    return gtipRegistered(code, known) ? [] : [code ? `${index + 1}. kalem ${code}` : `${index + 1}. kalem`];
-  });
+function assertParsedGtip(declaration: { normalizedData?: unknown }): void {
+  const lines = (declaration.normalizedData as { goodsLines?: Array<{ hsCode?: string }> } | undefined)?.goodsLines;
+  if (!Array.isArray(lines) || lines.length === 0) {
+    throw new HttpError(409, "GTİP faturada bulunmuyor veya parse edilmedi. Onaya gönderilemez.");
+  }
+  const missing = lines.flatMap((line, index) => parsedGtip(line?.hsCode) ? [] : [`${index + 1}. kalem`]);
   if (missing.length > 0) {
     throw new HttpError(
       409,
-      `GTİP sistemde kayıtlı değil (${missing.join(", ")}). Parse edilmiş olsa bile onaya gönderilemez.`
+      `GTİP faturada bulunmuyor veya parse edilmedi (${missing.join(", ")}). Onaya gönderilemez.`
     );
   }
 }
@@ -58,7 +42,7 @@ export async function transitionWritingWorkflow(
    declaration.operation.lastActivity="Beyanname MT kontrole gönderildi";
  }else{
    if(from!=="ic-kontrol")throw new HttpError(409,"Yalnız MT kontrol aşamasındaki dosya onaya gönderilebilir.");
-   await assertGoodsGtipsRegistered(companyId, declaration);
+   assertParsedGtip(declaration);
    declaration.status=DeclarationStatus.READY;
    declaration.operation.lastActivity="MT kontrol tamamlandı; beyanname onaya hazır";
 

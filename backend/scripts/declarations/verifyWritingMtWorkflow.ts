@@ -8,7 +8,7 @@ async function jr(r:Response){const t=await r.text();let b:any;try{b=t?JSON.pars
 async function wait(){for(let i=0;i<20;i++){try{if((await fetch(`${API}/health`)).ok)return}catch{}await new Promise(x=>setTimeout(x,500))}throw new Error("Backend readiness timeout")}
 async function main(){await mongoose.connect(env.mongoUri);let id:mongoose.Types.ObjectId|undefined;try{
  const base=await DeclarationModel.findById("6aad3295ca6e4f9c2d155507").lean();assert(base);
- const d=await DeclarationModel.create({companyId:base.companyId,status:"DRAFT",createdBy:base.createdBy,operation:{...base.operation,ref:`WF-MT-${Date.now()}`,fileStatus:"beyanname-yazim",workflowHistory:[]}});
+ const d=await DeclarationModel.create({companyId:base.companyId,status:"DRAFT",createdBy:base.createdBy,operation:{...base.operation,ref:`WF-MT-${Date.now()}`,fileStatus:"beyanname-yazim",workflowHistory:[]},normalizedData:{goodsLines:[{lineNo:1,hsCode:"853890990000"}]}});
  id=d._id as mongoose.Types.ObjectId;await wait();
  const login=await jr(await fetch(`${API}/api/auth/login`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}));assert.equal(login.r.status,200);const sc=login.r.headers.get("set-cookie");assert(sc);const headers={cookie:sc.split(";",1)[0]!,"content-type":"application/json"};
  const call=async(body:any)=>jr(await fetch(`${API}/api/declarations/${id}/writing-workflow/transition`,{method:"POST",headers,body:JSON.stringify(body)}));
