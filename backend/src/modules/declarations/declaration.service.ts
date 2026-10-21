@@ -14,6 +14,7 @@ import {
 import { generateEvrimXmlDraft } from "../xml/evrimXml.generator.js";
 import { DeclarationModel, type DeclarationDoc, type OperationMetaDoc } from "./declaration.model.js";
 import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.model.js";
+import { CustomerDocumentRuleModel } from "../customers/customer.models.js";
 import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
 import { HumanReviewDecisionModel } from "../idp/domain/humanReviewDecision.model.js";
 import { buildHumanReviewIssues } from "../idp/review/humanReview.service.js";
@@ -131,16 +132,126 @@ export async function createDeclaration(
   return toDeclarationDto(created);
 }
 
+const REQUIRED_DOC_TYPES: Record<string, string[]> = {
+  Fatura: ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
+  "Çeki Listesi": ["PACKING_LIST"],
+  CMR: ["CMR"],
+  Konşimento: ["BILL_OF_LADING", "BILL_OF_LADING_INSTRUCTION"],
+  AWB: ["AWB"],
+  ATR: ["ATR"],
+  "EUR.1": ["EUR1"],
+  "Menşe Şahadetnamesi": ["CERTIFICATE_OF_ORIGIN"],
+  "Dolaşım Belgesi": ["ATR", "EUR1"]
+};
+
+function folded(value: string | null | undefined): string {
+  return (value ?? "").trim().toLocaleLowerCase("tr-TR");
+}
+
+function operationKey(value: string | null | undefined): string {
+  const text = folded(value);
+  if (text.startsWith("ihracat") || text === "export") return "ihracat";
+  if (text.startsWith("ithalat") || text === "import") return "ithalat";
+  if (text.startsWith("transit")) return "transit";
+  if (text.startsWith("antrepo")) return "antrepo";
+  return text;
+}
+
+function transportName(value: string | null | undefined): string {
+  const text = folded(value);
+  if (text.startsWith("kara")) return "Karayolu";
+  if (text.startsWith("deniz")) return "Denizyolu";
+  if (text.startsWith("hava")) return "Havayolu";
+  if (text === "tümü" || text === "tumu") return "Tümü";
+  return (value ?? "").trim();
+}
+
+function ruleCoversFile(
+  rule: { transactionType?: string; transportMode?: string; status?: string },
+  operationType: string | null | undefined,
+  transportMode: string | null | undefined
+): boolean {
+  if (rule.status === "Pasif") return false;
+  if (operationKey(rule.transactionType) !== operationKey(operationType)) return false;
+  const fileTransport = transportName(transportMode);
+  const modes = String(rule.transportMode ?? "")
+    .split(",")
+    .map((item) => transportName(item))
+    .filter(Boolean);
+  if (modes.length === 0 || modes.includes("Tümü")) return true;
+  return Boolean(fileTransport) && modes.includes(fileTransport);
+}
+
+function documentSatisfies(required: string, uploadedTypes: Set<string>): boolean {
+  const accepted = REQUIRED_DOC_TYPES[required];
+  if (!accepted) return uploadedTypes.has(required);
+  return accepted.some((type) => uploadedTypes.has(type));
+}
+
+async function missingDocumentsByDeclaration(
+  companyId: mongoose.Types.ObjectId,
+  rows: Array<{ _id: unknown; operation?: { customerId?: string; operationType?: string; transportMode?: string | null } | null }>
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  const customerIds = [...new Set(rows.map((row) => row.operation?.customerId).filter((id): id is string => Boolean(id)))];
+  if (customerIds.length === 0) return result;
+
+  const [rules, documents] = await Promise.all([
+    CustomerDocumentRuleModel.find({ companyId, customerId: { $in: customerIds }, status: "Aktif" })
+      .select({ customerId: 1, transactionType: 1, transportMode: 1, requiredDocs: 1, status: 1 })
+      .lean(),
+    UploadedDocumentModel.find({ companyId, declarationId: { $in: rows.map((row) => row._id) } })
+      .select({ declarationId: 1, type: 1 })
+      .lean()
+  ]);
+
+  const typesByDeclaration = new Map<string, Set<string>>();
+  for (const doc of documents) {
+    const id = String(doc.declarationId);
+    const types = typesByDeclaration.get(id) ?? new Set<string>();
+    types.add(String(doc.type));
+    typesByDeclaration.set(id, types);
+  }
+
+  for (const row of rows) {
+    const customerId = row.operation?.customerId;
+    if (!customerId) continue;
+    const uploaded = typesByDeclaration.get(String(row._id)) ?? new Set<string>();
+    const required = new Set<string>();
+    for (const rule of rules) {
+      if (rule.customerId !== customerId) continue;
+      if (!ruleCoversFile(rule, row.operation?.operationType, row.operation?.transportMode)) continue;
+      for (const doc of rule.requiredDocs ?? []) {
+        if (doc.trim()) required.add(doc.trim());
+      }
+    }
+    result.set(
+      String(row._id),
+      [...required].filter((doc) => !documentSatisfies(doc, uploaded))
+    );
+  }
+  return result;
+}
+
+function withMissingDocuments(dto: DeclarationDto, missing: string[] | undefined): DeclarationDto {
+  if (!dto.operation || !missing) return dto;
+  return { ...dto, operation: { ...dto.operation, missingDocuments: missing } };
+}
+
 export async function listDeclarations(companyId: mongoose.Types.ObjectId): Promise<DeclarationDto[]> {
   const rows = await DeclarationModel.find({ companyId }).sort({ updatedAt: -1 }).lean();
-  return rows.map((row) => toDeclarationDto(row as unknown as DeclarationDoc));
+  const missing = await missingDocumentsByDeclaration(companyId, rows);
+  return rows.map((row) =>
+    withMissingDocuments(toDeclarationDto(row as unknown as DeclarationDoc), missing.get(String(row._id)))
+  );
 }
 
 export async function getDeclaration(companyId: mongoose.Types.ObjectId, id: string): Promise<DeclarationDto> {
   if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz beyanname id.");
   const d = await DeclarationModel.findOne({ _id: id, companyId }).lean();
   if (!d) throw new HttpError(404, "Beyanname bulunamadı.");
-  return toDeclarationDto(d as unknown as DeclarationDoc);
+  const missing = await missingDocumentsByDeclaration(companyId, [d]);
+  return withMissingDocuments(toDeclarationDto(d as unknown as DeclarationDoc), missing.get(String(d._id)));
 }
 
 export async function patchDeclaration(

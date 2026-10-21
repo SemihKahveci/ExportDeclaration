@@ -14,6 +14,7 @@ import ControlTab from './ControlTab';
 import ListeView from './ListeView';
 import UploadDrawer from './UploadDrawer';
 import ReminderModal from './ReminderModal';
+import { ApiError } from '../../api/apiClient';
 import { listDocuments } from '../../api/documentApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
 
@@ -23,6 +24,12 @@ const TAB_ITEMS = [
 ];
 
 type ViewMode = 'list' | 'detail';
+
+function actionError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.message) return error.message;
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
 
 export default function BeyannameYazimPage() {
   const { toast } = useToast();
@@ -121,7 +128,7 @@ export default function BeyannameYazimPage() {
       toast('Beyanname MT kontrole gönderildi');
     } catch (error) {
       console.error(error);
-      toast('MT kontrole geçiş yapılamadı');
+      toast(actionError(error, 'MT kontrole geçiş yapılamadı'));
     }
   }
 
@@ -134,7 +141,7 @@ export default function BeyannameYazimPage() {
       navigate(`/beyanname-onay?declarationId=${encodeURIComponent(selected.id)}&ref=${encodeURIComponent(selected.ref)}`);
     } catch (error) {
       console.error(error);
-      toast('Beyanname onaya gönderilemedi');
+      toast(actionError(error, 'Beyanname onaya gönderilemedi'));
     }
   }
 
