@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye, Send, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, ExternalLink } from 'lucide-react';
-import type { BeyannameRecord, DeclarationFieldMapping } from '../../types';
+import type { BeyannameLineItem, BeyannameRecord, DeclarationFieldMapping } from '../../types';
+import { getDeclaration, patchDeclaration } from '../../api/declarationApi';
+import { mergeNormalizedFromApi, type GoodsLine } from '../../api/types/document.types';
 import { FIELD_GROUPS } from '../../services/declarationFieldRules';
 import { isDocumentSourcedField } from '../../services/declarationFieldSourceAuthority';
 import { documentFieldMappingService } from '../../services/documents';
@@ -19,11 +21,15 @@ const DEFAULT_OPEN = new Set(['Genel Beyan Bilgileri', 'Taraf Bilgileri', 'Kalem
 function InlineInput({
   value,
   onChange,
+  onBlur,
   multiline = false,
+  className = '',
 }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   multiline?: boolean;
+  className?: string;
 }) {
   const base =
     'w-full border border-line-strong bg-surface rounded-md px-2.5 font-[inherit] text-[12.5px] text-text-strong focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors';
@@ -32,8 +38,9 @@ function InlineInput({
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         rows={2}
-        className={`${base} py-1.5 resize-y min-h-[48px]`}
+        className={`${base} py-1.5 resize-y min-h-[48px] ${className}`}
       />
     );
   }
@@ -42,9 +49,83 @@ function InlineInput({
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={`${base} h-[30px]`}
+      onBlur={onBlur}
+      className={`${base} h-[30px] ${className}`}
     />
   );
+}
+
+function editableText(value: string | number | undefined): string {
+  const text = value == null ? '' : String(value).trim();
+  return text === '—' || text === '–' || text === '-' ? '' : text;
+}
+
+function optionalText(value: string | undefined): string | undefined {
+  const text = editableText(value);
+  return text || undefined;
+}
+
+function parseTrNumber(value: string | undefined): number | undefined {
+  const text = editableText(value).replace(/\s/g, '');
+  if (!text) return undefined;
+  const hasComma = text.includes(',');
+  const hasDot = text.includes('.');
+  let normalized = text;
+  if (hasComma && hasDot) {
+    normalized = text.lastIndexOf(',') > text.lastIndexOf('.')
+      ? text.replace(/\./g, '').replace(',', '.')
+      : text.replace(/,/g, '');
+  } else if (hasComma) {
+    normalized = text.replace(',', '.');
+  } else if (hasDot) {
+    const parts = text.split('.');
+    const thousands = parts.length > 1 && parts.slice(1).every((part) => part.length === 3);
+    if (thousands) normalized = text.replace(/\./g, '');
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function lineNoValue(value: string | number, index: number): number {
+  const parsed = Number.parseInt(editableText(value), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : index + 1;
+}
+
+async function persistLineItems(declarationId: string, items: BeyannameLineItem[]): Promise<void> {
+  const current = await getDeclaration(declarationId);
+  const norm = mergeNormalizedFromApi(current.normalizedData);
+  const currency = items.map((item) => optionalText(item.dovizCinsi)).find(Boolean);
+  const goodsLines: GoodsLine[] = items.map((item, index) => {
+    const previous = norm.goodsLines[index];
+    const description = optionalText(item.ticariTanim) ?? optionalText(item.description);
+    const line: GoodsLine = { lineNo: lineNoValue(item.lineNo, index) };
+    const hsCode = optionalText(item.gtip);
+    const productCode = optionalText(item.malzemeNo);
+    const unit = optionalText(item.miktarBirimi);
+    const origin = optionalText(item.mense);
+    const quantity = parseTrNumber(item.quantity);
+    const grossKg = parseTrNumber(item.brutKg);
+    const netKg = parseTrNumber(item.netKg);
+    const lineTotal = parseTrNumber(item.kiymet);
+    if (hsCode) line.hsCode = hsCode;
+    if (productCode) line.productCode = productCode;
+    if (description) line.description = description;
+    if (quantity != null) line.quantity = quantity;
+    if (unit) line.unit = unit;
+    if (previous?.unitPrice != null) line.unitPrice = previous.unitPrice;
+    if (lineTotal != null) line.lineTotal = lineTotal;
+    if (origin) line.origin = origin;
+    if (grossKg != null) line.grossKg = grossKg;
+    if (netKg != null) line.netKg = netKg;
+    return line;
+  });
+  await patchDeclaration(declarationId, {
+    normalizedData: {
+      ...norm,
+      header: { ...norm.header, ...(currency ? { currency } : {}) },
+      goodsLines,
+    },
+  });
 }
 
 // ─── Document type badge ──────────────────────────────────────────────────────
@@ -159,7 +240,9 @@ interface GroupSectionProps {
   defaultOpen?: boolean;
   onValueChange: (fieldName: string, value: string) => void;
   onShowInDoc: (fieldName: string, value: string, mapping?: DeclarationFieldMapping) => void;
-  lineItems?: BeyannameRecord['lineItems'];
+  lineItems?: BeyannameLineItem[];
+  onLineChange?: (index: number, patch: Partial<BeyannameLineItem>) => void;
+  onLineBlur?: () => void;
 }
 
 function GroupSection({
@@ -172,6 +255,8 @@ function GroupSection({
   onValueChange,
   onShowInDoc,
   lineItems,
+  onLineChange,
+  onLineBlur,
 }: GroupSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -257,49 +342,35 @@ function GroupSection({
                   </tr>
                 </thead>
                 <tbody>
-                  {lineItems.map((item) => (
-                    <tr
-                      key={item.lineNo}
-                      className="border-b border-line hover:bg-surface-2/50 transition-colors last:border-b-0"
-                    >
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12px] text-muted font-mono">{item.lineNo}</span>
+                  {lineItems.map((item, index) => {
+                    const edit = (patch: Partial<BeyannameLineItem>) => onLineChange?.(index, patch);
+                    const cell = (value: string | number | undefined, patch: (text: string) => Partial<BeyannameLineItem>, wide = false) => (
+                      <td className={`px-2 py-1.5 border-r border-line last:border-r-0 ${wide ? 'min-w-[160px]' : 'min-w-[96px]'}`}>
+                        <InlineInput
+                          value={editableText(value)}
+                          onChange={(text) => edit(patch(text))}
+                          onBlur={onLineBlur}
+                          className="font-mono"
+                        />
                       </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12px] font-mono text-muted">{item.malzemeNo ?? '—'}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12px] font-mono text-accent">{item.gtip}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line max-w-[150px]">
-                        <span className="text-[12px] text-muted block truncate" title={item.ticariTanim}>{item.ticariTanim ?? '—'}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line max-w-[150px]">
-                        <span className="text-[12.5px] font-semibold text-text-strong block truncate" title={item.description}>{item.description}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12.5px] text-text font-mono">{item.quantity}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12.5px] text-text">{item.miktarBirimi ?? '—'}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12.5px] text-text font-mono">{item.mense}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12.5px] text-text font-mono">{item.brutKg}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12.5px] text-text font-mono">{item.netKg}</span>
-                      </td>
-                      <td className="px-3 py-2.5 border-r border-line">
-                        <span className="text-[12.5px] text-text font-mono">{item.kiymet}</span>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="text-[12px] text-muted font-mono">{item.dovizCinsi ?? '—'}</span>
-                      </td>
-                    </tr>
-                  ))}
+                    );
+                    return (
+                      <tr key={`${item.lineNo}-${index}`} className="border-b border-line last:border-b-0">
+                        {cell(item.lineNo, (text) => ({ lineNo: lineNoValue(text, index) }))}
+                        {cell(item.malzemeNo, (text) => ({ malzemeNo: text }))}
+                        {cell(item.gtip, (text) => ({ gtip: text }))}
+                        {cell(item.ticariTanim, (text) => ({ ticariTanim: text, description: text }), true)}
+                        {cell(item.description, (text) => ({ description: text, ticariTanim: text }), true)}
+                        {cell(item.quantity, (text) => ({ quantity: text }))}
+                        {cell(item.miktarBirimi, (text) => ({ miktarBirimi: text }))}
+                        {cell(item.mense, (text) => ({ mense: text }))}
+                        {cell(item.brutKg, (text) => ({ brutKg: text }))}
+                        {cell(item.netKg, (text) => ({ netKg: text }))}
+                        {cell(item.kiymet, (text) => ({ kiymet: text }))}
+                        {cell(item.dovizCinsi, (text) => ({ dovizCinsi: text }))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -394,6 +465,9 @@ export default function WritingTab({
   const [fieldValues, setFieldValues] = useState<Record<string, string>>(
     () => ({ ...record.fieldValues })
   );
+  const [lineItems, setLineItems] = useState<BeyannameLineItem[]>(() => record.lineItems);
+  const lineItemsRef = useRef(lineItems);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [mappings, setMappings] = useState<DeclarationFieldMapping[]>([]);
   const [picker, setPicker] = useState<PickerState>({
     open: false, fieldName: '', fieldValue: '', documentType: 'Fatura', currentRegionId: '',
@@ -413,8 +487,38 @@ export default function WritingTab({
     });
   }
 
+  useEffect(() => {
+    setLineItems(record.lineItems);
+    lineItemsRef.current = record.lineItems;
+  }, [record.id]);
+
   function handleValueChange(fieldName: string, value: string) {
     setFieldValues((prev) => ({ ...prev, [fieldName]: value }));
+  }
+
+  function handleLineChange(index: number, patch: Partial<BeyannameLineItem>) {
+    const next = lineItemsRef.current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
+    lineItemsRef.current = next;
+    setLineItems(next);
+  }
+
+  function queueLineSave(): Promise<void> {
+    const items = lineItemsRef.current;
+    const run = saveQueue.current
+      .catch(() => undefined)
+      .then(() => persistLineItems(record.id, items));
+    saveQueue.current = run;
+    return run;
+  }
+
+  async function handleSendClick() {
+    try {
+      await queueLineSave();
+      onSendToControl();
+    } catch (error) {
+      console.error(error);
+      toast('Kalem alanları kaydedilemedi. Kontrole gönderilmedi.');
+    }
   }
 
   function handleShowInDoc(fieldName: string, fieldValue: string, mapping?: DeclarationFieldMapping) {
@@ -541,7 +645,7 @@ export default function WritingTab({
                   size="sm"
                   variant="primary"
                   icon={Send}
-                  onClick={onSendToControl}
+                  onClick={() => void handleSendClick()}
                   disabled={!hasViewedPreview}
                   title={!hasViewedPreview ? 'Önce beyanname görünümünü açmanız gerekiyor' : undefined}
                 >
@@ -577,11 +681,9 @@ export default function WritingTab({
                   defaultOpen={DEFAULT_OPEN.has(group.label)}
                   onValueChange={handleValueChange}
                   onShowInDoc={handleShowInDoc}
-                  lineItems={
-                    group.label === 'Kalem / Malzeme Bilgileri'
-                      ? record.lineItems
-                      : undefined
-                  }
+                  lineItems={group.label === 'Kalem / Malzeme Bilgileri' ? lineItems : undefined}
+                  onLineChange={handleLineChange}
+                  onLineBlur={() => { void queueLineSave().catch((error) => { console.error(error); toast('Kalem alanları kaydedilemedi.'); }); }}
                 />
               ))}
             </div>
