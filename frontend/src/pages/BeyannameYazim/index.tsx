@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, Send, FileText, Layers, Loader2, ChevronLeft, X, Bell } from 'lucide-react';
+import { Save, Send, FileText, Layers, Loader2, ChevronLeft, Bell } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameRecord } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
 import StatCard from '../../components/ui/StatCard';
@@ -14,7 +14,8 @@ import ControlTab from './ControlTab';
 import ListeView from './ListeView';
 import UploadDrawer from './UploadDrawer';
 import ReminderModal from './ReminderModal';
-import { PAGE_IMAGES } from './pageImages';
+import { listDocuments } from '../../api/documentApi';
+import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
 
 const TAB_ITEMS = [
   { key: 'yazim',   label: 'Beyanname Yazım', icon: FileText },
@@ -39,8 +40,8 @@ export default function BeyannameYazimPage() {
   const [viewMode,         setViewMode]          = useState<ViewMode>('list');
   const [activeTab,        setActiveTab]         = useState<'yazim' | 'kontrol'>('yazim');
   const [hasViewedPreview, setHasViewedPreview]  = useState(false);
-  const [previewOpen,      setPreviewOpen]       = useState(false);
-  const [previewPage,      setPreviewPage]       = useState(0);
+  const [previewDocId,     setPreviewDocId]      = useState<string | null>(null);
+  const [previewLabel,     setPreviewLabel]      = useState('Belge');
   const [uploadOpen,       setUploadOpen]        = useState(false);
   const [uploadRef,        setUploadRef]         = useState<string | undefined>(undefined);
   const [reminderOpen,     setReminderOpen]      = useState(false);
@@ -88,10 +89,22 @@ export default function BeyannameYazimPage() {
     setViewMode('detail');
   }
 
-  function handleViewDeclaration() {
-    setPreviewPage(0);
-    setPreviewOpen(true);
-    setHasViewedPreview(true);
+  async function handleViewDeclaration() {
+    if (!selected) return;
+    try {
+      const docs = await listDocuments(selected.id);
+      const invoice = docs.find((doc) => doc.type === 'INVOICE') ?? docs[0];
+      if (!invoice) {
+        toast('Bu beyannamede görüntülenecek belge yok.');
+        return;
+      }
+      setPreviewLabel(invoice.fileName ?? 'Fatura');
+      setPreviewDocId(invoice._id);
+      setHasViewedPreview(true);
+    } catch (error) {
+      console.error(error);
+      toast('Belge görünümü açılamadı.');
+    }
   }
 
   async function reloadDeclarationData() {
@@ -301,69 +314,14 @@ export default function BeyannameYazimPage() {
         </Card>
       )}
 
-      {/* Declaration preview modal — wide document viewer */}
-      {previewOpen && (
-        <>
-          {/* Scrim */}
-          <div
-            className="fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm"
-            onClick={() => setPreviewOpen(false)}
-            aria-hidden="true"
-          />
-
-          {/* Dialog */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-12 pointer-events-none">
-            <div
-              className="bg-surface rounded-xl border border-line shadow-2xl flex flex-col pointer-events-auto"
-              style={{ width: 'min(1100px, calc(100vw - 96px))', height: '86vh' }}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Beyanname Görünümü"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-line shrink-0">
-                <h2 className="text-[15px] font-semibold text-text-strong">Beyanname Görünümü</h2>
-                <div className="flex items-center gap-2">
-                  {PAGE_IMAGES.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setPreviewPage(i)}
-                      className={[
-                        'px-3 py-1.5 rounded-md text-[12.5px] font-medium transition-colors',
-                        previewPage === i
-                          ? 'bg-accent text-white'
-                          : 'bg-surface-2 text-muted hover:bg-line hover:text-text',
-                      ].join(' ')}
-                    >
-                      Sayfa {i + 1}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setPreviewOpen(false)}
-                    className="ml-2 w-7 h-7 flex items-center justify-center rounded text-muted hover:bg-line hover:text-text transition-colors"
-                    aria-label="Kapat"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Body */}
-              <div className="flex-1 min-h-0 overflow-y-auto bg-[#f0ede8] px-10 py-8">
-                <div className="flex justify-center">
-                  <img
-                    src={PAGE_IMAGES[previewPage]}
-                    alt={`Beyanname Sayfa ${previewPage + 1}`}
-                    style={{ width: '100%', maxWidth: '980px', height: 'auto' }}
-                    className="rounded border border-line shadow-md"
-                    draggable={false}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+      <DocumentEvidenceViewer
+        open={previewDocId !== null}
+        declarationId={selected?.id ?? ''}
+        uploadedFileId={previewDocId ?? ''}
+        mode="all"
+        evidence={previewDocId ? { pageNumber: 1, label: previewLabel, contentSource: 'PAGE_IMAGE' } : null}
+        onClose={() => setPreviewDocId(null)}
+      />
     </div>
   );
 }

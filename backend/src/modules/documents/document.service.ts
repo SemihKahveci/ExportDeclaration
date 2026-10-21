@@ -128,7 +128,7 @@ export async function listDocumentPageEvidence(
   declarationId: string,
   documentId: string,
   pageNumber: number
-): Promise<{ processingRunId: string; uploadedFileId: string; pageNumber: number; evidence: PersistedPageEvidence[] }> {
+): Promise<{ processingRunId: string; uploadedFileId: string; pageNumber: number; pageCount?: number; evidence: PersistedPageEvidence[] }> {
   // Reuse the document descriptor lookup so tenant + declaration + exact physical file scoping
   // is identical to content/page-image access.
   await getDocumentContentDescriptor(companyId, declarationId, documentId);
@@ -177,10 +177,12 @@ export async function listDocumentPageEvidence(
     }
   }
 
+  const pages = run.canonicalDocument?.pages;
   return {
     processingRunId: String(run._id),
     uploadedFileId: documentId,
     pageNumber,
+    pageCount: Array.isArray(pages) ? pages.length : undefined,
     evidence: rows,
   };
 }

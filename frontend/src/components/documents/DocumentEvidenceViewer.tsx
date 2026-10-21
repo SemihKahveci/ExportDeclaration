@@ -17,7 +17,7 @@ interface PersistedPageEvidence {
   pageNumber: number; bbox: EvidenceBBox; text?: string; contentSource?: 'NATIVE_TEXT' | 'OCR' | 'PAGE_IMAGE';
 }
 interface PageEvidenceResponse {
-  processingRunId: string; uploadedFileId: string; pageNumber: number; evidence: PersistedPageEvidence[];
+  processingRunId: string; uploadedFileId: string; pageNumber: number; pageCount?: number; evidence: PersistedPageEvidence[];
 }
 interface Props {
   open: boolean; declarationId: string; uploadedFileId: string;
@@ -84,6 +84,7 @@ function PageImage({imageUrl, alt, boxes, selected, caption = 'Seçili alan'}:{i
 }
 
 export default function DocumentEvidenceViewer({ open, declarationId, uploadedFileId, evidence, onClose, mode = 'selected' }: Props) {
+  const [page,setPage]=useState(evidence?.pageNumber ?? 1);
   const [imageUrl,setImageUrl]=useState<string|null>(null);
   const [pdfUrl,setPdfUrl]=useState<string|null>(null);
   const [pageEvidence,setPageEvidence]=useState<PageEvidenceResponse|null>(null);
@@ -105,15 +106,16 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
     requestAnimationFrame(()=>{syncingScrollRef.current=false;});
   };
 
+  useEffect(()=>{ if(open && evidence) setPage(evidence.pageNumber); },[open,evidence?.pageNumber]);
   useEffect(()=>{
     if(!open||!evidence)return;
     let disposed=false,imageObjectUrl:string|null=null,pdfObjectUrl:string|null=null;
     setLoading(true);setError(null);setPageEvidence(null);
     const base=`/api/declarations/${encodeURIComponent(declarationId)}/documents/${encodeURIComponent(uploadedFileId)}`;
     Promise.all([
-      apiGetBlob(`${base}/pages/${evidence.pageNumber}/image`),
+      apiGetBlob(`${base}/pages/${page}/image`),
       apiGetBlob(`${base}/content`),
-      apiGetJson<PageEvidenceResponse>(`${base}/pages/${evidence.pageNumber}/evidence`),
+      apiGetJson<PageEvidenceResponse>(`${base}/pages/${page}/evidence`),
     ]).then(([image,pdf,allEvidence])=>{
       if(disposed)return;
       imageObjectUrl=URL.createObjectURL(image);pdfObjectUrl=URL.createObjectURL(pdf);
@@ -121,9 +123,9 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
     }).catch(err=>{console.error(err);if(!disposed)setError('Belge analizi yüklenemedi.');})
       .finally(()=>{if(!disposed)setLoading(false);});
     return()=>{disposed=true;if(imageObjectUrl)URL.revokeObjectURL(imageObjectUrl);if(pdfObjectUrl)URL.revokeObjectURL(pdfObjectUrl);};
-  },[open,declarationId,uploadedFileId,evidence?.pageNumber,mode]);
+  },[open,declarationId,uploadedFileId,page,mode]);
 
-  const highlight=useMemo(()=>evidence?highlightFor(evidence,pageEvidence?.evidence):{band:false},[evidence,pageEvidence]);
+  const highlight=useMemo(()=>evidence && evidence.pageNumber===page ? highlightFor(evidence,pageEvidence?.evidence) : {band:false},[evidence,page,pageEvidence]);
   useEffect(()=>{
     if(!imageUrl||!highlight.box)return;
     parsedScrollRef.current?.querySelector('[data-selected-box="true"]')?.scrollIntoView({block:'center',inline:'nearest'});
@@ -139,10 +141,17 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
     <div className="bg-surface border border-line rounded-xl shadow-2xl w-[min(1580px,97vw)] h-[min(900px,94vh)] flex flex-col overflow-hidden" onMouseDown={e=>e.stopPropagation()}>
       <div className="px-4 py-3 border-b border-line flex items-center gap-3">
         <FileSearch size={18}/>
-        <div><div className="font-bold text-[14px]">{evidence.label??'Belge Analizi'}</div><div className="text-[11.5px] text-muted">Sayfa {evidence.pageNumber}{sourceLabel(evidence.contentSource)?` · ${sourceLabel(evidence.contentSource)}`:''}{highlight.band?' · satır bandı':''}</div></div>
+        <div><div className="font-bold text-[14px]">{evidence.label??'Belge Analizi'}</div><div className="text-[11.5px] text-muted">Sayfa {page}{sourceLabel(evidence.contentSource)?` · ${sourceLabel(evidence.contentSource)}`:''}{highlight.band?' · satır bandı':''}</div></div>
+        {mode==='all' && (pageEvidence?.pageCount ?? 0) > 1 && (
+          <div className="flex items-center gap-1">
+            {Array.from({ length: pageEvidence?.pageCount ?? 0 }, (_, i) => i + 1).map((n) => (
+              <button key={n} type="button" onClick={() => setPage(n)} className={['px-2.5 py-1 rounded text-[12px] font-semibold', n===page ? 'bg-accent text-white' : 'bg-surface-2 text-muted'].join(' ')}>Sayfa {n}</button>
+            ))}
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {mode==='all'&&pageEvidence&&<span className="text-[11px] text-muted border border-line rounded-full px-2.5 py-1">{counts.total} tespit · {counts.ocr} OCR · {counts.native} PDF metni</span>}
-          {pdfUrl&&<a href={`${pdfUrl}#page=${evidence.pageNumber}`} target="_blank" rel="noreferrer"><Button icon={ExternalLink}>PDF'yi Aç</Button></a>}
+          {pdfUrl&&<a href={`${pdfUrl}#page=${page}`} target="_blank" rel="noreferrer"><Button icon={ExternalLink}>PDF'yi Aç</Button></a>}
           <button type="button" onClick={onClose} className="w-8 h-8 rounded border border-line flex items-center justify-center"><X size={16}/></button>
         </div>
       </div>
