@@ -12,6 +12,7 @@ import { toAppUserDto, type AppUserDto } from "./user.mapper.js";
 import { setPassword } from "../auth/auth.service.js";
 import { sendNewUserCredentialsMail } from "../mail/mail.service.js";
 import { CustomerMailModel, CustomerModel } from "../customers/customer.models.js";
+import { customerMailAddress } from "../customers/customer.service.js";
 
 export type CreateAppUserInput = Omit<AppUserDto, "id" | "createdAt" | "updatedAt" | "systemRole"> & { password?: string };
 export type UpdateAppUserInput = Partial<Omit<CreateAppUserInput, "password">> & { password?: string };
@@ -96,7 +97,8 @@ export async function createAppUser(companyId: mongoose.Types.ObjectId, body: Cr
 
   const fullName = body.name.trim();
   const email = normalizeEmail(body.email);
-  const customerMail = await CustomerMailModel.exists({ companyId, email });
+  const customerMails = await CustomerMailModel.find({ companyId }).select({ email: 1, domain: 1 });
+  const customerMail = customerMails.some((row) => customerMailAddress(row.email, row.domain) === email);
   if (customerMail) {
     throw new HttpError(409, "Bu e-posta bir müşteri maili olarak kayıtlı. Firma kullanıcısı olamaz.");
   }

@@ -48,6 +48,16 @@ function domainsInAddOrder(domains: MailDomain[]): string[] {
     .filter(Boolean);
 }
 
+function previewMailAddress(email: string, domain: string): string {
+  const raw = email.trim().toLowerCase();
+  const hostRaw = domain.trim().toLowerCase();
+  const host = hostRaw ? (hostRaw.startsWith('@') ? hostRaw : `@${hostRaw}`) : '';
+  const at = raw.lastIndexOf('@');
+  const local = at > 0 ? raw.slice(0, at) : raw;
+  if (!local || !host) return '';
+  return `${local}${host}`;
+}
+
 function defaultDefinedDomain(domains: MailDomain[], current?: string): string {
   const ordered = domainsInAddOrder(domains);
   if (current && ordered.includes(current)) return current;
@@ -522,12 +532,21 @@ export default function CustomerDrawer({
 
       {mode === 'mail' && (
         <div className="space-y-4">
-          <Field label="Mail Adresi" htmlFor="m-email" required>
+          <Field
+            label="Mail Adresi"
+            htmlFor="m-email"
+            required
+            hint={
+              previewMailAddress(mEmail, mDomain)
+                ? `Kaydedilecek adres: ${previewMailAddress(mEmail, mDomain)}`
+                : 'Kullanıcı adını yazman yeterli. Seçili domain adresin sonuna eklenir.'
+            }
+          >
             <Input
               id="m-email"
               value={mEmail}
               onChange={(e) => setMEmail(e.target.value)}
-              placeholder="ad@firma.com"
+              placeholder="hasansemihkahveci"
             />
           </Field>
           <Field
