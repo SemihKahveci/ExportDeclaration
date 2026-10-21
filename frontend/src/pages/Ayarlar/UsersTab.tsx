@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Plus, Pencil, Search, Trash2 } from 'lucide-react';
 import type { AppUser, AppUserRole, AppUserStatus, OperationType, ApproverLevel, ScreenPermission } from '../../types';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
@@ -145,6 +145,69 @@ function SectionHeader({ title, sub }: { title: string; sub?: string }) {
       <h3 className="text-[13px] font-bold text-text-strong">{title}</h3>
       {sub && <span className="text-[12px] text-muted">{sub}</span>}
     </div>
+  );
+}
+
+function useFollowingBar(anchorRef: RefObject<HTMLDivElement | null>) {
+  const [pin, setPin] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  useEffect(() => {
+    function update() {
+      const anchor = anchorRef.current;
+      const card = anchor?.closest('[data-permission-card]');
+      if (!anchor || !card) return;
+      const header = anchor.getBoundingClientRect();
+      const bounds = card.getBoundingClientRect();
+      const topbar = document.querySelector('header');
+      const limit = topbar ? Math.max(0, topbar.getBoundingClientRect().bottom) : 0;
+      const next = header.top < limit && bounds.bottom > limit + header.height
+        ? { top: limit, left: bounds.left, width: bounds.width }
+        : null;
+      setPin((prev) => {
+        if (!next && !prev) return prev;
+        if (next && prev && next.top === prev.top && next.left === prev.left && next.width === prev.width) return prev;
+        return next;
+      });
+    }
+
+    update();
+    document.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      document.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [anchorRef]);
+
+  return pin;
+}
+
+function FollowingHead({
+  title,
+  sub,
+  children,
+}: {
+  title: string;
+  sub?: string;
+  children?: ReactNode;
+}) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const pin = useFollowingBar(anchorRef);
+
+  return (
+    <>
+      <div ref={anchorRef} className={pin ? 'invisible' : undefined} aria-hidden={pin ? true : undefined}>
+        <CardHead title={title} sub={sub} actions={children} />
+      </div>
+      {pin && (
+        <div
+          className="fixed z-30 bg-surface border-b border-line shadow-md"
+          style={{ top: pin.top, left: pin.left, width: pin.width }}
+        >
+          <CardHead title={title} sub={sub} actions={children} />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -317,29 +380,28 @@ export default function UsersTab({
 
         {/* ── Right: Permission detail ────────────────────────────────────── */}
         <Card>
-          <CardHead
-            className="sticky top-0 z-20 bg-surface shadow-sm"
+          <div data-permission-card>
+          <FollowingHead
             title="Kullanıcı Yetki Tanımı"
             sub={sel ? sel.name : 'Sol listeden kullanıcı seçin'}
-            actions={
-              sel && (
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  <Button size="sm" onClick={onResetPerms} disabled={saving}>Vazgeç</Button>
-                  <Button variant="primary" size="sm" onClick={onSavePerms} disabled={saving}>
-                    {saving ? 'Kaydediliyor…' : 'Yetkileri Kaydet'}
+          >
+            {sel && (
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                <Button size="sm" onClick={onResetPerms} disabled={saving}>Vazgeç</Button>
+                <Button variant="primary" size="sm" onClick={onSavePerms} disabled={saving}>
+                  {saving ? 'Kaydediliyor…' : 'Yetkileri Kaydet'}
+                </Button>
+                <Button size="sm" icon={Pencil} onClick={onEdit} disabled={saving}>
+                  Düzenle
+                </Button>
+                {canDelete && (
+                  <Button size="sm" variant="danger" icon={Trash2} onClick={onDelete} disabled={saving}>
+                    Sil
                   </Button>
-                  <Button size="sm" icon={Pencil} onClick={onEdit} disabled={saving}>
-                    Düzenle
-                  </Button>
-                  {canDelete && (
-                    <Button size="sm" variant="danger" icon={Trash2} onClick={onDelete} disabled={saving}>
-                      Sil
-                    </Button>
-                  )}
-                </div>
-              )
-            }
-          />
+                )}
+              </div>
+            )}
+          </FollowingHead>
 
           {sel ? (
             <CardBody className="space-y-7">
@@ -482,6 +544,7 @@ export default function UsersTab({
               <p className="text-muted text-[13px]">Bir kullanıcı seçin.</p>
             </CardBody>
           )}
+          </div>
         </Card>
       </div>
     </div>
