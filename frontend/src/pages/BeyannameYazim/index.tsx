@@ -128,7 +128,7 @@ export default function BeyannameYazimPage() {
       toast('Beyanname MT kontrole gönderildi');
     } catch (error) {
       console.error(error);
-      toast(actionError(error, 'MT kontrole geçiş yapılamadı'));
+      toast(actionError(error, 'MT kontrole geçiş yapılamadı'), { duration: 7000 });
     }
   }
 

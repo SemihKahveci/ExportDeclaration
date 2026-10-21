@@ -13,13 +13,13 @@ function parsedGtip(value: unknown): boolean {
 function assertParsedGtip(declaration: { normalizedData?: unknown }): void {
   const lines = (declaration.normalizedData as { goodsLines?: Array<{ hsCode?: string }> } | undefined)?.goodsLines;
   if (!Array.isArray(lines) || lines.length === 0) {
-    throw new HttpError(409, "GTİP faturada bulunmuyor veya parse edilmedi. Onaya gönderilemez.");
+    throw new HttpError(409, "GTİP faturada bulunmuyor veya parse edilmedi. Kontrole gönderilemez.");
   }
   const missing = lines.flatMap((line, index) => parsedGtip(line?.hsCode) ? [] : [`${index + 1}. kalem`]);
   if (missing.length > 0) {
     throw new HttpError(
       409,
-      `GTİP faturada bulunmuyor veya parse edilmedi (${missing.join(", ")}). Onaya gönderilemez.`
+      `GTİP faturada bulunmuyor veya parse edilmedi (${missing.join(", ")}). Kontrole gönderilemez.`
     );
   }
 }
@@ -37,12 +37,12 @@ export async function transitionWritingWorkflow(
 
  const from=declaration.operation.fileStatus;
  if(action==="SUBMIT_TO_MT"){
+   assertParsedGtip(declaration);
    if(from!=="beyanname-yazim")throw new HttpError(409,"Yalnız beyanname yazım aşamasındaki dosya MT kontrole gönderilebilir.");
    declaration.operation.fileStatus="ic-kontrol";
    declaration.operation.lastActivity="Beyanname MT kontrole gönderildi";
  }else{
    if(from!=="ic-kontrol")throw new HttpError(409,"Yalnız MT kontrol aşamasındaki dosya onaya gönderilebilir.");
-   assertParsedGtip(declaration);
    declaration.status=DeclarationStatus.READY;
    declaration.operation.lastActivity="MT kontrol tamamlandı; beyanname onaya hazır";
 
