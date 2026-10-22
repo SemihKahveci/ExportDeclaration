@@ -280,9 +280,20 @@ export default function DosyaTakipPage() {
                 pageRows.map((file) => (
                   <Tr key={file.ref} onClick={() => setDetailFile(file)}>
                     <Td>
-                      <span className="font-mono text-[12px] font-semibold text-text-strong">
+                      <button
+                        type="button"
+                        className="font-mono text-[12px] font-semibold text-accent hover:underline"
+                        title="Beyanname Yazım ve MT Kontrol"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const query = file.declarationId
+                            ? `declarationId=${encodeURIComponent(file.declarationId)}&ref=${encodeURIComponent(file.ref)}&tab=yazim`
+                            : `ref=${encodeURIComponent(file.ref)}&tab=yazim`;
+                          navigate(`/beyanname?${query}`);
+                        }}
+                      >
                         {file.ref}
-                      </span>
+                      </button>
                     </Td>
                     <Td>
                       <span className="font-semibold text-text-strong block leading-snug">

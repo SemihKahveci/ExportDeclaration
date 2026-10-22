@@ -22,9 +22,10 @@ function requiredVariant(r: DocRequiredFlag) {
 interface DocStatusTabProps {
   docs: EvrakDocRow[];
   onPreview: (doc: EvrakDocRow) => void;
+  onOpenWriting: (doc: EvrakDocRow) => void;
 }
 
-export default function DocStatusTab({ docs, onPreview }: DocStatusTabProps) {
+export default function DocStatusTab({ docs, onPreview, onOpenWriting }: DocStatusTabProps) {
   return (
     <Table>
       <thead>
@@ -41,13 +42,19 @@ export default function DocStatusTab({ docs, onPreview }: DocStatusTabProps) {
       <tbody>
         {docs.map((doc) => {
           const isMissing = doc.status === 'Eksik';
-          const canPreview = doc.status === 'Geldi' || doc.status === 'İnceleme';
+          const arrived = doc.status === 'Geldi';
+          const canPreview = arrived || doc.status === 'İnceleme';
           return (
             <Tr
               key={doc.id}
               className={isMissing ? '!bg-[#fffbf2]' : undefined}
+              onClick={arrived ? () => onOpenWriting(doc) : undefined}
             >
-              <Td><span className="font-semibold text-[13px]">{doc.name}</span></Td>
+              <Td>
+                <span className={`font-semibold text-[13px] ${arrived ? 'text-accent' : ''}`} title={arrived ? 'Beyanname yazım alanlarına git' : undefined}>
+                  {doc.name}
+                </span>
+              </Td>
               <Td><Pill variant={requiredVariant(doc.required)}>{doc.required}</Pill></Td>
               <Td><Pill variant={statusVariant(doc.status)}>{doc.status}</Pill></Td>
               <Td><span className="text-muted text-[12.5px]">{doc.source}</span></Td>
@@ -55,7 +62,7 @@ export default function DocStatusTab({ docs, onPreview }: DocStatusTabProps) {
               <Td><span className="text-muted text-[12.5px]">{doc.note}</span></Td>
               <Td>
                 {canPreview ? (
-                  <Button size="sm" icon={Eye} onClick={() => onPreview(doc)}>
+                  <Button size="sm" icon={Eye} onClick={(event) => { event.stopPropagation(); onPreview(doc); }}>
                     Görüntüle
                   </Button>
                 ) : (

@@ -10,7 +10,7 @@ import { useToast } from '../../components/ui/Toast';
 
 interface UploadDrawerProps {
   open: boolean;
-  items: BeyannameListeItem[];
+  items: Array<Pick<BeyannameListeItem, 'id' | 'ref' | 'customer'>>;
   preselectedRef?: string;
   onClose: () => void;
   onUploaded?: (declarationId: string) => void;

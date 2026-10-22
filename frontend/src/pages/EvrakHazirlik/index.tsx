@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, CheckSquare, Bell, Loader2, Info } from 'lucide-react';
+import { AlertTriangle, CheckSquare, Bell, Loader2, Info, Upload } from 'lucide-react';
 import type { EvrakFile, EvrakDocRow, EvrakConflictRow, DocPreviewData, EvrakPageStats } from '../../types';
 import { evrakService } from '../../services/documents';
 import { transitionPreparationWorkflow } from '../../api/declarationApi';
@@ -15,6 +15,7 @@ import PreviewDrawer from './PreviewDrawer';
 import IdpReviewTab from './IdpReviewTab';
 import Modal from '../../components/ui/Modal';
 import { Field, Textarea } from '../../components/ui/Fields';
+import UploadDrawer from '../BeyannameYazim/UploadDrawer';
 
 // ─── Tab bar with tooltip ─────────────────────────────────────────────────────
 
@@ -142,6 +143,8 @@ export default function EvrakHazirlikPage() {
   const [overrideOpen,setOverrideOpen]=useState(false);
   const [overrideReason,setOverrideReason]=useState('');
   const [transitioning,setTransitioning]=useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [docRefresh, setDocRefresh] = useState(0);
 
   const [files, setFiles]       = useState<EvrakFile[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -153,6 +156,7 @@ export default function EvrakHazirlikPage() {
   const [previewData, setPreviewData]  = useState<DocPreviewData | null>(null);
 
   const selectedFile = files.find((f) => f.id === selectedId);
+  const reminderDisabled = docs.length > 0 && !docs.some((doc) => doc.status === 'Eksik');
 
   const stats: EvrakPageStats | null = selectedFile ? {
     required: docs.filter((d) => d.required === 'Evet').length,
@@ -209,7 +213,7 @@ export default function EvrakHazirlikPage() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [selectedId]);
+  }, [selectedId, docRefresh]);
 
   async function handlePreview(doc: EvrakDocRow) {
     const data = await evrakService.getPreview(doc.name, selectedId, doc.id);
@@ -345,14 +349,25 @@ export default function EvrakHazirlikPage() {
                 title={`${selectedFile.ref} · ${selectedFile.customer}`}
                 sub="Karayolu · Standart ihracat · Evrak hazırlık kontrolü"
                 actions={
-                  <Button
-                    variant="blue"
-                    icon={Bell}
-                    onClick={() => toast('Eksik evrak hatırlatması gönderildi')}
-                    writeCap="beyanname.write"
-                  >
-                    Evrak Hatırlatma Gönder
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      icon={Upload}
+                      onClick={() => setUploadOpen(true)}
+                      writeCap="beyanname.write"
+                    >
+                      Doküman Yükle
+                    </Button>
+                    <Button
+                      variant="blue"
+                      icon={Bell}
+                      disabled={reminderDisabled}
+                      title={reminderDisabled ? 'İlgili evraklar geldi' : undefined}
+                      onClick={() => toast('Eksik evrak hatırlatması gönderildi')}
+                      writeCap="beyanname.write"
+                    >
+                      Evrak Hatırlatma Gönder
+                    </Button>
+                  </div>
                 }
               />
               <CardBody>
@@ -366,7 +381,11 @@ export default function EvrakHazirlikPage() {
                 </div>
 
                 {activeTab === 'docs' && (
-                  <DocStatusTab docs={docs} onPreview={handlePreview} />
+                  <DocStatusTab
+                    docs={docs}
+                    onPreview={handlePreview}
+                    onOpenWriting={() => navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=yazim`)}
+                  />
                 )}
                 {activeTab === 'conflicts' && (
                   <ConflictsTab conflicts={conflicts} />
@@ -385,6 +404,13 @@ export default function EvrakHazirlikPage() {
         open={previewOpen}
         data={previewData}
         onClose={() => setPreviewOpen(false)}
+      />
+      <UploadDrawer
+        open={uploadOpen}
+        items={files.map((file) => ({ id: file.id, ref: file.ref, customer: file.customer }))}
+        preselectedRef={selectedFile?.ref}
+        onClose={() => setUploadOpen(false)}
+        onUploaded={() => setDocRefresh((value) => value + 1)}
       />
       <Modal open={overrideOpen} title="Eksik Evrakla Beyanname Yaz" onClose={()=>!transitioning&&setOverrideOpen(false)}
         footer={<><Button onClick={()=>setOverrideOpen(false)} disabled={transitioning}>Vazgeç</Button><Button variant="primary" disabled={transitioning||!overrideReason.trim()} onClick={()=>void startDeclaration('yazim',true)}>{transitioning?'Başlatılıyor…':'Gerekçeyle Devam Et'}</Button></>}>
