@@ -4,6 +4,8 @@ import { Plus, Download, Filter, ChevronRight, Loader2 } from 'lucide-react';
 
 import type { CustomsFile, FileStatus } from '../../types';
 import { filesService, buildStatusCounts, buildStatSummary } from '../../services/files';
+import { customersService } from '../../services/customers';
+import { ApiError } from '../../api/apiClient';
 
 import Button from '../../components/ui/Button';
 import StatCard from '../../components/ui/StatCard';
@@ -161,13 +163,21 @@ export default function DosyaTakipPage() {
 
   async function handleNewRequestSave(payload: import('./NewRequestDrawer').NewRequestPayload) {
     try {
+      const rules = await customersService.getDocRules(payload.customerId);
+      if (!rules.some((rule) => rule.status === 'Aktif')) {
+        setNewRequestOpen(false);
+        toast('Bu müşteri için en az bir evrak kuralı gerekli. Evrak kuralları ekranına geçiliyor.');
+        navigate(`/musteriler?customerId=${encodeURIComponent(payload.customerId)}&tab=rule`);
+        return;
+      }
       await filesService.create(payload);
       setNewRequestOpen(false);
       const data = await filesService.list();
       setFiles(data);
       toast('Yeni talep oluşturuldu · Yeni Talep statüsüyle eklendi');
-    } catch {
-      toast('Talep kaydedilemedi · lütfen tekrar deneyin');
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Talep kaydedilemedi · lütfen tekrar deneyin';
+      toast(message);
     }
   }
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import type {
   CustomerListItem,
@@ -47,6 +48,9 @@ function errorMessage(err: unknown, fallback: string): string {
 export default function MusterilerPage() {
   const { toast } = useToast();
   const { can } = useCan();
+  const [searchParams] = useSearchParams();
+  const requestedCustomerId = searchParams.get('customerId') ?? '';
+  const requestedTab = searchParams.get('tab') ?? '';
 
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [custSearch, setCustSearch] = useState('');
@@ -97,14 +101,18 @@ export default function MusterilerPage() {
         setCustomers(list);
         setMtUsers(assignable.filter((u) => u.role === 'MT'));
         setMtManagerUsers(assignable.filter((u) => u.role === 'MT Yönetici'));
-        setSelectedId((prev) => prev || list[0]?.id || '');
+        const requested = requestedCustomerId && list.some((customer) => customer.id === requestedCustomerId)
+          ? requestedCustomerId
+          : '';
+        setSelectedId((prev) => requested || prev || list[0]?.id || '');
+        if (TABS.some((tab) => tab.key === requestedTab)) setActiveTab(requestedTab);
         if (!list.length) setLoading(false);
       })
       .catch((err) => {
         toast(errorMessage(err, 'Müşteriler yüklenemedi'));
         setLoading(false);
       });
-  }, [toast]);
+  }, [toast, requestedCustomerId, requestedTab]);
 
   useEffect(() => {
     if (!selectedId) {

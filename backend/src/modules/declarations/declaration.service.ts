@@ -88,6 +88,22 @@ export async function createDeclaration(
   createdBy?: mongoose.Types.ObjectId,
   body?: CreateDeclarationInput
 ): Promise<DeclarationDto> {
+  const customerId = body?.operation?.customerId?.trim();
+  if (!customerId) {
+    throw new HttpError(400, "Talep için müşteri seçilmelidir.");
+  }
+  const activeRuleCount = await CustomerDocumentRuleModel.countDocuments({
+    companyId,
+    customerId,
+    status: "Aktif"
+  });
+  if (activeRuleCount === 0) {
+    throw new HttpError(
+      400,
+      "Bu müşteri için en az bir evrak kuralı gerekli. Önce evrak kuralı tanımlayın."
+    );
+  }
+
   const opType = body?.operation?.operationType ?? "ihracat";
   const ref = await generateOperationRef(companyId, opType);
   const now = new Date();
