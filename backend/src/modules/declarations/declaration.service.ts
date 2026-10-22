@@ -212,7 +212,7 @@ function documentSatisfies(required: string, uploadedTypes: Set<string>): boolea
   return accepted.some((type) => uploadedTypes.has(type));
 }
 
-async function missingDocumentsByDeclaration(
+export async function missingDocumentsByDeclaration(
   companyId: mongoose.Types.ObjectId,
   rows: Array<{ _id: unknown; operation?: { customerId?: string; operationType?: string; transportMode?: string | null } | null }>
 ): Promise<Map<string, string[]>> {

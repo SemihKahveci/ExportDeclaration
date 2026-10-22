@@ -7,10 +7,10 @@ import {
 } from "../../common/enums/operationMeta.js";
 
 export interface OperationWorkflowHistoryEntry {
-  action: "START_WRITING" | "START_WRITING_WITH_MISSING_DOCUMENTS" | "SUBMIT_TO_MT" | "APPROVE_MT" | "RECORD_REGISTRATION_STARTED" | "COMPLETE_REGISTRATION" | "CLOSE_FILE";
+  action: "START_WRITING" | "START_WRITING_WITH_MISSING_DOCUMENTS" | "SUBMIT_TO_MT" | "APPROVE_MT" | "RECORD_REGISTRATION_STARTED" | "COMPLETE_REGISTRATION" | "CLOSE_FILE" | "AUTO_ADVANCE";
   fromStatus: string;
   toStatus: string;
-  actorUserId: mongoose.Types.ObjectId;
+  actorUserId?: mongoose.Types.ObjectId;
   override: boolean;
   reason?: string;
   at: Date;
@@ -127,10 +127,10 @@ export interface DeclarationDoc extends mongoose.Document {
 
 const OperationWorkflowHistorySchema = new Schema(
   {
-    action: { type: String, enum: ["START_WRITING","START_WRITING_WITH_MISSING_DOCUMENTS","SUBMIT_TO_MT","APPROVE_MT","RECORD_REGISTRATION_STARTED","COMPLETE_REGISTRATION","CLOSE_FILE"], required: true },
+    action: { type: String, enum: ["START_WRITING","START_WRITING_WITH_MISSING_DOCUMENTS","SUBMIT_TO_MT","APPROVE_MT","RECORD_REGISTRATION_STARTED","COMPLETE_REGISTRATION","CLOSE_FILE","AUTO_ADVANCE"], required: true },
     fromStatus: { type: String, required: true },
     toStatus: { type: String, required: true },
-    actorUserId: { type: Schema.Types.ObjectId, required: true },
+    actorUserId: { type: Schema.Types.ObjectId, required: false },
     override: { type: Boolean, default: false },
     reason: { type: String, default: "" },
     at: { type: Date, default: () => new Date() }
