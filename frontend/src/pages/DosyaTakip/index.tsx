@@ -166,8 +166,10 @@ export default function DosyaTakipPage() {
       const rules = await customersService.getDocRules(payload.customerId);
       if (!rules.some((rule) => rule.status === 'Aktif')) {
         setNewRequestOpen(false);
-        toast('Bu müşteri için en az bir evrak kuralı gerekli. Evrak kuralları ekranına geçiliyor.');
-        navigate(`/musteriler?customerId=${encodeURIComponent(payload.customerId)}&tab=rule`);
+        toast('Bu müşteri için en az bir evrak kuralı gerekli. Evrak kuralları ekranına geçiliyor.', { duration: 4200 });
+        window.setTimeout(() => {
+          navigate(`/musteriler?customerId=${encodeURIComponent(payload.customerId)}&tab=rule`);
+        }, 2200);
         return;
       }
       await filesService.create(payload);
