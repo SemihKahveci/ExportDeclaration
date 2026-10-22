@@ -454,7 +454,7 @@ export interface TescilPageStats {
 
 // ─── Beyanname Yazım & Kontrol screen ────────────────────────────────────────
 
-export type BeyannameListeStatus = 'yazim-bekliyor' | 'kontrol-bekliyor' | 'onaya-hazir' | 'kontrol-uyarisi';
+export type BeyannameListeStatus = 'yazim-bekliyor' | 'beyanname-yazimda' | 'kontrol-bekliyor' | 'onaya-hazir' | 'kontrol-uyarisi';
 
 export type GtipSuitabilityStatus = 'uygun' | 'eksik' | 'uyumsuz' | 'kontrol-bekliyor';
 

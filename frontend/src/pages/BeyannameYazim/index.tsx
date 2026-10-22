@@ -320,8 +320,8 @@ export default function BeyannameYazimPage() {
             title={`${selected.ref} · ${selected.customer}`}
             sub={`${selected.transportMode} · ${selected.lineItems.length} kalem · ${selected.rejim}`}
             actions={
-              <Pill variant={selected.status === 'kontrol' ? 'accent' : 'warn'}>
-                {selected.status === 'kontrol' ? 'Kontrol' : 'Taslak'}
+              <Pill variant={selected.operationFileStatus === 'ic-kontrol' ? 'accent' : 'warn'}>
+                {selected.durumLabel}
               </Pill>
             }
           />

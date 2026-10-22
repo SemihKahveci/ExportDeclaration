@@ -15,11 +15,12 @@ interface ListeViewProps {
   onRowReminder: (item: BeyannameListeItem) => void;
 }
 
-const STATUS_CONFIG: Record<BeyannameListeStatus, { label: string; variant: 'ok' | 'warn' | 'accent' | 'red' }> = {
-  'onaya-hazir':      { label: 'Onaya Hazır',      variant: 'ok'     },
-  'kontrol-bekliyor': { label: 'Kontrol Bekliyor', variant: 'accent' },
-  'yazim-bekliyor':   { label: 'Yazım Bekliyor',   variant: 'warn'   },
-  'kontrol-uyarisi':  { label: 'Kontrol Uyarısı',  variant: 'red'    },
+const STATUS_CONFIG: Record<BeyannameListeStatus, { label: string; variant: 'ok' | 'warn' | 'accent' | 'red' | 'blue' }> = {
+  'onaya-hazir':        { label: 'Onaya Hazır',        variant: 'ok'     },
+  'kontrol-bekliyor':   { label: 'İç Kontrolde',       variant: 'accent' },
+  'beyanname-yazimda':  { label: 'Beyanname Yazımda',  variant: 'blue'   },
+  'yazim-bekliyor':     { label: 'Yazım Bekliyor',     variant: 'warn'   },
+  'kontrol-uyarisi':    { label: 'Kontrol Uyarısı',    variant: 'red'    },
 };
 
 const GTIP_STATUS_CONFIG: Record<GtipSuitabilityStatus, { label: string; variant: 'ok' | 'warn' | 'accent' | 'red' }> = {
@@ -43,7 +44,7 @@ function TransportIcon({ mode }: { mode: TransportMode | null }) {
 }
 
 const ISLEM_TIPI_OPTIONS = ['Tümü', 'Antrepo', 'İhracat', 'İthalat', 'Transit'];
-const DURUM_OPTIONS      = ['Tümü', 'Onaya Hazır', 'Kontrol Bekliyor', 'Yazım Bekliyor', 'Kontrol Uyarısı'];
+const DURUM_OPTIONS      = ['Tümü', 'Onaya Hazır', 'İç Kontrolde', 'Beyanname Yazımda', 'Yazım Bekliyor', 'Kontrol Uyarısı'];
 const TASIMA_OPTIONS     = ['Tümü', 'Karayolu', 'Denizyolu', 'Havayolu'];
 
 export default function ListeView({ items, onSelectYazim, onRowUpload, onRowReminder }: ListeViewProps) {
@@ -54,10 +55,11 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
   const [tasima, setTasima] = useState('Tümü');
 
   const durumToStatus: Record<string, BeyannameListeStatus> = {
-    'Onaya Hazır':      'onaya-hazir',
-    'Kontrol Bekliyor': 'kontrol-bekliyor',
-    'Yazım Bekliyor':   'yazim-bekliyor',
-    'Kontrol Uyarısı':  'kontrol-uyarisi',
+    'Onaya Hazır':       'onaya-hazir',
+    'İç Kontrolde':      'kontrol-bekliyor',
+    'Beyanname Yazımda': 'beyanname-yazimda',
+    'Yazım Bekliyor':    'yazim-bekliyor',
+    'Kontrol Uyarısı':   'kontrol-uyarisi',
   };
 
   const tasimaToMode: Record<string, TransportMode> = {
@@ -76,6 +78,7 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
   });
 
   const yazimCount   = items.filter((i) => i.status === 'yazim-bekliyor').length;
+  const yazimdaCount = items.filter((i) => i.status === 'beyanname-yazimda').length;
   const kontrolCount = items.filter((i) => i.status === 'kontrol-bekliyor').length;
   const uyariCount   = items.filter((i) => i.status === 'kontrol-uyarisi').length;
   const hazirCount   = items.filter((i) => i.status === 'onaya-hazir').length;
@@ -85,7 +88,7 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
   return (
     <div className="flex flex-col gap-4">
       {/* Stat row */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         <div className="relative overflow-hidden">
           <StatCard value={items.length} label="Toplam Beyanname" />
           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-l" />
@@ -95,7 +98,11 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
           <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l" style={{ background: 'var(--warn)' }} />
         </div>
         <div className="relative overflow-hidden">
-          <StatCard value={kontrolCount} label="Kontrol Bekliyor" />
+          <StatCard value={yazimdaCount} label="Beyanname Yazımda" />
+          <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-l" />
+        </div>
+        <div className="relative overflow-hidden">
+          <StatCard value={kontrolCount} label="İç Kontrolde" />
           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-l" />
         </div>
         <div className="relative overflow-hidden">

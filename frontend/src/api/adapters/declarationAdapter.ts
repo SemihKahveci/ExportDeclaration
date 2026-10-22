@@ -38,12 +38,30 @@ const STATUS_TO_LISTE: Record<string, BeyannameListeStatus> = {
   ERROR: "kontrol-uyarisi"
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: "Yazım Bekliyor",
-  READY: "Onaya Hazır",
-  XML_GENERATED: "XML Üretildi",
-  ERROR: "Hata"
-};
+function fileStage(d: BackendDeclaration): string {
+  const operation = d.operation;
+  if (!operation) return "";
+  if (operation.fileStatus === "beklemede" && operation.holdPreviousStatus) return operation.holdPreviousStatus;
+  return operation.fileStatus ?? "";
+}
+
+function listeStatusOf(d: BackendDeclaration): BeyannameListeStatus {
+  if (d.status === "ERROR") return "kontrol-uyarisi";
+  const stage = fileStage(d);
+  if (stage === "beyanname-yazim" || d.approvalWorkflow?.status === "RETURNED") return "beyanname-yazimda";
+  if (d.status === "READY" || d.status === "XML_GENERATED") return "onaya-hazir";
+  if (stage === "ic-kontrol") return "kontrol-bekliyor";
+  return STATUS_TO_LISTE[d.status] ?? "yazim-bekliyor";
+}
+
+function durumLabelOf(d: BackendDeclaration): string {
+  const status = listeStatusOf(d);
+  if (status === "beyanname-yazimda") return "Beyanname Yazımda";
+  if (status === "kontrol-bekliyor") return "İç Kontrolde";
+  if (status === "onaya-hazir") return "Onaya Hazır";
+  if (status === "kontrol-uyarisi") return "Kontrol Uyarısı";
+  return "Yazım Bekliyor";
+}
 
 export function refFromId(d: BackendDeclaration | string): string {
   if (typeof d === "string") {
@@ -272,7 +290,7 @@ export function toBeyannameListeItem(d: BackendDeclaration, docCount = 0): Beyan
     customer: op?.customerName ?? norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
     customerCity: op?.customerCity ?? norm.parties.buyer?.country ?? norm.parties.seller?.country ?? "—",
     islemTipi: islemLabels[op?.operationType ?? ""] ?? "İhracat",
-    status: STATUS_TO_LISTE[d.status] ?? "yazim-bekliyor",
+    status: listeStatusOf(d),
     transportMode: mapTransportMode(op?.transportMode ?? norm.transport.mode),
     lineCount: norm.goodsLines.length,
     docCount,
@@ -301,7 +319,7 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     customer: op?.customerName ?? norm.parties.buyer?.name ?? norm.parties.seller?.name ?? "—",
     customerId: op?.customerId ?? d.companyId,
     rejim: (norm.evrimHeader?.rejim as string) ?? "10 — İhracat",
-    durumLabel: STATUS_LABELS[d.status] ?? d.status,
+    durumLabel: durumLabelOf(d),
     status: STATUS_TO_BEYANNAME[d.status] ?? "taslak",
     transportMode: transportLabel(norm.transport.mode),
     docCount: received,
