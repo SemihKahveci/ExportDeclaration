@@ -7,9 +7,22 @@ const HAT_CONFIG: Record<HatColor, { label: string; varName: string }> = {
   yesil:   { label: 'Yeşil',  varName: 'var(--hat-green)' },
 };
 
-export default function HatCell({ line }: { line: HatColor | null }) {
+const HAT_ALIASES: Record<string, HatColor> = {
+  kirmizi: 'kirmizi',
+  'kırmızı': 'kirmizi',
+  sari: 'sari',
+  'sarı': 'sari',
+  mavi: 'mavi',
+  yesil: 'yesil',
+  'yeşil': 'yesil',
+};
+
+export default function HatCell({ line }: { line: string | null }) {
   if (!line) return <span className="text-muted-2">—</span>;
-  const { label, varName } = HAT_CONFIG[line];
+  const key = HAT_ALIASES[line.trim().toLocaleLowerCase('tr-TR')];
+  const cfg = key ? HAT_CONFIG[key] : undefined;
+  if (!cfg) return <span className="text-[12.5px] text-text-strong">{line}</span>;
+  const { label, varName } = cfg;
   return (
     <span className="inline-flex items-center gap-1.5 font-semibold text-[12.5px]" style={{ color: varName }}>
       <span

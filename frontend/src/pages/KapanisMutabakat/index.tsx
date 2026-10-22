@@ -8,6 +8,7 @@ import type {
   KapanicControlItem, KapanicPageStats, ControlState,
 } from '../../types';
 import { kapanisService } from '../../services/declarations';
+import { ApiError } from '../../api/apiClient';
 import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import { useCan } from '../../permissions/useCan';
 import StatCard from '../../components/ui/StatCard';
@@ -244,7 +245,7 @@ export default function KapanisMutabakatPage() {
                   const [nextFiles,nextStats]=await Promise.all([kapanisService.getFiles(),kapanisService.getStats()]);
                   setFiles(nextFiles); setStats(nextStats);
                   toast('Dosya kapatıldı');
-                } catch(error) { console.error(error); toast('Dosya kapatılamadı'); }
+                } catch (error) { toast(error instanceof ApiError ? error.message : 'Dosya kapatılamadı'); }
               }}
             >
               Dosyayı Kapat

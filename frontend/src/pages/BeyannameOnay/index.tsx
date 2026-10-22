@@ -93,8 +93,7 @@ export default function BeyannameOnayPage() {
       await beyannameService.transitionApproval(selectedId,{action:'APPROVE'});
       await reloadApprovalData();
       toast('Beyanname 2. onaya gönderildi');
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast('1. onay tamamlanamadı');
     }
   }
@@ -107,8 +106,7 @@ export default function BeyannameOnayPage() {
       await reloadApprovalData();
       toast('Beyanname onaylandı ve tescile gönderildi');
       setViewMode('list');
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast(selected.approvalStatus==='SECOND_PENDING'
         ? '2. onay farklı bir yetkili kullanıcı tarafından verilmelidir'
         : 'Beyanname onaylanamadı');
@@ -122,9 +120,8 @@ export default function BeyannameOnayPage() {
       await reloadApprovalData();
       toast('Beyanname yazıma geri gönderildi');
       setViewMode('list');
-    } catch (error) {
-      console.error(error);
-      toast('Beyanname MT kontrole geri gönderilemedi');
+    } catch {
+      toast('Beyanname yazıma geri gönderilemedi');
     }
   }
 

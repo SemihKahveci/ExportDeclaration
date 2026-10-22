@@ -59,8 +59,7 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
       toast(`Dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`);
       handleClose();
       onUploaded?.(uploaded.declarationId);
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast('Dosya yüklenemedi');
     } finally {
       setSaving(false);

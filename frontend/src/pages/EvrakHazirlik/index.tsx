@@ -250,7 +250,6 @@ export default function EvrakHazirlikPage() {
       toast(override ? 'Eksik evrak gerekçesi kaydedildi; beyanname yazımı başlatıldı' : 'Beyanname yazımı başlatıldı');
       navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=${tab}`);
     } catch (error) {
-      console.error(error);
       if (apiErrorCode(error) === 'GTIP_MATCH_CONFIRM') {
         setGtipOverride(override);
         setGtipOpen(true);

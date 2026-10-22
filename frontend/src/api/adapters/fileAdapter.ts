@@ -17,6 +17,16 @@ function mapTransport(mode?: string | null): TransportMode | null {
   return "karayolu";
 }
 
+function mapLine(line?: string | null): HatColor | null {
+  if (!line) return null;
+  const text = line.trim().toLocaleLowerCase("tr-TR");
+  if (text === "kirmizi" || text === "kırmızı") return "kirmizi";
+  if (text === "sari" || text === "sarı") return "sari";
+  if (text === "mavi") return "mavi";
+  if (text === "yesil" || text === "yeşil") return "yesil";
+  return null;
+}
+
 function displayRef(d: BackendDeclaration): string {
   return d.operation?.ref ?? `DCL-${d._id.slice(-6).toUpperCase()}`;
 }
@@ -35,7 +45,7 @@ export function toCustomsFile(d: BackendDeclaration): CustomsFile {
     operationType: (op?.operationType as OperationType) ?? "ihracat",
     isArchived: op?.isArchived ?? false,
     transportMode: mapTransport(op?.transportMode),
-    line: (op?.line as HatColor | null) ?? null,
+    line: mapLine(op?.line),
     declarationNo: op?.declarationNo ?? (d.generatedXmlPath ? displayRef(d) : null),
     receivedAt: created,
     closedAt: op?.closedAt ?? undefined,

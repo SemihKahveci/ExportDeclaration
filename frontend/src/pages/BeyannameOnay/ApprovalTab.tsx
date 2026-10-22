@@ -65,7 +65,7 @@ export default function ApprovalTab({
       const data=await getDeclarationControlProjection(declarationId);
       setEntries(data.entries);
       setActivePath(current=>current&&data.entries.some(x=>x.path===current)?current:data.entries[0]?.path??null);
-    }catch(err){console.error(err);setError('Beyanname kaynak/provenance bilgileri yüklenemedi.');}
+    }catch{setError('Beyanname kaynak/provenance bilgileri yüklenemedi.');}
     finally{setLoading(false);}
   };
   useEffect(()=>{void load();},[declarationId]);

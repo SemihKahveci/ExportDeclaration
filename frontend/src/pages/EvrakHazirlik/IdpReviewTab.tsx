@@ -65,8 +65,7 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
       setAudit(history);
       setExceptions(exceptionState.current);
       setSelections({});
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast('Beyanname inceleme verisi alınamadı.');
     } finally {
       setLoading(false);
@@ -89,8 +88,7 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
       });
       toast('İnceleme açık bırakıldı; hiçbir değer authority olarak uygulanmadı.');
       await load();
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast('İnceleme durumu kaydedilemedi.');
     } finally {
       setSavingField(null);
@@ -111,8 +109,7 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
       });
       toast(result.authorityApplied ? 'Seçimler uygulandı ve beyanname çözümü güncellendi.' : 'Kararlar kaydedildi.');
       await load();
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast('Seçimler uygulanamadı. Ekranı yenileyip tekrar deneyin.');
     } finally {
       setSavingField(null);

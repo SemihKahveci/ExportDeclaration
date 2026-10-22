@@ -112,8 +112,7 @@ export default function BeyannameYazimPage() {
       setPreviewLabel(invoice.fileName ?? 'Fatura');
       setPreviewDocId(invoice._id);
       setHasViewedPreview(true);
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast('Belge görünümü açılamadı.');
     }
   }
@@ -141,7 +140,6 @@ export default function BeyannameYazimPage() {
       setActiveTab('kontrol');
       toast('Beyanname MT kontrole gönderildi');
     } catch (error) {
-      console.error(error);
       if (apiErrorCode(error) === 'GTIP_MATCH_CONFIRM') {
         setGtipOpen(true);
         return;
@@ -158,7 +156,6 @@ export default function BeyannameYazimPage() {
       setActiveTab('yazim');
       toast('Beyanname yazıma geri gönderildi');
     } catch (error) {
-      console.error(error);
       toast(actionError(error, 'Yazıma geri gönderilemedi'), { duration: 7000 });
     }
   }
@@ -172,7 +169,6 @@ export default function BeyannameYazimPage() {
       toast('MT kontrol tamamlandı; beyanname onaya gönderildi');
       navigate(`/beyanname-onay?declarationId=${encodeURIComponent(selected.id)}&ref=${encodeURIComponent(selected.ref)}`);
     } catch (error) {
-      console.error(error);
       toast(actionError(error, 'Beyanname onaya gönderilemedi'), { duration: 7000 });
     }
   }

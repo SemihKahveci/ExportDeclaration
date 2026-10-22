@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCheck, Loader2 } from 'lucide-react';
 import type { KapanicFile, KapanicPageStats } from '../../types';
 import { kapanisService } from '../../services/declarations';
+import { ApiError } from '../../api/apiClient';
 import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
@@ -197,9 +198,8 @@ export default function KapanicOnayPage() {
                         const [nextFiles,nextStats]=await Promise.all([kapanisService.getFiles(),kapanisService.getStats()]);
                         setFiles(nextFiles); setStats(nextStats);
                         toast(`${selected.ref} kapatıldı`);
-                      } catch(error) {
-                        console.error(error);
-                        toast('Dosya kapatılamadı');
+                      } catch (error) {
+                        toast(error instanceof ApiError ? error.message : 'Dosya kapatılamadı');
                       }
                     }}
                   >

@@ -515,8 +515,7 @@ export default function WritingTab({
     try {
       await queueLineSave();
       onSendToControl();
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast('Kalem alanları kaydedilemedi. Kontrole gönderilmedi.');
     }
   }
@@ -683,7 +682,7 @@ export default function WritingTab({
                   onShowInDoc={handleShowInDoc}
                   lineItems={group.label === 'Kalem / Malzeme Bilgileri' ? lineItems : undefined}
                   onLineChange={handleLineChange}
-                  onLineBlur={() => { void queueLineSave().catch((error) => { console.error(error); toast('Kalem alanları kaydedilemedi.'); }); }}
+                  onLineBlur={() => { void queueLineSave().catch(() => { toast('Kalem alanları kaydedilemedi.'); }); }}
                 />
               ))}
             </div>

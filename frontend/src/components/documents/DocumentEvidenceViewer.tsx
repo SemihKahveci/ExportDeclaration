@@ -120,7 +120,7 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
       if(disposed)return;
       imageObjectUrl=URL.createObjectURL(image);pdfObjectUrl=URL.createObjectURL(pdf);
       setImageUrl(imageObjectUrl);setPdfUrl(pdfObjectUrl);setPageEvidence(allEvidence);
-    }).catch(err=>{console.error(err);if(!disposed)setError('Belge analizi yüklenemedi.');})
+    }).catch(()=>{if(!disposed)setError('Belge analizi yüklenemedi.');})
       .finally(()=>{if(!disposed)setLoading(false);});
     return()=>{disposed=true;if(imageObjectUrl)URL.revokeObjectURL(imageObjectUrl);if(pdfObjectUrl)URL.revokeObjectURL(pdfObjectUrl);};
   },[open,declarationId,uploadedFileId,page,mode]);

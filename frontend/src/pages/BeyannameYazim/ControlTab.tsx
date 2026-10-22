@@ -139,7 +139,6 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
       setDecisions(history);
       setActivePath((current) => current && data.entries.some((x) => x.path === current) ? current : data.entries[0]?.path ?? null);
     } catch (err) {
-      console.error(err);
       setError(err instanceof ApiError && err.message ? err.message : 'MT kontrol verisi yüklenemedi.');
     } finally {
       setLoading(false);
@@ -169,8 +168,7 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
         reason: 'MT Kontrol üzerinden manuel karar kaldırıldı',
       });
       await load();
-    } catch (err) {
-      console.error(err);
+    } catch {
       setEditError('Manuel karar kaldırılamadı.');
     } finally {
       setClearingDecision(false);
@@ -188,7 +186,7 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
     try {
       await appendCustomsSupplementDecision(declarationId, { fieldPath: activeSupplementPath, action: 'SET', value: editValue.trim(), reason: editReason.trim() || undefined });
       setEditOpen(false); await load();
-    } catch (err) { console.error(err); setEditError('Manuel gümrük kararı kaydedilemedi.'); }
+    } catch { setEditError('Manuel gümrük kararı kaydedilemedi.'); }
     finally { setSavingEdit(false); }
   };
 

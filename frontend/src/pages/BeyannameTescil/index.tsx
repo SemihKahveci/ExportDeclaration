@@ -9,6 +9,9 @@ import Button from '../../components/ui/Button';
 import Timeline from '../../components/ui/Timeline';
 import LineCard from '../../components/ui/LineCard';
 import { useToast } from '../../components/ui/Toast';
+import Modal from '../../components/ui/Modal';
+import { Field, Input, Select } from '../../components/ui/Fields';
+import { ApiError } from '../../api/apiClient';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -135,6 +138,10 @@ export default function BeyannameTescilPage() {
   const [records,   setRecords]   = useState<TescilRecord[]>([]);
   const [stats,     setStats]     = useState<TescilPageStats | null>(null);
   const [selectedId, setSelectedId] = useState<string>('');
+  const [startOpen, setStartOpen] = useState(false);
+  const [tescilNo, setTescilNo] = useState('');
+  const [tescilLine, setTescilLine] = useState<LineColor>('Yeşil');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -152,6 +159,37 @@ export default function BeyannameTescilPage() {
   function handleSelect(rec: TescilRecord) {
     setSelectedId(rec.id);
     toast(`${rec.ref} seçildi`);
+  }
+
+  function errorText(error: unknown, fallback: string): string {
+    if (error instanceof ApiError && error.message) return error.message;
+    return fallback;
+  }
+
+  async function saveStart() {
+    if (!selected) return;
+    if (!tescilNo.trim()) {
+      toast('Tescil numarası zorunludur.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await tescilService.transition(selected.id, {
+        action: 'RECORD_REGISTRATION_STARTED',
+        tescilNo: tescilNo.trim(),
+        line: tescilLine,
+      });
+      const [recs, nextStats] = await Promise.all([tescilService.getRecords(), tescilService.getStats()]);
+      setRecords(recs);
+      setStats(nextStats);
+      setStartOpen(false);
+      setTescilNo('');
+      toast('Tescil başlangıç bildirimi kaydedildi');
+    } catch (error) {
+      toast(errorText(error, 'Tescil başlangıcı kaydedilemedi'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
@@ -177,18 +215,7 @@ export default function BeyannameTescilPage() {
           {selected?.status === 'waiting' && <Button
             variant="primary"
             icon={Send}
-            onClick={async () => {
-              const tescilNo=window.prompt('Tescil numarası');
-              if(!tescilNo) return;
-              const line=window.prompt('Hat (Kırmızı / Sarı / Mavi / Yeşil)');
-              if(!line) return;
-              try {
-                await tescilService.transition(selected.id,{action:'RECORD_REGISTRATION_STARTED',tescilNo,line});
-                const [recs,nextStats]=await Promise.all([tescilService.getRecords(),tescilService.getStats()]);
-                setRecords(recs); setStats(nextStats);
-                toast('Tescil başlangıç bildirimi kaydedildi');
-              } catch(error){ console.error(error); toast('Tescil başlangıcı kaydedilemedi'); }
-            }}
+            onClick={() => { setTescilNo(''); setTescilLine('Yeşil'); setStartOpen(true); }}
             writeCap="tescil.notify"
           >
             Başlangıç Bildirimi Kaydet
@@ -202,7 +229,7 @@ export default function BeyannameTescilPage() {
                 const [recs,nextStats]=await Promise.all([tescilService.getRecords(),tescilService.getStats()]);
                 setRecords(recs); setStats(nextStats);
                 toast('Tescil tamamlandı; dosya kapanış bekliyor');
-              } catch(error){ console.error(error); toast('Tescil tamamlanamadı'); }
+              } catch (error) { toast(errorText(error, 'Tescil tamamlanamadı')); }
             }}
             writeCap="tescil.notify"
           >
@@ -385,6 +412,30 @@ export default function BeyannameTescilPage() {
           </Card>
         )}
       </div>
+      <Modal
+        open={startOpen}
+        onClose={() => !saving && setStartOpen(false)}
+        title="Başlangıç Bildirimi"
+        footer={
+          <>
+            <Button onClick={() => setStartOpen(false)} disabled={saving}>Vazgeç</Button>
+            <Button variant="primary" onClick={() => void saveStart()} disabled={saving || !tescilNo.trim()}>
+              {saving ? 'Kaydediliyor…' : 'Kaydet'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Field label="Tescil numarası">
+            <Input value={tescilNo} onChange={(event) => setTescilNo(event.target.value)} />
+          </Field>
+          <Field label="Hat">
+            <Select value={tescilLine} onChange={(event) => setTescilLine(event.target.value as LineColor)}>
+              {ALL_LINES.map((line) => <option key={line}>{line}</option>)}
+            </Select>
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 }
