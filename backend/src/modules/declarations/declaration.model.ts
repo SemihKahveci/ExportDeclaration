@@ -7,7 +7,7 @@ import {
 } from "../../common/enums/operationMeta.js";
 
 export interface OperationWorkflowHistoryEntry {
-  action: "START_WRITING" | "START_WRITING_WITH_MISSING_DOCUMENTS" | "SUBMIT_TO_MT" | "APPROVE_MT" | "RECORD_REGISTRATION_STARTED" | "COMPLETE_REGISTRATION" | "CLOSE_FILE" | "AUTO_ADVANCE";
+  action: "START_WRITING" | "START_WRITING_WITH_MISSING_DOCUMENTS" | "SUBMIT_TO_MT" | "APPROVE_MT" | "RECORD_REGISTRATION_STARTED" | "COMPLETE_REGISTRATION" | "CLOSE_FILE" | "AUTO_ADVANCE" | "GTIP_HOLD" | "RETURN_TO_WRITING" | "HOLD" | "RESUME";
   fromStatus: string;
   toStatus: string;
   actorUserId?: mongoose.Types.ObjectId;
@@ -44,6 +44,9 @@ export interface OperationMetaDoc {
   mailSubject?: string;
   mailBody?: string;
   workflowHistory: OperationWorkflowHistoryEntry[];
+  holdPreviousStatus?: string;
+  holdNote?: string;
+  returnNotice?: string;
 }
 
 export type ApprovalWorkflowStatus = "FIRST_PENDING" | "SECOND_PENDING" | "APPROVED" | "RETURNED";
@@ -127,7 +130,7 @@ export interface DeclarationDoc extends mongoose.Document {
 
 const OperationWorkflowHistorySchema = new Schema(
   {
-    action: { type: String, enum: ["START_WRITING","START_WRITING_WITH_MISSING_DOCUMENTS","SUBMIT_TO_MT","APPROVE_MT","RECORD_REGISTRATION_STARTED","COMPLETE_REGISTRATION","CLOSE_FILE","AUTO_ADVANCE"], required: true },
+    action: { type: String, enum: ["START_WRITING","START_WRITING_WITH_MISSING_DOCUMENTS","SUBMIT_TO_MT","APPROVE_MT","RECORD_REGISTRATION_STARTED","COMPLETE_REGISTRATION","CLOSE_FILE","AUTO_ADVANCE","GTIP_HOLD","RETURN_TO_WRITING","HOLD","RESUME"], required: true },
     fromStatus: { type: String, required: true },
     toStatus: { type: String, required: true },
     actorUserId: { type: Schema.Types.ObjectId, required: false },
@@ -167,6 +170,9 @@ const OperationMetaSchema = new Schema(
     mailRecipient: { type: String, default: "", trim: true },
     mailSubject: { type: String, default: "", trim: true },
     mailBody: { type: String, default: "", trim: true },
+    holdPreviousStatus: { type: String, default: "", trim: true },
+    holdNote: { type: String, default: "", trim: true },
+    returnNotice: { type: String, default: "", trim: true },
     workflowHistory: { type: [OperationWorkflowHistorySchema], default: [] }
   },
   { _id: false }

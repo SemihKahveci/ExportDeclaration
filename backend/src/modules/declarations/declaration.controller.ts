@@ -15,6 +15,7 @@ import { transitionPreparationWorkflow } from "./declarationPreparationWorkflow.
 import { transitionWritingWorkflow } from "./declarationWritingWorkflow.service.js";
 import { transitionRegistrationWorkflow } from "./declarationRegistrationWorkflow.service.js";
 import { transitionClosureWorkflow } from "./declarationClosureWorkflow.service.js";
+import { transitionFileHold } from "./declarationHold.service.js";
 import fs from "node:fs/promises";
 import {
   exportDeclarationAsEvrimExcel,
@@ -147,4 +148,14 @@ export async function postRegistrationWorkflowTransition(req: Request, res: Resp
 export async function postClosureWorkflowTransition(req: Request, res: Response): Promise<void> {
   const data=await transitionClosureWorkflow(req.auth!.operationalCompanyId,req.params.id!,req.auth!.userId,req.body??{});
   res.json({ok:true,data});
+}
+
+export async function postFileHoldTransition(req: Request, res: Response): Promise<void> {
+  const data = await transitionFileHold(
+    req.auth!.operationalCompanyId,
+    req.params.id!,
+    req.auth!.userId,
+    req.body ?? {}
+  );
+  res.json({ ok: true, data });
 }

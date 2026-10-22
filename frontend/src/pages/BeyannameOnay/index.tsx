@@ -9,6 +9,7 @@ import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
 import ApprovalTab from './ApprovalTab';
+import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,7 @@ type ViewMode = 'list' | 'detail';
 
 export default function BeyannameOnayPage() {
   const { toast } = useToast();
+  const { confirmIfHeld, dialog: holdDialog } = useHoldStepConfirm();
 
   const [loading,    setLoading]    = useState(true);
   const [listeItems, setListeItems] = useState<BeyannameListeItem[]>([]);
@@ -86,6 +88,7 @@ export default function BeyannameOnayPage() {
 
   async function handleSendToSecondApproval() {
     if (!selectedId) return;
+    if (!(await confirmIfHeld(selected?.operationFileStatus === 'beklemede'))) return;
     try {
       await beyannameService.transitionApproval(selectedId,{action:'APPROVE'});
       await reloadApprovalData();
@@ -98,6 +101,7 @@ export default function BeyannameOnayPage() {
 
   async function handleApproveAndSendToTescil() {
     if (!selected) return;
+    if (!(await confirmIfHeld(selected.operationFileStatus === 'beklemede'))) return;
     try {
       await beyannameService.transitionApproval(selected.id,{action:'APPROVE'});
       await reloadApprovalData();
@@ -116,7 +120,7 @@ export default function BeyannameOnayPage() {
     try {
       await beyannameService.transitionApproval(selected.id,{action:'RETURN_TO_MT'});
       await reloadApprovalData();
-      toast('Beyanname MT kontrole geri gönderildi');
+      toast('Beyanname yazıma geri gönderildi');
       setViewMode('list');
     } catch (error) {
       console.error(error);
@@ -377,6 +381,7 @@ export default function BeyannameOnayPage() {
           </div>
         </Card>
       )}
+      {holdDialog}
     </div>
   );
 }

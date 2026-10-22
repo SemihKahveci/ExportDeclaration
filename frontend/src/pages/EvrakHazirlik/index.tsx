@@ -4,6 +4,8 @@ import { AlertTriangle, CheckSquare, Bell, Loader2, Info, Upload } from 'lucide-
 import type { EvrakFile, EvrakDocRow, EvrakConflictRow, DocPreviewData, EvrakPageStats } from '../../types';
 import { evrakService } from '../../services/documents';
 import { transitionPreparationWorkflow } from '../../api/declarationApi';
+import { ApiError, apiErrorCode } from '../../api/apiClient';
+import { GtipChoiceModal } from '../../components/workflow/WorkflowDialogs';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
@@ -143,6 +145,8 @@ export default function EvrakHazirlikPage() {
   const [overrideOpen,setOverrideOpen]=useState(false);
   const [overrideReason,setOverrideReason]=useState('');
   const [transitioning,setTransitioning]=useState(false);
+  const [gtipOpen, setGtipOpen] = useState(false);
+  const [gtipOverride, setGtipOverride] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [docRefresh, setDocRefresh] = useState(0);
 
@@ -227,20 +231,33 @@ export default function EvrakHazirlikPage() {
     toast(ref + ' seçildi');
   }
 
-  async function startDeclaration(tab: 'yazim' | 'kontrol' = 'yazim', override=false) {
+  async function startDeclaration(tab: 'yazim' | 'kontrol' = 'yazim', override=false, gtipDecision?: 'continue' | 'ask-customer') {
     if (!selectedFile) return;
     setTransitioning(true);
     try {
-      await transitionPreparationWorkflow(selectedFile.id,{
+      const result = await transitionPreparationWorkflow(selectedFile.id,{
         action: override ? 'START_WRITING_WITH_MISSING_DOCUMENTS' : 'START_WRITING',
         reason: override ? overrideReason.trim() : undefined,
+        gtipDecision,
       });
+      setGtipOpen(false);
+      if (result.declaration.operation?.fileStatus === 'gtip-hazirlik') {
+        setOverrideOpen(false);
+        toast('GTİP müşteriden isteniyor. Dosya GTİP hazırlıkta bekliyor.');
+        return;
+      }
       setOverrideOpen(false); setOverrideReason('');
       toast(override ? 'Eksik evrak gerekçesi kaydedildi; beyanname yazımı başlatıldı' : 'Beyanname yazımı başlatıldı');
       navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=${tab}`);
     } catch (error) {
       console.error(error);
-      toast('Beyanname yazımı başlatılamadı. Evrak durumunu ve yetkinizi kontrol edin.');
+      if (apiErrorCode(error) === 'GTIP_MATCH_CONFIRM') {
+        setGtipOverride(override);
+        setGtipOpen(true);
+        return;
+      }
+      const message = error instanceof ApiError ? error.message : 'Beyanname yazımı başlatılamadı. Evrak durumunu ve yetkinizi kontrol edin.';
+      toast(message, { duration: 7000 });
     } finally { setTransitioning(false); }
   }
 
@@ -419,6 +436,12 @@ export default function EvrakHazirlikPage() {
           <Field label="Gerekçe"><Textarea rows={4} value={overrideReason} onChange={e=>setOverrideReason(e.target.value)} placeholder="Eksik evrakla neden devam edildiğini yazın…"/></Field>
         </div>
       </Modal>
+      <GtipChoiceModal
+        open={gtipOpen}
+        onClose={() => setGtipOpen(false)}
+        onAskCustomer={() => void startDeclaration('yazim', gtipOverride, 'ask-customer')}
+        onContinue={() => void startDeclaration('yazim', gtipOverride, 'continue')}
+      />
     </div>
   );
 }

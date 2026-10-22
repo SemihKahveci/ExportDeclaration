@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckCheck, Loader2 } from 'lucide-react';
 import type { KapanicFile, KapanicPageStats } from '../../types';
 import { kapanisService } from '../../services/declarations';
+import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
@@ -32,6 +33,7 @@ function statusLabel(status: KapanicFile['status']): string {
 
 export default function KapanicOnayPage() {
   const { toast } = useToast();
+  const { confirmIfHeld, dialog: holdDialog } = useHoldStepConfirm();
 
   const [loading,    setLoading]    = useState(true);
   const [files,      setFiles]      = useState<KapanicFile[]>([]);
@@ -189,6 +191,7 @@ export default function KapanicOnayPage() {
                     icon={CheckCheck}
                     disabled={!canApprove}
                     onClick={async () => {
+                      if (!(await confirmIfHeld(selected.fileStatus === 'beklemede'))) return;
                       try {
                         await kapanisService.transition(selected.id,{action:'CLOSE_FILE'});
                         const [nextFiles,nextStats]=await Promise.all([kapanisService.getFiles(),kapanisService.getStats()]);
@@ -208,6 +211,7 @@ export default function KapanicOnayPage() {
           </div>
         )}
       </div>
+      {holdDialog}
     </div>
   );
 }

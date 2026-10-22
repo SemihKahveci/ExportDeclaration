@@ -11,13 +11,18 @@ export function errorHandler(
     err && typeof err === "object" && "status" in err && typeof (err as { status: unknown }).status === "number"
       ? (err as { status: number }).status
       : 500;
-  res.status(status).json({ ok: false, error: message });
+  const code =
+    err && typeof err === "object" && "code" in err && typeof (err as { code?: unknown }).code === "string"
+      ? (err as { code: string }).code
+      : undefined;
+  res.status(status).json({ ok: false, error: message, ...(code ? { code } : {}) });
 }
 
 export class HttpError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public code?: string
   ) {
     super(message);
     this.name = "HttpError";

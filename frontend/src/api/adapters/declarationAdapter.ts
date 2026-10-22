@@ -314,6 +314,8 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     fields,
     lineItems: toLineItems(norm),
     operationFileStatus: d.operation?.fileStatus ?? "yeni-talep",
+    returnNotice: d.operation?.returnNotice ?? "",
+    holdNote: d.operation?.holdNote ?? "",
     docs: toDocCheckItems(docs),
     approvalStatus: d.approvalWorkflow?.status ?? "FIRST_PENDING",
     requiresSecondApproval: Boolean(d.approvalWorkflow?.requiresSecondApproval),

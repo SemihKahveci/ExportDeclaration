@@ -68,6 +68,11 @@ export interface CustomsFile {
   assignee: Assignee | null;
   escalation: boolean;
   missingDocuments: string[];
+  tescilNo?: string | null;
+  tescilStatus?: string | null;
+  holdNote?: string;
+  holdPreviousStatus?: string;
+  returnNotice?: string;
   systemMailHistory: SystemMailRecord[];
   createdAt: string;
   updatedAt: string;
@@ -549,6 +554,8 @@ export interface BeyannameRecord {
   approvalNote: string;
   approvalHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
   operationFileStatus: string;
+  returnNotice: string;
+  holdNote: string;
 }
 
 export interface FieldBox {
@@ -650,6 +657,7 @@ export interface KapanicFile {
   mailRecipient: string;
   mailSubject: string;
   mailBody: string;
+  fileStatus?: string;
 }
 
 export interface KapanicDoc {

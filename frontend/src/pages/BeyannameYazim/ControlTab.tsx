@@ -11,6 +11,7 @@ import Modal from '../../components/ui/Modal';
 interface ControlTabProps {
   declarationId: string;
   onSistemeGonder: () => void;
+  onReturnToWriting: () => void;
 }
 
 const AUTHORITY_LABEL: Record<ControlProvenanceEntry['authority'], string> = {
@@ -112,7 +113,7 @@ function AuthorityDetail({
   );
 }
 
-export default function ControlTab({ declarationId, onSistemeGonder }: ControlTabProps) {
+export default function ControlTab({ declarationId, onSistemeGonder, onReturnToWriting }: ControlTabProps) {
   const [projection, setProjection] = useState<DeclarationControlProjection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -284,6 +285,7 @@ export default function ControlTab({ declarationId, onSistemeGonder }: ControlTa
                   <Button icon={clearingDecision ? Loader2 : RotateCcw} size="sm" onClick={() => void clearManualDecision()} disabled={clearingDecision}>Manuel Kararı Kaldır</Button>
                 )}
                 <Button variant="warn" icon={Pencil} size="sm" onClick={openManualEdit} disabled={!activeSupplementPath} title={!activeSupplementPath ? 'Bu alan customs supplement ile değiştirilemez; belge/IDP gerçeği ayrı korunur.' : undefined}>Manuel Düzelt</Button>
+                <Button icon={RotateCcw} size="sm" onClick={onReturnToWriting}>Yazıma Geri Gönder</Button>
                 <Button variant="primary" icon={Send} size="sm" onClick={onSistemeGonder}>Kontrolü Onayla</Button>
               </div>
             </CardBody>

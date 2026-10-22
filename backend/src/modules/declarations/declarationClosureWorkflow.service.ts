@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { DeclarationModel } from "./declaration.model.js";
 import { toDeclarationDto } from "./declaration.mapper.js";
+import { actionableFileStatus, releaseHold } from "./operationStatus.js";
 
 export async function transitionClosureWorkflow(
   companyId:mongoose.Types.ObjectId,
@@ -15,7 +16,8 @@ export async function transitionClosureWorkflow(
   const op=declaration.operation;
   if(!op) throw new HttpError(409,"Beyanname operasyon bilgisi bulunmuyor.");
   if(input.action!=="CLOSE_FILE") throw new HttpError(400,"Geçersiz kapanış workflow action.");
-  if(op.fileStatus!=="kapanis-bekleyen") throw new HttpError(409,"Yalnız kapanış bekleyen dosya kapatılabilir.");
+  const actualFrom=op.fileStatus;
+  if(actionableFileStatus(actualFrom,op.holdPreviousStatus)!=="kapanis-bekleyen") throw new HttpError(409,"Yalnız kapanış bekleyen dosya kapatılabilir.");
   if(op.tescilStatus!=="completed") throw new HttpError(409,"Tescil tamamlanmadan dosya kapatılamaz.");
   if(op.kapanisStatus==="kapandi") throw new HttpError(409,"Dosya daha önce kapatılmış.");
 
@@ -23,13 +25,14 @@ export async function transitionClosureWorkflow(
   op.workflowHistory=op.workflowHistory??[];
   op.workflowHistory.push({
     action:"CLOSE_FILE",
-    fromStatus:"kapanis-bekleyen",
+    fromStatus:actualFrom,
     toStatus:"kapandi",
     actorUserId,
     override:false,
     reason:note,
     at:new Date()
   });
+  releaseHold(op);
   op.kapanisStatus="kapandi";
   op.kapanicDurumu="Kapandı";
   op.fileStatus="kapandi";

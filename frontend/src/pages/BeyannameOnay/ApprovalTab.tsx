@@ -131,7 +131,7 @@ export default function ApprovalTab({
               </div>)}
             </div>
           </div>}
-          <div className="flex gap-2"><Button icon={RotateCcw} onClick={onGeriGonder}>MT Kontrole Geri Gönder</Button><Button icon={MessageSquare} onClick={()=>setNoteOpen(true)}>Not</Button></div>
+          <div className="flex gap-2"><Button icon={RotateCcw} onClick={onGeriGonder}>Yazıma Geri Gönder</Button><Button icon={MessageSquare} onClick={()=>setNoteOpen(true)}>Not</Button></div>
           <Button variant="primary" icon={primaryIcon} onClick={primaryClick}>{primaryLabel}</Button>
         </div></CardBody></Card>
       </div>

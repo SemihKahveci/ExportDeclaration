@@ -38,6 +38,12 @@ export function apiPostMultipart<T>(path: string, form: FormData): Promise<T> {
 export function apiDeleteJson<T>(path: string): Promise<T> {
   return jsonRequest<T>(path, { method: "DELETE" });
 }
+
+export function apiErrorCode(error: unknown): string {
+  if (!(error instanceof ApiError) || !error.body || typeof error.body !== "object") return "";
+  const code = (error.body as { code?: unknown }).code;
+  return typeof code === "string" ? code : "";
+}
 export async function apiGetBlob(path: string): Promise<Blob> {
   const res = await fetch(`${apiBaseUrl()}${path}`, { credentials: "include" });
   if (!res.ok) throw new ApiError((await res.text()) || res.statusText, res.status);

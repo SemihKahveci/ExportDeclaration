@@ -3,69 +3,16 @@ import { DeclarationModel } from "./declaration.model.js";
 import { missingDocumentsByDeclaration } from "./declaration.service.js";
 import { UploadedDocumentModel } from "../documents/document.model.js";
 import { MaterialRecordModel } from "../material-records/materialRecord.model.js";
+import { gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "./customerGtip.service.js";
 
 export const NEW_REQUEST_LIMIT_MS = 15 * 60 * 1000;
 const TICK_MS = 30 * 1000;
 
-type GoodsLine = {
-  hsCode?: string;
-  productCode?: string;
-  description?: string;
-  quantity?: number | null;
-  lineTotal?: number | null;
-};
-
-type MaterialRow = {
-  companyId: mongoose.Types.ObjectId;
+type MaterialRow = GtipMaterialRow & {
   customerId: string;
-  materialNo: string;
-  gtipNo: string;
-  status: string;
 };
 
 type AdvanceTarget = "evrak-bekleniyor" | "gtip-hazirlik" | "beyanname-yazim";
-
-function digits(value: unknown): string {
-  return String(value ?? "").replace(/\D/g, "");
-}
-
-function folded(value: unknown): string {
-  return String(value ?? "").trim().toLocaleLowerCase("tr-TR");
-}
-
-function sameGtip(left: string, right: string): boolean {
-  return left.length > 0 && left === right;
-}
-
-function meaningfulLines(lines: GoodsLine[]): GoodsLine[] {
-  return lines.filter((line) => {
-    return Boolean(
-      String(line.hsCode ?? "").trim()
-      || String(line.productCode ?? "").trim()
-      || String(line.description ?? "").trim()
-      || line.quantity != null
-      || line.lineTotal != null
-    );
-  });
-}
-
-export function gtipMatchIsClean(lines: GoodsLine[], records: MaterialRow[]): boolean {
-  const present = meaningfulLines(lines);
-  if (present.length === 0) return false;
-  const verified = records.filter((record) => record.status === "verified");
-  return present.every((line) => {
-    const hs = digits(line.hsCode);
-    if (hs.length < 4) return false;
-    const material = folded(line.productCode);
-    if (material) {
-      const byMaterial = records.filter((record) => folded(record.materialNo) === material);
-      if (byMaterial.length > 0) {
-        return byMaterial.some((record) => record.status === "verified" && sameGtip(hs, digits(record.gtipNo)));
-      }
-    }
-    return verified.some((record) => sameGtip(hs, digits(record.gtipNo)));
-  });
-}
 
 function documentsReady(statuses: string[], missing: string[]): boolean {
   return missing.length === 0 && statuses.length > 0 && statuses.every((status) => status === "SUCCESS");
@@ -74,7 +21,7 @@ function documentsReady(statuses: string[], missing: string[]): boolean {
 export function decideNewRequestAdvance(input: {
   missingDocuments: string[];
   extractionStatuses: string[];
-  lines: GoodsLine[];
+  lines: GtipGoodsLine[];
   records: MaterialRow[];
 }): { status: AdvanceTarget; activity: string } {
   if (!documentsReady(input.extractionStatuses, input.missingDocuments)) {
@@ -139,7 +86,7 @@ export async function advanceExpiredNewRequests(now = new Date()): Promise<numbe
       const id = String(file._id);
       const customerId = file.operation?.customerId ?? "";
       const customerRecords = records.filter((record) => String(record.customerId) === customerId);
-      const lines = ((file.normalizedData as { goodsLines?: GoodsLine[] } | null | undefined)?.goodsLines ?? []);
+      const lines = ((file.normalizedData as { goodsLines?: GtipGoodsLine[] } | null | undefined)?.goodsLines ?? []);
       const decision = decideNewRequestAdvance({
         missingDocuments: missingByFile.get(id) ?? [],
         extractionStatuses: statusesByFile.get(id) ?? [],

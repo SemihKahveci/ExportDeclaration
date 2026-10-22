@@ -30,6 +30,9 @@ export interface OperationMeta {
   mailRecipient: string;
   mailSubject: string;
   mailBody: string;
+  holdPreviousStatus?: string;
+  holdNote?: string;
+  returnNotice?: string;
   workflowHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; override:boolean; reason?:string; at:string }>;
 }
 

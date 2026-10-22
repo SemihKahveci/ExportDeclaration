@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { env } from "../../src/config/env.js";
 import { DeclarationModel } from "../../src/modules/declarations/declaration.model.js";
 import { UploadedFileModel } from "../../src/modules/documents/document.model.js";
+import { MaterialRecordModel } from "../../src/modules/material-records/materialRecord.model.js";
 
 const API=process.env.WORKFLOW_TEST_API_BASE??"http://backend:3000";
 const email=process.env.SUPERADMIN_EMAIL,password=process.env.SUPERADMIN_PASSWORD;
@@ -13,9 +14,11 @@ async function main(){
  await mongoose.connect(env.mongoUri);let id:mongoose.Types.ObjectId|undefined;
  try{
   const base=await DeclarationModel.findById("6aad3295ca6e4f9c2d155507").lean();assert(base);
+  const customerId=`gtip-e2e-${Date.now()}`;
+  await MaterialRecordModel.create({companyId:base.companyId,customerId,materialNo:`WF-${Date.now()}`,description:"Workflow",gtipNo:"853890990000",status:"verified",source:"manuel"});
   const d=await DeclarationModel.create({
    companyId:base.companyId,status:"DRAFT",createdBy:base.createdBy,
-   operation:{...base.operation,ref:`WF-E2E-${Date.now()}`,fileStatus:"evrak-bekleniyor",tescilStatus:null,tescilNo:null,declarationNo:null,line:null,hasSecondNotif:false,kapanisStatus:null,kapanicDurumu:"",isArchived:false,closedAt:null,workflowHistory:[]},
+   operation:{...base.operation,customerId,ref:`WF-E2E-${Date.now()}`,fileStatus:"evrak-bekleniyor",tescilStatus:null,tescilNo:null,declarationNo:null,line:null,hasSecondNotif:false,kapanisStatus:null,kapanicDurumu:"",isArchived:false,closedAt:null,workflowHistory:[]},
    approvalWorkflow:{status:"FIRST_PENDING",requiresSecondApproval:false,note:"",history:[],updatedAt:new Date()},
    normalizedData:{goodsLines:[{lineNo:1,hsCode:"853890990000"}]}
   }); id=d._id as mongoose.Types.ObjectId;
@@ -27,8 +30,8 @@ async function main(){
   const login=await jr(await fetch(`${API}/api/auth/login`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})}));assert.equal(login.r.status,200);const sc=login.r.headers.get("set-cookie");assert(sc);const headers={cookie:sc.split(";",1)[0]!,"content-type":"application/json"};
   const call=async(path:string,body:any)=>jr(await fetch(`${API}/api/declarations/${id}/${path}`,{method:"POST",headers,body:JSON.stringify(body)}));
 
-  let r=await call("preparation-workflow/transition",{action:"START_WRITING"});assert.equal(r.r.status,200);assert.equal(r.b.data.declaration.operation.fileStatus,"beyanname-yazim");
-  r=await call("writing-workflow/transition",{action:"SUBMIT_TO_MT"});assert.equal(r.r.status,200);assert.equal(r.b.data.operation.fileStatus,"ic-kontrol");
+  let r=await call("preparation-workflow/transition",{action:"START_WRITING",gtipDecision:"continue"});assert.equal(r.r.status,200);assert.equal(r.b.data.declaration.operation.fileStatus,"beyanname-yazim");
+  r=await call("writing-workflow/transition",{action:"SUBMIT_TO_MT",gtipDecision:"continue"});assert.equal(r.r.status,200);assert.equal(r.b.data.operation.fileStatus,"ic-kontrol");
   r=await call("writing-workflow/transition",{action:"APPROVE_MT"});assert.equal(r.r.status,200);assert.equal(r.b.data.status,"READY");
   r=await call("approval-workflow/transition",{action:"APPROVE"});assert.equal(r.r.status,200);assert.equal(r.b.data.approvalWorkflow.status,"APPROVED");assert.equal(r.b.data.operation.fileStatus,"tescil");
   r=await call("registration-workflow/transition",{action:"RECORD_REGISTRATION_STARTED",tescilNo:"E2E-2026-001",line:"Yeşil"});assert.equal(r.r.status,200);assert.equal(r.b.data.operation.tescilStatus,"started");
@@ -58,7 +61,8 @@ async function main(){
   },null,2));
  }finally{
   if(id){await UploadedFileModel.deleteMany({declarationId:id});await DeclarationModel.deleteOne({_id:id});}
+  await MaterialRecordModel.deleteMany({customerId:{$regex:"^gtip-e2e-"}});
   await mongoose.disconnect();
- }
+}
 }
 main().catch(e=>{console.error(e);process.exitCode=1});

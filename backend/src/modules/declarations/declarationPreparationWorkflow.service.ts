@@ -3,12 +3,14 @@ import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { DeclarationModel } from "./declaration.model.js";
 import { UploadedFileModel } from "../documents/document.model.js";
 import { toDeclarationDto } from "./declaration.mapper.js";
+import { applyUserGtipGate, type GtipDecision } from "./customerGtip.service.js";
+import { releaseHold } from "./operationStatus.js";
 
 export type PreparationAction="START_WRITING"|"START_WRITING_WITH_MISSING_DOCUMENTS";
 
 export async function transitionPreparationWorkflow(
  companyId:mongoose.Types.ObjectId,declarationId:string,actorUserId:mongoose.Types.ObjectId,
- input:{action?:PreparationAction;reason?:string}
+ input:{action?:PreparationAction;reason?:string;gtipDecision?:GtipDecision}
 ){
  if(!mongoose.isValidObjectId(declarationId))throw new HttpError(400,"Geçersiz beyanname id.");
  const declaration=await DeclarationModel.findOne({_id:declarationId,companyId});
@@ -31,6 +33,16 @@ export async function transitionPreparationWorkflow(
  const from=declaration.operation.fileStatus??"evrak-bekleniyor";
  if(["tescil","kapanis-bekleyen","kapandi"].includes(from))throw new HttpError(409,"Bu aşamadaki dosya yeniden beyanname yazımına alınamaz.");
 
+ const gate=await applyUserGtipGate(declaration,actorUserId,input.gtipDecision);
+ if(gate==="held"){
+   return {
+     declaration:toDeclarationDto(declaration),
+     readiness:{ready,documentCount:docs.length,blockingDocumentCount:blocking.length,blockingDocuments:blocking.map(d=>({id:String(d._id),fileName:d.fileName??"",status:d.extractionStatus}))}
+   };
+ }
+
+ releaseHold(declaration.operation);
+ declaration.operation.returnNotice="";
  declaration.operation.fileStatus="beyanname-yazim";
  declaration.operation.lastActivity=override?"Eksik evrak override ile beyanname yazımına alındı":"Evrak kontrolü tamamlandı; beyanname yazımına alındı";
  declaration.operation.workflowHistory=declaration.operation.workflowHistory??[];

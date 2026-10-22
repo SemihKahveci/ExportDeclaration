@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { DeclarationModel, type ApprovalWorkflowStatus } from "./declaration.model.js";
 import { toDeclarationDto } from "./declaration.mapper.js";
+import { releaseHold, RETURN_TO_WRITING_NOTICE } from "./operationStatus.js";
 
 export type ApprovalAction =
   | "SET_SECOND_APPROVAL_REQUIRED"
@@ -72,14 +73,17 @@ export async function transitionApprovalWorkflow(
 
   if(to==="APPROVED"){
     if(declaration.operation){
+      releaseHold(declaration.operation);
       declaration.operation.fileStatus="tescil";
       declaration.operation.lastActivity="Beyanname onaylandı; tescile gönderildi";
       declaration.markModified("operation");
     }
   } else if(to==="RETURNED"){
     if(declaration.operation){
-      declaration.operation.fileStatus="ic-kontrol";
-      declaration.operation.lastActivity="Beyanname MT kontrole geri gönderildi";
+      releaseHold(declaration.operation);
+      declaration.operation.fileStatus="beyanname-yazim";
+      declaration.operation.returnNotice=RETURN_TO_WRITING_NOTICE;
+      declaration.operation.lastActivity=RETURN_TO_WRITING_NOTICE;
       declaration.markModified("operation");
     }
   }

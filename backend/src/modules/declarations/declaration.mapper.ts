@@ -28,6 +28,9 @@ export interface OperationMetaDto {
   mailRecipient: string;
   mailSubject: string;
   mailBody: string;
+  holdPreviousStatus: string;
+  holdNote: string;
+  returnNotice: string;
   workflowHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; override:boolean; reason?:string; at:string }>;
 }
 
@@ -87,11 +90,14 @@ function toOperationDto(op?: OperationMetaDoc): OperationMetaDto | undefined {
     mailRecipient: op.mailRecipient ?? "",
     mailSubject: op.mailSubject ?? "",
     mailBody: op.mailBody ?? "",
+    holdPreviousStatus: op.holdPreviousStatus ?? "",
+    holdNote: op.holdNote ?? "",
+    returnNotice: op.returnNotice ?? "",
     workflowHistory: (op.workflowHistory ?? []).map((h) => ({
       action: h.action,
       fromStatus: h.fromStatus,
       toStatus: h.toStatus,
-      actorUserId: String(h.actorUserId),
+      actorUserId: h.actorUserId ? String(h.actorUserId) : "",
       override: Boolean(h.override),
       reason: h.reason ?? "",
       at: toIso(h.at) ?? new Date(0).toISOString()

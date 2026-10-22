@@ -52,6 +52,7 @@ export function toKapanicFile(d: BackendDeclaration): KapanicFile {
     mailRecipient: op.mailRecipient || "—",
     mailSubject: op.mailSubject || "—",
     mailBody: op.mailBody || "",
+    fileStatus: op.fileStatus,
   };
 }
 

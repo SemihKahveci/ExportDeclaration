@@ -14,6 +14,10 @@ const router = Router();
 router.post("/", asyncHandler(ctrl.postDeclaration));
 router.get("/", asyncHandler(ctrl.getDeclarations));
 router.get("/:id/download-xml", asyncHandler(ctrl.getDownloadXml));
+router.post("/:id/hold",
+  requireAnyCapability("dosya_takip.edit", "beyanname.write"),
+  asyncHandler(ctrl.postFileHoldTransition)
+);
 router.post("/:id/closure-workflow/transition",
   requireAnyCapability("kapanis.close", "beyanname.approve"),
   asyncHandler(ctrl.postClosureWorkflowTransition)

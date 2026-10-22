@@ -6,6 +6,10 @@ import type { CustomsFile, FileStatus } from '../../types';
 import { filesService, buildStatusCounts, buildStatSummary } from '../../services/files';
 import { customersService } from '../../services/customers';
 import { ApiError } from '../../api/apiClient';
+import { transitionFileHold, transitionRegistrationWorkflow, transitionClosureWorkflow } from '../../api/declarationApi';
+import { useCan } from '../../permissions/useCan';
+import Modal from '../../components/ui/Modal';
+import { Field, Input, Select, Textarea } from '../../components/ui/Fields';
 
 import Button from '../../components/ui/Button';
 import StatCard from '../../components/ui/StatCard';
@@ -83,6 +87,14 @@ function MissingDocsPill({ docs, fileRef, onNavigate }: {
 
 export default function DosyaTakipPage() {
   const { toast } = useToast();
+  const { can } = useCan();
+  const [holdTarget, setHoldTarget] = useState<CustomsFile | null>(null);
+  const [holdNote, setHoldNote] = useState('');
+  const [holding, setHolding] = useState(false);
+  const [tescilTarget, setTescilTarget] = useState<CustomsFile | null>(null);
+  const [tescilNo, setTescilNo] = useState('');
+  const [tescilLine, setTescilLine] = useState('Yeşil');
+  const [rowBusy, setRowBusy] = useState(false);
   const navigate = useNavigate();
 
   const [files, setFiles] = useState<CustomsFile[]>([]);
@@ -159,6 +171,98 @@ export default function DosyaTakipPage() {
   function handleChip(key: ChipFilter) {
     setChipFilter(key);
     setPage(1);
+  }
+
+  async function refreshFiles() {
+    const data = await filesService.list();
+    setFiles(data);
+  }
+
+  async function saveHold() {
+    if (!holdTarget?.declarationId) return;
+    const note = holdNote.trim();
+    if (!note) {
+      toast('Beklemeye almak için not zorunludur.');
+      return;
+    }
+    setHolding(true);
+    try {
+      await transitionFileHold(holdTarget.declarationId, { action: 'HOLD', note });
+      setHoldTarget(null);
+      setHoldNote('');
+      await refreshFiles();
+      toast('Dosya beklemeye alındı');
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Dosya beklemeye alınamadı');
+    } finally {
+      setHolding(false);
+    }
+  }
+
+  async function resumeFile(file: CustomsFile) {
+    if (!file.declarationId) return;
+    setRowBusy(true);
+    try {
+      await transitionFileHold(file.declarationId, { action: 'RESUME' });
+      await refreshFiles();
+      toast('Dosya önceki statüye döndü');
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Dosya devam ettirilemedi');
+    } finally {
+      setRowBusy(false);
+    }
+  }
+
+  async function saveTescilStart() {
+    if (!tescilTarget?.declarationId) return;
+    if (!tescilNo.trim()) {
+      toast('Tescil numarası zorunludur.');
+      return;
+    }
+    setRowBusy(true);
+    try {
+      await transitionRegistrationWorkflow(tescilTarget.declarationId, {
+        action: 'RECORD_REGISTRATION_STARTED',
+        tescilNo: tescilNo.trim(),
+        line: tescilLine,
+      });
+      setTescilTarget(null);
+      setTescilNo('');
+      await refreshFiles();
+      toast('Tescil başlangıç bildirimi kaydedildi');
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Tescil başlangıcı kaydedilemedi');
+    } finally {
+      setRowBusy(false);
+    }
+  }
+
+  async function completeTescil(file: CustomsFile) {
+    if (!file.declarationId) return;
+    setRowBusy(true);
+    try {
+      await transitionRegistrationWorkflow(file.declarationId, { action: 'COMPLETE_REGISTRATION' });
+      await refreshFiles();
+      toast('Tescil tamamlandı; dosya kapanış bekliyor');
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Tescil tamamlanamadı');
+    } finally {
+      setRowBusy(false);
+    }
+  }
+
+  async function closeFile(file: CustomsFile) {
+    if (!file.declarationId) return;
+    setRowBusy(true);
+    try {
+      await transitionClosureWorkflow(file.declarationId, { action: 'CLOSE_FILE' });
+      await refreshFiles();
+      toast('Dosya kapatıldı');
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Dosya kapatılamadı');
+    } finally {
+      setRowBusy(false);
+    }
   }
 
   async function handleNewRequestSave(payload: import('./NewRequestDrawer').NewRequestPayload) {
@@ -338,7 +442,11 @@ export default function DosyaTakipPage() {
                       </span>
                       <span className="text-[11.5px] text-muted">{file.customerCity}</span>
                     </Td>
-                    <Td><FileStatusPill status={file.status} /></Td>
+                    <Td>
+                      <FileStatusPill status={file.status} />
+                      {file.returnNotice ? <span className="block text-[11px] text-warn mt-1 max-w-[200px] leading-snug">{file.returnNotice}</span> : null}
+                      {file.status === 'beklemede' && file.holdNote ? <span className="block text-[11px] text-muted mt-1 max-w-[200px] leading-snug">{file.holdNote}</span> : null}
+                    </Td>
                     <Td><TransportIcon mode={file.transportMode} /></Td>
                     <Td><HatCell line={file.line} /></Td>
                     <Td>
@@ -361,8 +469,34 @@ export default function DosyaTakipPage() {
                       />
                     </Td>
                     <Td><AssigneeCell assignee={file.assignee} /></Td>
-                    <Td className="text-muted-2 w-8">
-                      <ChevronRight size={16} strokeWidth={1.75} />
+                    <Td className="text-muted-2">
+                      <div className="flex flex-col items-stretch gap-1 min-w-[180px]" onClick={(event) => event.stopPropagation()}>
+                        {file.status === 'tescil' && file.tescilStatus !== 'started' && file.tescilStatus !== 'completed' && (
+                          <Button size="mini" variant="primary" disabled={rowBusy || !can('tescil.notify')} onClick={() => { setTescilTarget(file); setTescilNo(''); setTescilLine('Yeşil'); }}>
+                            Başlangıç Bildirimi Kaydet
+                          </Button>
+                        )}
+                        {file.status === 'tescil' && file.tescilStatus === 'started' && (
+                          <Button size="mini" variant="primary" disabled={rowBusy || !can('tescil.notify')} onClick={() => void completeTescil(file)}>
+                            Tamamlanma Bildirimi Kaydet
+                          </Button>
+                        )}
+                        {file.status === 'kapanis-bekleyen' && (
+                          <Button size="mini" variant="primary" disabled={rowBusy || !can('kapanis.close')} onClick={() => void closeFile(file)}>
+                            Dosyayı Kapat
+                          </Button>
+                        )}
+                        {file.status === 'beklemede' ? (
+                          <Button size="mini" disabled={rowBusy || !can('dosya_takip.edit')} onClick={() => void resumeFile(file)}>
+                            Devam Ettir
+                          </Button>
+                        ) : !isClosedFile(file) && (
+                          <Button size="mini" disabled={rowBusy || !can('dosya_takip.edit')} onClick={() => { setHoldTarget(file); setHoldNote(''); }}>
+                            Beklemeye Al
+                          </Button>
+                        )}
+                        <ChevronRight size={16} strokeWidth={1.75} className="self-end" />
+                      </div>
                     </Td>
                   </Tr>
                 ))
@@ -431,6 +565,50 @@ export default function DosyaTakipPage() {
         file={detailFile}
         onClose={() => setDetailFile(null)}
       />
+
+      <Modal
+        open={holdTarget !== null}
+        onClose={() => !holding && setHoldTarget(null)}
+        title="Beklemeye Al"
+        footer={
+          <>
+            <Button onClick={() => setHoldTarget(null)} disabled={holding}>Vazgeç</Button>
+            <Button variant="primary" onClick={() => void saveHold()} disabled={holding || !holdNote.trim()}>
+              {holding ? 'Kaydediliyor…' : 'Beklemeye Al'}
+            </Button>
+          </>
+        }
+      >
+        <Field label="Not">
+          <Textarea rows={4} value={holdNote} onChange={(event) => setHoldNote(event.target.value)} placeholder="Dosya neden bekletiliyor?" />
+        </Field>
+      </Modal>
+
+      <Modal
+        open={tescilTarget !== null}
+        onClose={() => !rowBusy && setTescilTarget(null)}
+        title="Başlangıç Bildirimi"
+        footer={
+          <>
+            <Button onClick={() => setTescilTarget(null)} disabled={rowBusy}>Vazgeç</Button>
+            <Button variant="primary" onClick={() => void saveTescilStart()} disabled={rowBusy || !tescilNo.trim()}>Kaydet</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <Field label="Tescil numarası">
+            <Input value={tescilNo} onChange={(event) => setTescilNo(event.target.value)} />
+          </Field>
+          <Field label="Hat">
+            <Select value={tescilLine} onChange={(event) => setTescilLine(event.target.value)}>
+              <option>Kırmızı</option>
+              <option>Sarı</option>
+              <option>Mavi</option>
+              <option>Yeşil</option>
+            </Select>
+          </Field>
+        </div>
+      </Modal>
     </div>
   );
 }

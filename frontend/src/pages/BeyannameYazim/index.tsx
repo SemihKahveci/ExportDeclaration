@@ -14,7 +14,9 @@ import ControlTab from './ControlTab';
 import ListeView from './ListeView';
 import UploadDrawer from './UploadDrawer';
 import ReminderModal from './ReminderModal';
-import { ApiError } from '../../api/apiClient';
+import { ApiError, apiErrorCode } from '../../api/apiClient';
+import Note from '../../components/ui/Note';
+import { GtipChoiceModal, useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import { listDocuments } from '../../api/documentApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
 
@@ -33,6 +35,8 @@ function actionError(error: unknown, fallback: string): string {
 
 export default function BeyannameYazimPage() {
   const { toast } = useToast();
+  const { confirmIfHeld, dialog: holdDialog } = useHoldStepConfirm();
+  const [gtipOpen, setGtipOpen] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const declarationIdParam = searchParams.get('declarationId');
@@ -119,21 +123,49 @@ export default function BeyannameYazimPage() {
     setListeItems(liste); setRecords(recs);
   }
 
-  async function handleSendToControl() {
+  async function handleSendToControl(options?: { gtipDecision?: 'continue' | 'ask-customer'; holdConfirmed?: boolean }) {
     if (!selected) return;
+    if (selected.operationFileStatus === 'beklemede' && !options?.holdConfirmed) {
+      if (!(await confirmIfHeld(true))) return;
+    }
     try {
-      await beyannameService.transitionWriting(selected.id,{action:'SUBMIT_TO_MT'});
+      const updated = await beyannameService.transitionWriting(selected.id,{ action:'SUBMIT_TO_MT', gtipDecision: options?.gtipDecision });
+      if (updated.operation?.fileStatus === 'gtip-hazirlik') {
+        await reloadDeclarationData();
+        setGtipOpen(false);
+        toast('GTİP müşteriden isteniyor. Dosya GTİP hazırlıkta bekliyor.');
+        return;
+      }
+      setGtipOpen(false);
       await reloadDeclarationData();
       setActiveTab('kontrol');
       toast('Beyanname MT kontrole gönderildi');
     } catch (error) {
       console.error(error);
+      if (apiErrorCode(error) === 'GTIP_MATCH_CONFIRM') {
+        setGtipOpen(true);
+        return;
+      }
       toast(actionError(error, 'MT kontrole geçiş yapılamadı'), { duration: 7000 });
+    }
+  }
+
+  async function handleReturnToWriting() {
+    if (!selected) return;
+    try {
+      await beyannameService.transitionWriting(selected.id, { action: 'RETURN_TO_WRITING' });
+      await reloadDeclarationData();
+      setActiveTab('yazim');
+      toast('Beyanname yazıma geri gönderildi');
+    } catch (error) {
+      console.error(error);
+      toast(actionError(error, 'Yazıma geri gönderilemedi'), { duration: 7000 });
     }
   }
 
   async function handleSistemeGonder() {
     if (!selected) return;
+    if (!(await confirmIfHeld(selected.operationFileStatus === 'beklemede'))) return;
     try {
       await beyannameService.transitionWriting(selected.id,{action:'APPROVE_MT'});
       await reloadDeclarationData();
@@ -279,6 +311,9 @@ export default function BeyannameYazimPage() {
       </div>
 
       {/* Main content card — fills remaining height, inner content scrolls */}
+      {selected?.returnNotice && (
+        <Note variant="warn">{selected.returnNotice}</Note>
+      )}
       {selected && (
         <Card className="flex flex-col min-h-0 flex-1">
           <CardHead
@@ -315,6 +350,7 @@ export default function BeyannameYazimPage() {
               <ControlTab
                 declarationId={selected.id}
                 onSistemeGonder={handleSistemeGonder}
+                onReturnToWriting={() => void handleReturnToWriting()}
               />
             )}
           </div>
@@ -328,6 +364,13 @@ export default function BeyannameYazimPage() {
         mode="all"
         evidence={previewDocId ? { pageNumber: 1, label: previewLabel, contentSource: 'PAGE_IMAGE' } : null}
         onClose={() => setPreviewDocId(null)}
+      />
+      {holdDialog}
+      <GtipChoiceModal
+        open={gtipOpen}
+        onClose={() => setGtipOpen(false)}
+        onAskCustomer={() => void handleSendToControl({ gtipDecision: 'ask-customer', holdConfirmed: true })}
+        onContinue={() => void handleSendToControl({ gtipDecision: 'continue', holdConfirmed: true })}
       />
     </div>
   );

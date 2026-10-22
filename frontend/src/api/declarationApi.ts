@@ -51,13 +51,13 @@ export async function transitionApprovalWorkflow(
 
 export async function transitionPreparationWorkflow(
  id:string,
- body:{action:"START_WRITING"|"START_WRITING_WITH_MISSING_DOCUMENTS";reason?:string}
+ body:{action:"START_WRITING"|"START_WRITING_WITH_MISSING_DOCUMENTS";reason?:string;gtipDecision?:"continue"|"ask-customer"}
 ):Promise<{declaration:Declaration;readiness:{ready:boolean;documentCount:number;blockingDocumentCount:number;blockingDocuments:Array<{id:string;fileName:string;status:string}>}}>{
  return apiPostJson(`/api/declarations/${encodeURIComponent(id)}/preparation-workflow/transition`,body);
 }
 
 export async function transitionWritingWorkflow(
- id:string,body:{action:"SUBMIT_TO_MT"|"APPROVE_MT"}
+ id:string,body:{action:"SUBMIT_TO_MT"|"APPROVE_MT"|"RETURN_TO_WRITING";gtipDecision?:"continue"|"ask-customer"}
 ):Promise<Declaration>{
  return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/writing-workflow/transition`,body);
 }
@@ -66,6 +66,13 @@ export async function transitionRegistrationWorkflow(
  id:string,body:{action:"RECORD_REGISTRATION_STARTED"|"COMPLETE_REGISTRATION";tescilNo?:string;line?:string}
 ):Promise<Declaration>{
  return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/registration-workflow/transition`,body);
+}
+
+export async function transitionFileHold(
+  id: string,
+  body: { action: "HOLD" | "RESUME"; note?: string }
+): Promise<Declaration> {
+  return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/hold`, body);
 }
 
 export async function transitionClosureWorkflow(

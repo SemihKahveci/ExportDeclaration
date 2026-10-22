@@ -8,6 +8,7 @@ import type {
   KapanicControlItem, KapanicPageStats, ControlState,
 } from '../../types';
 import { kapanisService } from '../../services/declarations';
+import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import { useCan } from '../../permissions/useCan';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
@@ -136,6 +137,7 @@ function firstPermittedTab(can: (c: string) => boolean): ClosingTab {
 
 export default function KapanisMutabakatPage() {
   const { toast } = useToast();
+  const { confirmIfHeld, dialog: holdDialog } = useHoldStepConfirm();
   const { can } = useCan();
 
   const [loading,      setLoading]      = useState(true);
@@ -236,6 +238,7 @@ export default function KapanisMutabakatPage() {
               disabled={!selected || selected.status === 'kapandi'}
               onClick={async () => {
                 if(!selected) return;
+                if (!(await confirmIfHeld(selected.fileStatus === 'beklemede'))) return;
                 try {
                   await kapanisService.transition(selected.id,{action:'CLOSE_FILE'});
                   const [nextFiles,nextStats]=await Promise.all([kapanisService.getFiles(),kapanisService.getStats()]);
@@ -551,6 +554,7 @@ export default function KapanisMutabakatPage() {
           </Field>
         </div>
       </Modal>
+      {holdDialog}
     </div>
   );
 }
