@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Search, X, Loader2, FileText, CreditCard, Eye,
   ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
@@ -283,6 +283,8 @@ type DrawerType = 'detail' | 'docs' | 'costs' | null;
 
 export default function ArsivPage() {
   const { operationType: typeParam } = useParams<{ operationType: string }>();
+  const [searchParams] = useSearchParams();
+  const refParam = searchParams.get('ref') ?? '';
   const { can } = useCan();
 
   const config = typeParam ? TYPE_CONFIG[typeParam] : undefined;
@@ -309,7 +311,7 @@ export default function ArsivPage() {
     setLoading(true);
     setFiles([]);
     setStats(null);
-    setSearch('');
+    setSearch(refParam);
     setFilterCust('');
     setFilterFrom('');
     setFilterTo('');
@@ -320,9 +322,14 @@ export default function ArsivPage() {
     ]).then(([list, s]) => {
       setFiles(list);
       setStats(s);
+      const match = refParam ? list.find((file) => file.ref === refParam) : undefined;
+      if (match) {
+        setSelected(match);
+        setDrawer('detail');
+      }
       setLoading(false);
     });
-  }, [operationType]);
+  }, [operationType, refParam]);
 
   // Pre-load cost totals for display in table
   useEffect(() => {

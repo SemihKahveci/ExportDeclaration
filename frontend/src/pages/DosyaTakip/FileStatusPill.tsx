@@ -13,6 +13,7 @@ const STATUS_CONFIG: Record<FileStatus, { label: string; variant: PillVariant }>
   'tescil':            { label: 'Tescilde',             variant: 'blue' },
   'kapanis-bekleyen':  { label: 'Kapanış Bekleyen',    variant: 'yellow' },
   'kapandi':           { label: 'Kapandı',              variant: 'green' },
+  'beklemede':         { label: 'Beklemede',            variant: 'warn' },
 };
 
 export default function FileStatusPill({ status }: { status: FileStatus }) {

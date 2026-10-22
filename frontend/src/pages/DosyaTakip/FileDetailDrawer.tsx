@@ -65,6 +65,10 @@ const TIMELINE_BY_STATUS: Record<string, { title: string; meta: string; state: '
     { title: 'Kapanış', meta: 'Belgeler hazırlanıyor', state: 'wait' },
     { title: 'Arşivleme', meta: 'Bekleniyor', state: 'default' },
   ],
+  'beklemede': [
+    { title: 'Süreç durduruldu', meta: 'Beklemede', state: 'wait' },
+    { title: 'Devam', meta: 'Bırakılan statüye dönülecek', state: 'default' },
+  ],
   'kapandi': [
     { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
     { title: 'GTİP & Evrak', meta: 'Tamamlandı', state: 'done' },

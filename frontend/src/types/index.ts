@@ -30,7 +30,8 @@ export type FileStatus =
   | 'ic-kontrol'
   | 'tescil'
   | 'kapanis-bekleyen'
-  | 'kapandi';
+  | 'kapandi'
+  | 'beklemede';
 
 export type HatColor = 'kirmizi' | 'sari' | 'mavi' | 'yesil';
 
@@ -88,6 +89,8 @@ export interface FileStatusCounts {
   icKontrol: number;
   tescil: number;
   kapanisBekleyen: number;
+  kapandi: number;
+  beklemede: number;
 }
 
 export interface FileStatSummary {

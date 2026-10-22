@@ -36,6 +36,15 @@ interface ChipDef {
 
 const PAGE_SIZE = 10;
 
+function archivePath(file: CustomsFile): string {
+  const type = file.operationType === 'ithalat' || file.operationType === 'transit' ? file.operationType : 'ihracat';
+  return `/arsiv/${type}?ref=${encodeURIComponent(file.ref)}`;
+}
+
+function isClosedFile(file: CustomsFile): boolean {
+  return file.status === 'kapandi' || file.isArchived;
+}
+
 // ─── Missing docs pill with tooltip ───────────────────────────────────────────
 
 function MissingDocsPill({ docs, fileRef, onNavigate }: {
@@ -92,12 +101,14 @@ export default function DosyaTakipPage() {
   const chips = useMemo((): ChipDef[] => [
     { key: 'all',               label: 'Tümü',               count: statusCounts.total },
     { key: 'yeni-talep',        label: 'Yeni Talep',          count: statusCounts.yeniTalep },
-    { key: 'gtip-hazirlik',     label: 'GTİP Hazırlıkta',    count: statusCounts.gtipHazirlik },
     { key: 'evrak-bekleniyor',  label: 'Evrak Bekleniyor',   count: statusCounts.evrakBekleniyor },
+    { key: 'gtip-hazirlik',     label: 'GTİP Hazırlıkta',    count: statusCounts.gtipHazirlik },
     { key: 'beyanname-yazim',   label: 'Beyanname Yazımda',  count: statusCounts.beyanname },
     { key: 'ic-kontrol',        label: 'İç Kontrolde',       count: statusCounts.icKontrol },
     { key: 'tescil',            label: 'Tescilde',            count: statusCounts.tescil },
     { key: 'kapanis-bekleyen',  label: 'Kapanış Bekleyen',   count: statusCounts.kapanisBekleyen },
+    { key: 'kapandi',           label: 'Kapandı',             count: statusCounts.kapandi },
+    { key: 'beklemede',         label: 'Beklemede',           count: statusCounts.beklemede },
   ], [statusCounts]);
 
   useEffect(() => {
@@ -109,7 +120,14 @@ export default function DosyaTakipPage() {
 
   const filtered = useMemo(() => {
     return files.filter((f) => {
-      if (chipFilter !== 'all' && f.status !== chipFilter) return false;
+      const closed = f.status === 'kapandi' || f.isArchived;
+      if (chipFilter === 'kapandi') {
+        if (!closed) return false;
+      } else if (closed) {
+        return false;
+      } else if (chipFilter !== 'all' && f.status !== chipFilter) {
+        return false;
+      }
       if (activeFilters.musteri && f.customer !== activeFilters.musteri) return false;
       if (activeFilters.status && f.status !== activeFilters.status) return false;
       if (activeFilters.tasima && f.transportMode !== activeFilters.tasima) return false;
@@ -278,14 +296,21 @@ export default function DosyaTakipPage() {
                 </tr>
               ) : (
                 pageRows.map((file) => (
-                  <Tr key={file.ref} onClick={() => setDetailFile(file)}>
+                  <Tr key={file.ref} onClick={() => {
+                    if (isClosedFile(file)) navigate(archivePath(file));
+                    else setDetailFile(file);
+                  }}>
                     <Td>
                       <button
                         type="button"
                         className="font-mono text-[12px] font-semibold text-accent hover:underline"
-                        title="Beyanname Yazım ve MT Kontrol"
+                        title={isClosedFile(file) ? 'Arşiv kaydı' : 'Beyanname Yazım ve MT Kontrol'}
                         onClick={(event) => {
                           event.stopPropagation();
+                          if (isClosedFile(file)) {
+                            navigate(archivePath(file));
+                            return;
+                          }
                           const query = file.declarationId
                             ? `declarationId=${encodeURIComponent(file.declarationId)}&ref=${encodeURIComponent(file.ref)}&tab=yazim`
                             : `ref=${encodeURIComponent(file.ref)}&tab=yazim`;

@@ -19,6 +19,8 @@ function computeStatusCounts(files: CustomsFile[]): FileStatusCounts {
     icKontrol: count('ic-kontrol'),
     tescil: count('tescil'),
     kapanisBekleyen: count('kapanis-bekleyen'),
+    kapandi: files.filter((f) => f.status === 'kapandi' || f.isArchived).length,
+    beklemede: count('beklemede'),
   };
 }
 
