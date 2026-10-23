@@ -28,6 +28,7 @@ export interface GoodsLine {
   origin?: string;
   grossKg?: number;
   netKg?: number;
+  invoiceNo?: string;
 }
 
 export interface NormalizedDeclaration {
@@ -112,7 +113,8 @@ export function mergeNormalizedFromApi(raw: unknown): NormalizedDeclaration {
         lineTotal: row.lineTotal,
         origin: row.origin,
         grossKg: row.grossKg,
-        netKg: row.netKg
+        netKg: row.netKg,
+        invoiceNo: row.invoiceNo
       }))
     : e.goodsLines;
   return {

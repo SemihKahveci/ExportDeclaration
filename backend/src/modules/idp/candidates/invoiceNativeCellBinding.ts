@@ -122,7 +122,13 @@ function unionBox(words: CanonicalWord[]): CanonicalBBox {
 
 function headerRole(text: string): GoodsRole | undefined {
   const token = fold(text).replace(/ /g, "");
-  return token ? HEADER_TOKEN[token] : undefined;
+  if (!token) return undefined;
+  if (HEADER_TOKEN[token]) return HEADER_TOKEN[token];
+  // Turkish headers take a possessive ending: Açıklaması, Tutarı, Miktarı.
+  const stem = Object.keys(HEADER_TOKEN)
+    .filter((key) => key.length >= 5 && token.startsWith(key) && token.length <= key.length + 3)
+    .sort((left, right) => right.length - left.length)[0];
+  return stem ? HEADER_TOKEN[stem] : undefined;
 }
 
 function clusterRows(words: CanonicalWord[]): CanonicalWord[][] {
@@ -171,6 +177,10 @@ function headerAnchors(words: CanonicalWord[]): Array<{ role: GoodsRole; x: numb
   for (const role of [...new Set(anchors.map((anchor) => anchor.role))]) {
     const group = anchors.filter((anchor) => anchor.role === role);
     if (group.length === 1) unique.push(group[0]!);
+    // Two "Açıklaması" labels are one text block. The right-hand one is the fence before Miktar.
+    else if (role === "description") unique.push([...group].sort((left, right) => right.x - left.x)[0]!);
+    // The goods amount sits beside the price. A second total further right must not erase that column.
+    else if (role === "lineTotal") unique.push([...group].sort((left, right) => left.x - right.x)[0]!);
   }
   const preference: GoodsRole[] = ["unitPrice", "lineTotal", "quantity", "productCode", "hsCode", "description", "unit", "packaging", "origin"];
   const kept: Array<{ role: GoodsRole; x: number; x0: number; x1: number }> = [];
@@ -248,8 +258,10 @@ function wordsInColumn(words: CanonicalWord[], column: Column): CanonicalWord[] 
     .sort((left, right) => yOf(left) - yOf(right) || xOf(left) - xOf(right));
 }
 
+const GLUED_AMOUNT_SUFFIX = /(?:adet|pcs|kg|set|mt|eur|euro|usd|try|tl|gbp)$/i;
+
 function numericReadings(raw: string): number[] {
-  const text = raw.trim().replace(/\s/g, "");
+  const text = raw.trim().replace(/\s/g, "").replace(GLUED_AMOUNT_SUFFIX, "");
   if (!/^\d[\d.,]*$/.test(text)) return [];
   const readings: number[] = [];
   const push = (value: number) => {
@@ -300,18 +312,27 @@ function codeToken(words: CanonicalWord[]): string {
   return tokens.sort((left, right) => right.length - left.length)[0] ?? "";
 }
 
+function extendHeaderBand(band: CanonicalWord[], native: CanonicalWord[]): CanonicalWord[] {
+  const bottom = Math.max(...band.map((word) => yOf(word)));
+  // A wrapped header prints "Tutarı" on the next line, just under "Hizmet".
+  // That line is still the header. A goods figure sits further down and is not a header token.
+  const extra = native.filter((word) => !band.includes(word) && yOf(word) > bottom && yOf(word) - bottom <= 0.016 && headerRole(word.text));
+  return extra.length ? [...band, ...extra] : band;
+}
+
 function buildPageTable(page: CanonicalPage, sharedColumns?: Column[]): PageTable | undefined {
   const native = pageWords(page);
   if (!native) return undefined;
   const clusters = clusterRows(native);
   const band = headerBand(clusters);
-  const anchors = band ? headerAnchors(band) : undefined;
+  const extended = band ? extendHeaderBand(band, native) : undefined;
+  const anchors = extended ? headerAnchors(extended) : undefined;
   const columns = anchors ? toColumns(anchors) : sharedColumns;
   if (!columns) return undefined;
-  const headerBottom = band ? Math.max(...band.map((word) => word.bbox.y1)) : 0;
+  const headerBottom = extended ? Math.max(...extended.map((word) => word.bbox.y1)) : 0;
   const codeColumn = columns.find((column) => column.role === "productCode") ?? columns.find((column) => column.role === "hsCode");
   if (!codeColumn) return undefined;
-  const body = native.filter((word) => yOf(word) > headerBottom + 0.004 && !(band ?? []).includes(word));
+  const body = native.filter((word) => yOf(word) > headerBottom + 0.004 && !(extended ?? []).includes(word));
   const codeWords = wordsInColumn(body, codeColumn).filter((word) => isRowCode(word.text));
   const rowStarts = codeWords.filter((word) => {
     const token = compact(word.text);
@@ -415,15 +436,22 @@ export function bindNativeGoodsCells(
     const code = compact(String(firstCandidate(candidates.fields, `goodsLines.${index}.productCode`)?.value ?? firstCandidate(candidates.fields, `goodsLines.${index}.hsCode`)?.value ?? ""));
     return code.length >= 4 ? [{ index, code }] : [];
   });
-  const paired = new Map<number, NativeRow>();
+  const paired = new Map<number, { row: NativeRow; orderPaired: boolean }>();
   for (const code of new Set(visionRows.map((row) => row.code))) {
     const vision = visionRows.filter((row) => row.code === code);
     const native = nativeRows.filter((row) => sameIdentity(row.code, code));
     if (vision.length !== native.length) continue;
-    vision.forEach((row, offset) => paired.set(row.index, native[offset]!));
+    vision.forEach((row, offset) => paired.set(row.index, { row: native[offset]!, orderPaired: false }));
+  }
+  // Same row count and no shared code means the image reader kept the lines
+  // but attached another page's codes. Bind by printed order. A count mismatch
+  // stays unbound: guessing which line is which would move numbers between rows.
+  if (paired.size === 0 && visionRows.length > 0 && visionRows.length === nativeRows.length) {
+    visionRows.forEach((row, offset) => paired.set(row.index, { row: nativeRows[offset]!, orderPaired: true }));
   }
 
-  for (const [index, nativeRow] of paired) {
+  for (const [index, pair] of paired) {
+    const nativeRow = pair.row;
     const table = tables.get(nativeRow.pageNumber);
     if (!table) continue;
     const identityColumn = table.columns.find((column) => column.role === "productCode") ?? table.columns.find((column) => column.role === "hsCode");
@@ -431,7 +459,7 @@ export function bindNativeGoodsCells(
     const identityText = identityWords.map((word) => word.text).join("");
     const visionIdentity = firstCandidate(candidates.fields, `goodsLines.${index}.productCode`)?.value
       ?? firstCandidate(candidates.fields, `goodsLines.${index}.hsCode`)?.value;
-    if (visionIdentity != null && identityText && !sameIdentity(identityText, String(visionIdentity))) continue;
+    if (!pair.orderPaired && visionIdentity != null && identityText && !sameIdentity(identityText, String(visionIdentity))) continue;
     for (const column of table.columns) {
       if (column.role === "packaging") continue;
       const role = column.role as BoundRole;
@@ -461,7 +489,16 @@ export function bindNativeGoodsCells(
       if (parsed.value == null) continue;
       const current = firstCandidate(candidates.fields, field);
       if (role === "description" && current) continue;
-      if (role === "productCode" && current && !sameIdentity(String(parsed.value), String(current.value))) continue;
+      if (role === "productCode" && current) {
+        const codeWords = words.filter((word) => isRowCode(word.text));
+        const tokens = [...new Set(codeWords.map((word) => compact(word.text)))];
+        if (tokens.length !== 1) continue;
+        const nativeCode = tokens[0]!;
+        const visionCode = compact(String(current.value));
+        if (nativeCode === visionCode) continue;
+        if (sameIdentity(nativeCode, visionCode) && nativeCode.length <= visionCode.length) continue;
+        parsed.value = codeWords.find((word) => compact(word.text) === nativeCode)!.text.trim();
+      }
       if (current && valuesMatch(role, parsed.value, current.value)) continue;
       replacements[field] = [{
         candidateId: `${segmentId}:native-cell:line-${index + 1}:${role}`,
@@ -473,6 +510,32 @@ export function bindNativeGoodsCells(
       }];
     }
     const unitField = `goodsLines.${index}.unit`;
+    const quantityColumn = table.columns.find((column) => column.role === "quantity");
+    const gluedUnits = quantityColumn
+      ? wordsInColumn(nativeRow.words, quantityColumn).flatMap((word) => {
+          const suffix = fold(word.text).replace(/\s/g, "").match(/^\d[\d.,]*(ADET|PCS|KG|SET|MT)$/)?.[1];
+          return suffix ? [suffix] : [];
+        })
+      : [];
+    if (gluedUnits.length === 1 && !firstCandidate(candidates.fields, unitField) && !replacements[unitField]) {
+      const sample = wordsInColumn(nativeRow.words, quantityColumn!).find((word) =>
+        fold(word.text).replace(/\s/g, "").endsWith(gluedUnits[0]!)
+      )!;
+      replacements[unitField] = [{
+        candidateId: `${segmentId}:native-cell:line-${index + 1}:unit`,
+        field: unitField,
+        value: gluedUnits[0],
+        confidence: 0.98,
+        extractor: NATIVE_CELL_EXTRACTOR,
+        evidence: [{
+          segmentId,
+          pageNumber: nativeRow.pageNumber,
+          bbox: sample.bbox,
+          text: sample.text,
+          contentSource: "NATIVE_TEXT"
+        }]
+      }];
+    }
     if (!table.columns.some((column) => column.role === "unit") && !firstCandidate(candidates.fields, unitField) && !replacements[unitField]) {
       const packaging = table.columns.find((column) => column.role === "packaging");
       const units = nativeRow.words.filter((word) => ["ADET", "PCS", "KG", "SET", "MT"].includes(compact(word.text)) && (!packaging || wordsInColumn([word], packaging).length === 0));

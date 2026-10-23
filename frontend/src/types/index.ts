@@ -499,6 +499,7 @@ export interface BeyannameLineItem {
   netKg: string;
   kiymet: string;
   malzemeNo?: string;
+  faturaNo?: string;
   ticariTanim?: string;
   miktarBirimi?: string;
   dovizCinsi?: string;

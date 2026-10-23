@@ -253,6 +253,7 @@ function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
     lineNo: line.lineNo,
     gtip: line.hsCode ?? "—",
     malzemeNo: line.productCode,
+    faturaNo: line.invoiceNo,
     description: line.description ?? "—",
     quantity: line.quantity != null ? String(line.quantity) : "—",
     mense: line.origin ?? norm.trade.origin ?? "—",

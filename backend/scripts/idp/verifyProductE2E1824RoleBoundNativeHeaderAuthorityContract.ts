@@ -54,6 +54,20 @@ assert.equal(selected["parties.buyer.country"], "party-buyer-country:f6-header-p
 assert.equal(selected.invoiceDate, "header-invoice-date:f6-header-party");
 assert.equal(selected["parties.seller.country"], undefined);
 
+const namespaced = selectDirectSourceEvidenceAuthority({ version: "1", fields: {
+  invoiceDate: [
+    vision("date-poison", "invoiceDate", "2024-10-01"),
+    native("file-a:header-invoice-date:f6-header-party", "invoiceDate", "2026-10-01"),
+    { ...native("file-b:header-invoice-date:f6-header-party", "invoiceDate", "2026-10-01"), uploadedFileId: "file-b" }
+  ],
+  invoiceNo: [
+    native("file-a:header-invoice-no:f6-header-party", "invoiceNo", "VED2026000000272"),
+    { ...native("file-b:header-invoice-no:f6-header-party", "invoiceNo", "VED2026000000273"), uploadedFileId: "file-b" }
+  ]
+} } as any);
+assert.equal(namespaced.find((item) => item.field === "invoiceDate")?.candidateId, "file-a:header-invoice-date:f6-header-party");
+assert.equal(namespaced.some((item) => item.field === "invoiceNo"), false);
+
 console.log(JSON.stringify({
   event: "product-e2e-1.8.24.role-bound-native-header-authority.contract.passed",
   guardrails: {

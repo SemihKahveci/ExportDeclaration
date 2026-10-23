@@ -46,7 +46,7 @@ export const DEFAULT_DECLARATION_FIELD_TARGETS: Readonly<Record<string, string>>
 
 type MutableObject = Record<string, unknown>;
 
-const GOODS_LINE_FIELD_RE = /^goodsLines\.(\d+)\.(hsCode|productCode|description|quantity|unit|unitPrice|lineTotal|origin|grossKg|netKg)$/;
+const GOODS_LINE_FIELD_RE = /^goodsLines\.(\d+)\.(hsCode|productCode|description|quantity|unit|unitPrice|lineTotal|origin|grossKg|netKg|invoiceNo)$/;
 
 function dynamicGoodsLineTarget(fieldName: string): string | undefined {
   const match = GOODS_LINE_FIELD_RE.exec(fieldName);

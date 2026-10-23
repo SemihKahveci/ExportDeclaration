@@ -6,6 +6,9 @@ interface UploadBoxProps {
   hint?: string;
   multiple?: boolean;
   accept?: string;
+  /** Keep earlier picks and add new ones, up to maxFiles. */
+  accumulate?: boolean;
+  maxFiles?: number;
   onFiles: (files: File[]) => void;
 }
 
@@ -14,18 +17,39 @@ export default function UploadBox({
   hint = 'PDF, DOCX, XLSX — maks. 20 MB',
   multiple = false,
   accept,
+  accumulate = false,
+  maxFiles,
   onFiles,
 }: UploadBoxProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const [selected, setSelected] = useState<File[]>([]);
+
+  function sameFile(left: File, right: File) {
+    return left.name === right.name && left.size === right.size && left.lastModified === right.lastModified;
+  }
+
+  function commit(next: File[]) {
+    const limited = maxFiles ? next.slice(0, maxFiles) : next;
+    setSelected(limited);
+    onFiles(limited);
+  }
 
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    const arr = Array.from(files);
-    setSelectedNames(arr.map((f) => f.name));
-    onFiles(arr);
+    const incoming = Array.from(files);
+    const base = accumulate ? selected : [];
+    const next = [...base];
+    for (const file of incoming) {
+      if (maxFiles && next.length >= maxFiles) break;
+      if (!next.some((item) => sameFile(item, file))) next.push(file);
+    }
+    commit(next);
     if (inputRef.current) inputRef.current.value = '';
+  }
+
+  function removeFile(file: File) {
+    commit(selected.filter((item) => !sameFile(item, file)));
   }
 
   function onDragOver(e: DragEvent) {
@@ -47,7 +71,7 @@ export default function UploadBox({
     handleFiles(e.target.files);
   }
 
-  const hasFiles = selectedNames.length > 0;
+  const hasFiles = selected.length > 0;
 
   return (
     <div
@@ -79,14 +103,30 @@ export default function UploadBox({
       {hasFiles ? (
         <>
           <FileCheck size={24} className="text-accent" strokeWidth={1.75} />
-          <div className="text-center">
-            {selectedNames.map((name) => (
-              <p key={name} className="text-[12px] font-medium text-text-strong truncate max-w-[260px]">
-                {name}
+          <div className="text-center space-y-1">
+            {selected.map((file) => (
+              <p key={`${file.name}-${file.size}-${file.lastModified}`} className="text-[12px] font-medium text-text-strong truncate max-w-[260px]">
+                {file.name}
+                {accumulate && (
+                  <button
+                    type="button"
+                    className="ml-2 text-[11px] text-muted underline"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeFile(file);
+                    }}
+                  >
+                    çıkar
+                  </button>
+                )}
               </p>
             ))}
           </div>
-          <p className="text-[11px] text-muted">Değiştirmek için tıklayın</p>
+          <p className="text-[11px] text-muted">
+            {accumulate
+              ? `${selected.length}${maxFiles ? ` / ${maxFiles}` : ''} dosya · eklemek için tıklayın`
+              : 'Değiştirmek için tıklayın'}
+          </p>
         </>
       ) : (
         <>

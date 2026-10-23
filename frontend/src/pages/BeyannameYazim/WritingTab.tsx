@@ -101,6 +101,7 @@ async function persistLineItems(declarationId: string, items: BeyannameLineItem[
     const line: GoodsLine = { lineNo: lineNoValue(item.lineNo, index) };
     const hsCode = optionalText(item.gtip);
     const productCode = optionalText(item.malzemeNo);
+    const invoiceNo = optionalText(item.faturaNo);
     const unit = optionalText(item.miktarBirimi);
     const origin = optionalText(item.mense);
     const quantity = parseTrNumber(item.quantity);
@@ -109,6 +110,7 @@ async function persistLineItems(declarationId: string, items: BeyannameLineItem[
     const lineTotal = parseTrNumber(item.kiymet);
     if (hsCode) line.hsCode = hsCode;
     if (productCode) line.productCode = productCode;
+    if (invoiceNo) line.invoiceNo = invoiceNo;
     if (description) line.description = description;
     if (quantity != null) line.quantity = quantity;
     if (unit) line.unit = unit;
@@ -264,6 +266,7 @@ function GroupSection({
   const goodsFieldPresence: Record<string, boolean> = {
     'Kalem No': Boolean(lineItems?.some((item) => hasLineValue(item.lineNo))),
     'Malzeme No': Boolean(lineItems?.some((item) => hasLineValue(item.malzemeNo))),
+    'Fatura No': Boolean(lineItems?.some((item) => hasLineValue(item.faturaNo))),
     'GTİP No': Boolean(lineItems?.some((item) => hasLineValue(item.gtip))),
     'Ticari Tanım': Boolean(lineItems?.some((item) => hasLineValue(item.ticariTanim))),
     'Eşyanın Cinsi': Boolean(lineItems?.some((item) => hasLineValue(item.description))),
@@ -328,7 +331,7 @@ function GroupSection({
                 <thead>
                   <tr className="bg-surface-2 border-b border-line">
                     {[
-                      'Kalem No', 'Malzeme No', 'GTİP No', 'Ticari Tanım',
+                      'Kalem No', 'Fatura No', 'Malzeme No', 'GTİP No', 'Ticari Tanım',
                       'Eşyanın Cinsi', 'Miktar', 'Miktar Birimi', 'Menşe',
                       'Brüt KG', 'Net KG', 'Kıymet', 'Döviz Cinsi',
                     ].map((col) => (
@@ -357,6 +360,7 @@ function GroupSection({
                     return (
                       <tr key={`${item.lineNo}-${index}`} className="border-b border-line last:border-b-0">
                         {cell(item.lineNo, (text) => ({ lineNo: lineNoValue(text, index) }))}
+                        {cell(item.faturaNo, (text) => ({ faturaNo: text }))}
                         {cell(item.malzemeNo, (text) => ({ malzemeNo: text }))}
                         {cell(item.gtip, (text) => ({ gtip: text }))}
                         {cell(item.ticariTanim, (text) => ({ ticariTanim: text, description: text }), true)}

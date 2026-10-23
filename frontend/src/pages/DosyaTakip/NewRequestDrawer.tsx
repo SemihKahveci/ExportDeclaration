@@ -174,11 +174,13 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
           </Select>
         </Field>
 
-        <Field label="Fatura / Evrak Yükle">
+        <Field label="Faturalar">
           <UploadBox
-            title="Dosya seç veya sürükle"
-            hint="PDF, XML, JPG, PNG, XLSX"
+            key={open ? 'open' : 'closed'}
+            title="Faturaları seç veya sürükle"
+            hint="İstediğiniz kadar fatura. Hepsi tek beyannameye yazılır."
             multiple
+            accumulate
             accept=".pdf,.xml,.jpg,.jpeg,.png,.xlsx"
             onFiles={setSelectedFiles}
           />
@@ -189,7 +191,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
         </Field>
 
         <Note variant="info">
-          Kaydedilince dosya <strong>Yeni Talep</strong> statüsüyle tabloya eklenir.
+          Kaydedilince dosya <strong>Yeni Talep</strong> statüsüyle tabloya eklenir. Seçilen faturaların satırları tek beyannamede art arda yazılır.
         </Note>
       </div>
     </Drawer>

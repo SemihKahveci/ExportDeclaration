@@ -243,23 +243,45 @@ export function selectDirectSourceEvidenceAuthority(
     bankInfo: "finance-bank-info:f6-bankInfo"
   };
   const roleBoundFields = new Set<string>();
+  // Each invoice keeps its own goods total and weight. The declaration total is
+  // their sum, already computed only when every invoice agreed internally and
+  // the money currencies match. One invoice's number must not stand for the rest.
+  for (const field of ["totalAmount", "grossWeight", "netWeight", "totalPackage"]) {
+    const summed = (candidates.fields[field] ?? []).find((item) => item.candidateId === `multi-invoice-sum:${field}`);
+    if (!summed || typeof summed.value !== "number" || !(summed.value > 0) || !Number.isFinite(summed.value)) continue;
+    selections.push({ field, candidateId: summed.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+    roleBoundFields.add(field);
+  }
+  const roleBoundMatches = (field: string, candidateId: string) => (candidates.fields[field] ?? []).filter((item) =>
+    (item.candidateId === candidateId || item.candidateId.endsWith(`:${candidateId}`)) &&
+    !item.derived &&
+    item.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
+  );
+  // Several invoices share one declaration. A label-bound value may outrank a
+  // page image only when every invoice's own label agrees. Distinct invoice
+  // numbers stay in review instead of one file's number standing for the rest.
+  const unanimous = <T extends { value: unknown; candidateId: string }>(items: T[]): T | undefined => {
+    if (items.length === 0) return undefined;
+    const values = [...new Set(items.map((item) => JSON.stringify(item.value)))];
+    return values.length === 1 ? items[0] : undefined;
+  };
   for (const [field, candidateId] of Object.entries(roleBoundCommercialCandidateIds)) {
-    const candidate = (candidates.fields[field] ?? []).find((item) =>
-      item.candidateId === candidateId &&
-      !item.derived &&
-      item.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
-    );
+    if (roleBoundFields.has(field)) continue;
+    const candidate = unanimous(roleBoundMatches(field, candidateId).filter((item) => {
+      if (field === "currency") return canonicalCurrency(item.value) !== undefined;
+      if (field === "transportMode" || field === "paymentType") {
+        return typeof item.value === "string" && item.value.trim().length >= 3 && item.value.trim().length <= 120;
+      }
+      if (field === "bankInfo") {
+        return typeof item.value === "string" && item.value.trim().length >= 4 && item.value.trim().length <= 2000 && /(?:BANK|BANKA|IBAN|SWIFT|BIC|ACCOUNT|HESAP)/i.test(item.value);
+      }
+      if (field === "freight" || field === "insurance") {
+        const amount = finiteNumber(item.value);
+        return amount !== undefined && amount >= 0;
+      }
+      return canonicalPositiveNumber(item.value) !== undefined;
+    }));
     if (!candidate) continue;
-    const valid = field === "currency"
-      ? canonicalCurrency(candidate.value) !== undefined
-      : field === "transportMode" || field === "paymentType"
-        ? typeof candidate.value === "string" && candidate.value.trim().length >= 3 && candidate.value.trim().length <= 120
-        : field === "bankInfo"
-          ? typeof candidate.value === "string" && candidate.value.trim().length >= 4 && candidate.value.trim().length <= 2000 && /(?:BANK|BANKA|IBAN|SWIFT|BIC|ACCOUNT|HESAP)/i.test(candidate.value)
-        : field === "freight" || field === "insurance"
-          ? finiteNumber(candidate.value) !== undefined && finiteNumber(candidate.value)! >= 0
-          : canonicalPositiveNumber(candidate.value) !== undefined;
-    if (!valid) continue;
     selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
     roleBoundFields.add(field);
   }
@@ -294,12 +316,7 @@ export function selectDirectSourceEvidenceAuthority(
     return false;
   };
   for (const [field, candidateId] of Object.entries(roleBoundHeaderCandidateIds)) {
-    const candidate = (candidates.fields[field] ?? []).find((item) =>
-      item.candidateId === candidateId &&
-      !item.derived &&
-      headerValueValid(field, item.value) &&
-      item.evidence.some((evidence) => evidence.contentSource === "NATIVE_TEXT")
-    );
+    const candidate = unanimous(roleBoundMatches(field, candidateId).filter((item) => headerValueValid(field, item.value)));
     if (!candidate) continue;
     selections.push({ field, candidateId: candidate.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
     roleBoundFields.add(field);
@@ -309,6 +326,7 @@ export function selectDirectSourceEvidenceAuthority(
   // canonical labels are direct source evidence. Keep this path model-neutral:
   // Vision may corroborate it, but cannot outrank the role-bound native value.
   for (const field of ["totalPackage", "packageType", "grossWeight", "netWeight"]) {
+    if (roleBoundFields.has(field)) continue;
     const eligible = (candidates.fields[field] ?? []).filter((item) =>
       String(item.candidateId).endsWith(":f6-native-shipment") &&
       !item.derived &&

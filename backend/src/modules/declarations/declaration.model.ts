@@ -290,7 +290,8 @@ const DeclarationSchema = new Schema(
           lineTotal: Number,
           origin: String,
           grossKg: Number,
-          netKg: Number
+          netKg: Number,
+          invoiceNo: String
         }
       ]
     },
