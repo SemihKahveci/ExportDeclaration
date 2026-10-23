@@ -8,6 +8,7 @@ import {
 import { mergeInvoiceCandidateSources, projectVisionResponseToFieldCandidates } from "./invoiceProductionExtractionOrchestrator.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
 import { InvoiceRecoveryTool, type InvoiceAdaptiveRecoveryPlan } from "./invoiceAdaptiveRecoveryOrchestrator.js";
+import { NATIVE_CELL_EXTRACTOR } from "../candidates/invoiceNativeCellBinding.js";
 
 const DECLARATION_TO_VISION: Readonly<Record<string, string>> = {
   invoiceNo: "invoiceNumber",
@@ -620,6 +621,26 @@ function arithmeticSupportsLineTotal(row: any): boolean {
   return Math.abs(expected - lineTotal) <= Math.max(0.01, Math.abs(expected) * 0.000001);
 }
 
+function soleCandidateNumber(candidates: FieldCandidateEnvelope, field: string): number | undefined {
+  const list = candidates.fields[field] ?? [];
+  if (list.length !== 1) return undefined;
+  const value = list[0]?.value;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** A native cell or an already consistent qty × price needs no second vision read. */
+export function goodsLineTotalRecoveryBlocked(candidates: FieldCandidateEnvelope, field: string): boolean {
+  const match = /^goodsLines\.(\d+)\.lineTotal$/.exec(field);
+  if (!match) return false;
+  if ((candidates.fields[field] ?? []).some((candidate) => candidate.extractor === NATIVE_CELL_EXTRACTOR)) return true;
+  const quantity = soleCandidateNumber(candidates, `goodsLines.${match[1]}.quantity`);
+  const unitPrice = soleCandidateNumber(candidates, `goodsLines.${match[1]}.unitPrice`);
+  const lineTotal = soleCandidateNumber(candidates, field);
+  if (quantity == null || unitPrice == null || lineTotal == null || !(quantity > 0) || !(unitPrice > 0)) return false;
+  const expected = quantity * unitPrice;
+  return Math.abs(expected - lineTotal) <= Math.max(0.01, Math.abs(expected) * 1e-6);
+}
+
 /**
  * Execute only planner-requested arithmetic disagreements for goods lineTotal.
  * Recovery is deliberately narrower than the planner action: quantity and
@@ -643,6 +664,7 @@ export async function executeInvoiceAdaptiveGoodsNumericRecovery(params: {
       .filter((action) => action.tool === InvoiceRecoveryTool.GOODS_TABLE_EVIDENCE && action.reason === "GOODS_ARITHMETIC_DISAGREEMENT")
       .flatMap((action) => action.fields)
       .filter((field) => /^goodsLines\.\d+\.lineTotal$/.test(field))
+      .filter((field) => !goodsLineTotalRecoveryBlocked(params.currentCandidates, field))
   )].sort();
 
   const audit: InvoiceAdaptiveGoodsNumericRecoveryAudit = {

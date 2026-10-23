@@ -20,6 +20,7 @@ import {
 } from "./qwenVisionInvoiceProvider.js";
 import { discoverInvoiceOriginFieldCandidates } from "../candidates/invoiceOriginCandidateDiscovery.js";
 import { discoverCorroboratedGoodsNumericFill } from "../candidates/invoiceGoodsTokenFill.js";
+import { applyNativeGoodsCellBinding, bindNativeGoodsCells } from "../candidates/invoiceNativeCellBinding.js";
 import { discoverInvoiceHsFieldCandidates } from "../candidates/invoiceHsCandidateDiscovery.js";
 import { createFoundation8SpecialistProvider } from "./qwenTextInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
@@ -974,12 +975,22 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       persistModelExtractionArtifact: params.persistModelExtractionArtifact
     });
 
+    const nativeCellBinding = bindNativeGoodsCells(
+      params.canonicalDocument,
+      result.segmentId,
+      adaptiveGoodsCodeExecution.candidates
+    );
+    const nativeBoundCandidates = applyNativeGoodsCellBinding(
+      adaptiveGoodsCodeExecution.candidates,
+      nativeCellBinding
+    );
+
     const adaptiveGoodsNumericExecution = await executeInvoiceAdaptiveGoodsNumericRecovery({
       canonicalDocument: params.canonicalDocument,
       segmentId: result.segmentId,
       pageNumbers: [...segment.pageNumbers],
       plan: executableAdaptiveRecoveryPlan,
-      currentCandidates: adaptiveGoodsCodeExecution.candidates,
+      currentCandidates: nativeBoundCandidates,
       provider,
       renderPage: params.renderVisionPage ?? (async (pageNumber) => (await renderInvoicePagesForVision(params.pdfPath, [pageNumber]))[0]!),
       persistModelExtractionArtifact: params.persistModelExtractionArtifact
