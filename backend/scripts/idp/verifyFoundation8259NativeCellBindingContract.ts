@@ -429,4 +429,59 @@ const disagreeingOrder = bindNativeGoodsCells(document([page(1, "DIGITAL", [
 assert.equal(disagreeingOrder.replacements.fields["goodsLines.0.quantity"], undefined);
 assert.equal(disagreeingOrder.replacements.fields["goodsLines.0.productCode"], undefined);
 
+const conflictingHs = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("GTIP", 0.7, 0.2),
+  word("AG.SCH.A9F94440", 0.08, 0.4),
+  word("37Adet", 0.4, 0.4),
+  word("853620100011", 0.7, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F94440"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 37),
+  "goodsLines.0.hsCode": [
+    ...candidate("goodsLines.0.hsCode", "853620100011"),
+    { ...candidate("goodsLines.0.hsCode", "853890990000")[0]!, candidateId: "other-page-hs", confidence: 0.4 }
+  ]
+}));
+assert.equal(conflictingHs.replacements.fields["goodsLines.0.hsCode"]?.[0]?.value, "853620100011");
+const appliedHs = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.hsCode": [
+    ...candidate("goodsLines.0.hsCode", "853620100011"),
+    { ...candidate("goodsLines.0.hsCode", "853890990000")[0]!, candidateId: "other-page-hs", confidence: 0.4 }
+  ]
+}), conflictingHs);
+assert.equal(appliedHs.fields["goodsLines.0.hsCode"]?.length, 1);
+assert.equal(appliedHs.fields["goodsLines.0.hsCode"]?.[0]?.value, "853620100011");
+
+const printedOrigin = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9F94440", 0.08, 0.4),
+  word("FRANCE", 0.3, 0.4),
+  word("37Adet", 0.4, 0.4),
+  word("34,5660EUR", 0.62, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F94440"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 37),
+  "goodsLines.0.origin": candidate("goodsLines.0.origin", "DE")
+}));
+assert.equal(printedOrigin.replacements.fields["goodsLines.0.origin"]?.[0]?.value, "FR");
+
+const twoCountries = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9F94440", 0.08, 0.4),
+  word("FRANCE", 0.3, 0.4),
+  word("CHINA", 0.5, 0.4),
+  word("37Adet", 0.4, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F94440"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 37),
+  "goodsLines.0.origin": candidate("goodsLines.0.origin", "DE")
+}));
+assert.equal(twoCountries.replacements.fields["goodsLines.0.origin"], undefined);
+
 console.log("foundation8-25.9 native cell binding contract ok");

@@ -1,5 +1,6 @@
 import type { CanonicalBBox, CanonicalDocument, CanonicalPage, CanonicalWord } from "../domain/canonicalDocument.types.js";
 import type { FieldCandidate, FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
+import { canonicalizeVisionCountry } from "../llm/qwenVisionInvoiceProvider.js";
 
 export const NATIVE_CELL_EXTRACTOR = "invoice-native-cell-binding-v1";
 
@@ -547,7 +548,9 @@ export function bindNativeGoodsCells(
         if (sameIdentity(nativeCode, visionCode) && nativeCode.length <= visionCode.length) continue;
         parsed.value = cluster.find((word) => compact(word.text) === nativeCode)!.text.trim();
       }
-      if (role !== "productCode" && current && valuesMatch(role, parsed.value, current.value)) continue;
+      const peers = candidates.fields[field] ?? [];
+      const peerDisagrees = peers.some((peer) => !valuesMatch(role, parsed.value, peer.value));
+      if (role !== "productCode" && current && valuesMatch(role, parsed.value, current.value) && !peerDisagrees) continue;
       replacements[field] = [{
         candidateId: `${segmentId}:native-cell:line-${index + 1}:${role}`,
         field,
@@ -556,6 +559,39 @@ export function bindNativeGoodsCells(
         extractor: NATIVE_CELL_EXTRACTOR,
         evidence: [evidence]
       }];
+    }
+    const originField = `goodsLines.${index}.origin`;
+    if (!replacements[originField] && !conflicts[originField]) {
+      const countries = nativeRow.words.flatMap((word) => {
+        const letters = fold(word.text).replace(/[^A-Z]/g, "");
+        if (letters.length <= 2) return [];
+        const iso = canonicalizeVisionCountry(word.text);
+        return iso ? [{ iso, word }] : [];
+      });
+      const isos = [...new Set(countries.map((item) => item.iso))];
+      if (isos.length === 1) {
+        const iso = isos[0]!;
+        const sample = countries.find((item) => item.iso === iso)!;
+        const current = firstCandidate(candidates.fields, originField);
+        const peers = candidates.fields[originField] ?? [];
+        const peerDisagrees = peers.some((peer) => !valuesMatch("origin", iso, peer.value));
+        if (!current || !valuesMatch("origin", iso, current.value) || peerDisagrees) {
+          replacements[originField] = [{
+            candidateId: `${segmentId}:native-cell:line-${index + 1}:origin`,
+            field: originField,
+            value: iso,
+            confidence: 0.98,
+            extractor: NATIVE_CELL_EXTRACTOR,
+            evidence: [{
+              segmentId,
+              pageNumber: nativeRow.pageNumber,
+              bbox: sample.word.bbox,
+              text: sample.word.text,
+              contentSource: "NATIVE_TEXT"
+            }]
+          }];
+        }
+      }
     }
     const unitField = `goodsLines.${index}.unit`;
     const quantityColumn = table.columns.find((column) => column.role === "quantity");
