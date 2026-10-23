@@ -344,4 +344,89 @@ const unevenRows = bindNativeGoodsCells(document([page(1, "DIGITAL", [
 assert.equal(unevenRows.replacements.fields["goodsLines.0.productCode"], undefined);
 assert.equal(unevenRows.replacements.fields["goodsLines.0.quantity"], undefined);
 
+const crossPageCodes = bindNativeGoodsCells(document([
+  page(1, "DIGITAL", [
+    word("Kod", 0.08, 0.2),
+    word("Miktar", 0.4, 0.2),
+    word("Fiyat", 0.62, 0.2),
+    word("AG.SCH.A9F94440", 0.08, 0.4),
+    word("37Adet", 0.4, 0.4),
+    word("34,5660EUR", 0.62, 0.4),
+    word("AG.SCH.BBBB2222", 0.08, 0.48),
+    word("10Adet", 0.4, 0.48),
+    word("1,5000EUR", 0.62, 0.48)
+  ]),
+  page(2, "DIGITAL", [
+    word("AG.EAT.216592", 0.08, 0.3),
+    word("5Adet", 0.4, 0.3),
+    word("1,3180EUR", 0.62, 0.3),
+    word("3KONUMLU", 0.16, 0.34),
+    word("AG.EAT.216596", 0.08, 0.38),
+    word("82Adet", 0.4, 0.38),
+    word("1,3180EUR", 0.62, 0.38)
+  ])
+]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.216592"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 37),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 34.566),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.BBBB2222"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 10),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 1.5),
+  "goodsLines.2.productCode": candidate("goodsLines.2.productCode", "AG.EAT.216592"),
+  "goodsLines.2.quantity": candidate("goodsLines.2.quantity", 5),
+  "goodsLines.2.unitPrice": candidate("goodsLines.2.unitPrice", 1.318),
+  "goodsLines.3.productCode": candidate("goodsLines.3.productCode", "AG.EAT.216596"),
+  "goodsLines.3.quantity": candidate("goodsLines.3.quantity", 82),
+  "goodsLines.3.unitPrice": candidate("goodsLines.3.unitPrice", 1.318)
+}));
+assert.equal(crossPageCodes.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.A9F94440");
+assert.equal(crossPageCodes.replacements.fields["goodsLines.0.quantity"], undefined);
+assert.equal(crossPageCodes.replacements.fields["goodsLines.0.unitPrice"], undefined);
+assert.equal(crossPageCodes.replacements.fields["goodsLines.1.productCode"], undefined);
+assert.equal(crossPageCodes.replacements.fields["goodsLines.2.productCode"], undefined);
+assert.equal(crossPageCodes.conflicts.fields["goodsLines.0.quantity"], undefined);
+
+const shiftedNumbers = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9F74402", 0.08, 0.4),
+  word("6Adet", 0.4, 0.4),
+  word("21,6400EUR", 0.62, 0.4),
+  word("AG.SCH.A9F74202", 0.08, 0.48),
+  word("48Adet", 0.4, 0.48),
+  word("10,6600EUR", 0.62, 0.48)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "A9F74202"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 48),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 10.66),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.A9F74402"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 6),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 21.64)
+}));
+assert.equal(shiftedNumbers.replacements.fields["goodsLines.0.quantity"], undefined);
+assert.equal(shiftedNumbers.replacements.fields["goodsLines.0.unitPrice"], undefined);
+assert.equal(shiftedNumbers.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.A9F74202");
+
+const disagreeingOrder = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9F74402", 0.08, 0.4),
+  word("6Adet", 0.4, 0.4),
+  word("21,6400EUR", 0.62, 0.4),
+  word("AG.SCH.OTHER", 0.08, 0.48),
+  word("48Adet", 0.4, 0.48),
+  word("10,6600EUR", 0.62, 0.48)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F74202"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 48),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 10.66),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.A9F74402"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 6),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 21.64)
+}));
+assert.equal(disagreeingOrder.replacements.fields["goodsLines.0.quantity"], undefined);
+assert.equal(disagreeingOrder.replacements.fields["goodsLines.0.productCode"], undefined);
+
 console.log("foundation8-25.9 native cell binding contract ok");

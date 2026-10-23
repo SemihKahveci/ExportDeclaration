@@ -352,6 +352,14 @@ function buildPageTable(page: CanonicalPage, sharedColumns?: Column[]): PageTabl
     });
     const code = codeToken(wordsInColumn(rowWords, codeColumn));
     if (code.length < 4) continue;
+    const quantityColumn = columns.find((column) => column.role === "quantity");
+    const priceColumn = columns.find((column) => column.role === "unitPrice");
+    if (quantityColumn || priceColumn) {
+      const quantity = quantityColumn ? cellReadings(wordsInColumn(rowWords, quantityColumn)) : [];
+      const price = priceColumn ? cellReadings(wordsInColumn(rowWords, priceColumn)) : [];
+      // A description or footer token can look like a code. A goods row prints a quantity or a price.
+      if (quantity.length === 0 && price.length === 0) continue;
+    }
     rows.push({ pageNumber: page.pageNumber, y, words: rowWords, code });
   }
   if (rows.length === 0) return undefined;
@@ -405,6 +413,30 @@ function valuesMatch(role: BoundRole, nativeValue: unknown, visionValue: unknown
   return false;
 }
 
+function singleReading(words: CanonicalWord[]): number | undefined {
+  const readings = cellReadings(words);
+  return readings.length === 1 ? readings[0] : undefined;
+}
+
+function commercialReadingAgrees(
+  fields: FieldCandidateEnvelope["fields"],
+  index: number,
+  nativeRow: NativeRow,
+  table: PageTable
+): boolean {
+  const quantityColumn = table.columns.find((column) => column.role === "quantity");
+  const priceColumn = table.columns.find((column) => column.role === "unitPrice");
+  if (!quantityColumn || !priceColumn) return false;
+  const quantity = singleReading(wordsInColumn(nativeRow.words, quantityColumn));
+  const price = singleReading(wordsInColumn(nativeRow.words, priceColumn));
+  const visionQuantity = firstCandidate(fields, `goodsLines.${index}.quantity`)?.value;
+  const visionPrice = firstCandidate(fields, `goodsLines.${index}.unitPrice`)?.value;
+  const visionCode = compact(String(firstCandidate(fields, `goodsLines.${index}.productCode`)?.value ?? ""));
+  if (quantity == null || typeof visionQuantity !== "number" || !valuesMatch("quantity", quantity, visionQuantity)) return false;
+  const priceAgrees = price != null && typeof visionPrice === "number" && valuesMatch("unitPrice", price, visionPrice);
+  return priceAgrees || sameIdentity(nativeRow.code, visionCode);
+}
+
 /**
  * On a digital page, a goods cell's printed token comes from the native text
  * layer. Vision keeps the row. An ambiguous table, header, or cell does not
@@ -443,11 +475,22 @@ export function bindNativeGoodsCells(
     if (vision.length !== native.length) continue;
     vision.forEach((row, offset) => paired.set(row.index, { row: native[offset]!, orderPaired: false }));
   }
-  // Same row count and no shared code means the image reader kept the lines
-  // but attached another page's codes. Bind by printed order. A count mismatch
-  // stays unbound: guessing which line is which would move numbers between rows.
-  if (paired.size === 0 && visionRows.length > 0 && visionRows.length === nativeRows.length) {
+  // A repeated code on the next page makes the per-code counts disagree, so the
+  // zip above skips the row and the first page keeps the other page's code.
+  // When the row counts match and this row's quantity and price already agree,
+  // the text row is that line: take its code. The same code with a different
+  // price is still that line, so the printed price replaces the vision price.
+  // A different quantity stays unbound: binding it would move numbers between rows.
+  if (visionRows.length > 0 && visionRows.length === nativeRows.length && paired.size === 0) {
     visionRows.forEach((row, offset) => paired.set(row.index, { row: nativeRows[offset]!, orderPaired: true }));
+  } else if (visionRows.length > 0 && visionRows.length === nativeRows.length) {
+    visionRows.forEach((row, offset) => {
+      if (paired.has(row.index)) return;
+      const nativeRow = nativeRows[offset]!;
+      const table = tables.get(nativeRow.pageNumber);
+      if (!table || !commercialReadingAgrees(candidates.fields, row.index, nativeRow, table)) return;
+      paired.set(row.index, { row: nativeRow, orderPaired: true });
+    });
   }
 
   for (const [index, pair] of paired) {
@@ -491,15 +534,20 @@ export function bindNativeGoodsCells(
       if (role === "description" && current) continue;
       if (role === "productCode" && current) {
         const codeWords = words.filter((word) => isRowCode(word.text));
-        const tokens = [...new Set(codeWords.map((word) => compact(word.text)))];
-        if (tokens.length !== 1) continue;
-        const nativeCode = tokens[0]!;
+        const leftmost = codeWords.slice().sort((left, right) => xOf(left) - xOf(right) || yOf(left) - yOf(right))[0];
+        if (!leftmost) continue;
+        const cluster = codeWords.filter((word) => Math.abs(xOf(word) - xOf(leftmost)) <= 0.02);
+        const tokens = [...new Set(cluster.map((word) => compact(word.text)))];
+        const nativeCode = tokens.slice().sort((left, right) => right.length - left.length)[0];
+        // The description may repeat the code. The product code is the left-hand cluster.
+        // Two unrelated codes in that cluster stay unresolved.
+        if (!nativeCode || !tokens.every((token) => sameIdentity(token, nativeCode))) continue;
         const visionCode = compact(String(current.value));
         if (nativeCode === visionCode) continue;
         if (sameIdentity(nativeCode, visionCode) && nativeCode.length <= visionCode.length) continue;
-        parsed.value = codeWords.find((word) => compact(word.text) === nativeCode)!.text.trim();
+        parsed.value = cluster.find((word) => compact(word.text) === nativeCode)!.text.trim();
       }
-      if (current && valuesMatch(role, parsed.value, current.value)) continue;
+      if (role !== "productCode" && current && valuesMatch(role, parsed.value, current.value)) continue;
       replacements[field] = [{
         candidateId: `${segmentId}:native-cell:line-${index + 1}:${role}`,
         field,
