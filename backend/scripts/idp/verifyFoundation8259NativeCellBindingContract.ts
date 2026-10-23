@@ -456,10 +456,12 @@ assert.equal(appliedHs.fields["goodsLines.0.hsCode"]?.[0]?.value, "853620100011"
 
 const printedOrigin = bindNativeGoodsCells(document([page(1, "DIGITAL", [
   word("Kod", 0.08, 0.2),
+  word("Aciklamasi", 0.28, 0.2),
   word("Miktar", 0.4, 0.2),
   word("Fiyat", 0.62, 0.2),
   word("AG.SCH.A9F94440", 0.08, 0.4),
   word("FRANCE", 0.3, 0.4),
+  word("BULGARISTAN", 0.8, 0.4),
   word("37Adet", 0.4, 0.4),
   word("34,5660EUR", 0.62, 0.4)
 ])]), "seg", goods({
@@ -471,11 +473,12 @@ assert.equal(printedOrigin.replacements.fields["goodsLines.0.origin"]?.[0]?.valu
 
 const twoCountries = bindNativeGoodsCells(document([page(1, "DIGITAL", [
   word("Kod", 0.08, 0.2),
+  word("Aciklamasi", 0.28, 0.2),
   word("Miktar", 0.4, 0.2),
   word("Fiyat", 0.62, 0.2),
   word("AG.SCH.A9F94440", 0.08, 0.4),
-  word("FRANCE", 0.3, 0.4),
-  word("CHINA", 0.5, 0.4),
+  word("FRANCE", 0.26, 0.4),
+  word("CHINA", 0.32, 0.4),
   word("37Adet", 0.4, 0.4)
 ])]), "seg", goods({
   "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F94440"),

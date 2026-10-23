@@ -561,8 +561,9 @@ export function bindNativeGoodsCells(
       }];
     }
     const originField = `goodsLines.${index}.origin`;
-    if (!replacements[originField] && !conflicts[originField]) {
-      const countries = nativeRow.words.flatMap((word) => {
+    const descriptionColumn = table.columns.find((column) => column.role === "description");
+    if (descriptionColumn && !replacements[originField] && !conflicts[originField]) {
+      const countries = wordsInColumn(nativeRow.words, descriptionColumn).flatMap((word) => {
         const letters = fold(word.text).replace(/[^A-Z]/g, "");
         if (letters.length <= 2) return [];
         const iso = canonicalizeVisionCountry(word.text);
