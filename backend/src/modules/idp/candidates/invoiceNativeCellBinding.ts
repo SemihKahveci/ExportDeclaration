@@ -193,6 +193,8 @@ function headerAnchors(words: CanonicalWord[]): Array<{ role: GoodsRole; x: numb
     if (token === "FIYAT" && nearToken(words, word, "BIRIM")) role = "unitPrice";
     if (!role) continue;
     if (token === "KAP" || token === "ISKONTO" || token === "KDV" || token === "MALZEME" || token === "HIZMET") continue;
+    // "Birim Fiyat" is the price header. Birim alone, away from Fiyat, stays the unit column.
+    if ((token === "BIRIM" || token === "UNIT" || token === "EINHEIT") && (nearToken(words, word, "FIYAT") || nearToken(words, word, "PRICE") || nearToken(words, word, "PREIS"))) continue;
     anchors.push({ role, x: xOf(word), x0: word.bbox.x0, x1: word.bbox.x1 });
   }
   const unique: Array<{ role: GoodsRole; x: number; x0: number; x1: number }> = [];
@@ -337,8 +339,11 @@ function codeToken(words: CanonicalWord[]): string {
 function extendHeaderBand(band: CanonicalWord[], native: CanonicalWord[]): CanonicalWord[] {
   const bottom = Math.max(...band.map((word) => yOf(word)));
   // A wrapped header prints "Tutarı" on the next line, just under "Hizmet".
-  // That line is still the header. A goods figure sits further down and is not a header token.
-  const extra = native.filter((word) => !band.includes(word) && yOf(word) > bottom && yOf(word) - bottom <= 0.016 && headerRole(word.text));
+  // A unit such as Adet on the first goods row is not another header.
+  const extra = native.filter((word) => {
+    if (band.includes(word) || yOf(word) <= bottom || yOf(word) - bottom > 0.016 || !headerRole(word.text)) return false;
+    return !["ADET", "PCS", "KG", "SET", "MT"].includes(tokenOf(word));
+  });
   return extra.length ? [...band, ...extra] : band;
 }
 
@@ -664,6 +669,43 @@ export function bindNativeGoodsCells(
       paired.set(row.index, { row: nativeRow, orderPaired: true });
     });
   }
+  // A missing row makes the counts differ, so the same-index repair above does
+  // not run. One extra or missing character with that quantity and price printed
+  // once is still that line. A swapped pair of characters is not.
+  if (visionRows.length !== nativeRows.length) {
+    const priceOf = (index: number): number | undefined => {
+      const value = firstCandidate(candidates.fields, `goodsLines.${index}.unitPrice`)?.value;
+      return typeof value === "number" ? value : undefined;
+    };
+    const nativePriceOf = (row: NativeRow): number | undefined => {
+      const table = tables.get(row.pageNumber);
+      const column = table?.columns.find((item) => item.role === "unitPrice");
+      return column ? singleReading(wordsInColumn(row.words, column)) : undefined;
+    };
+    visionRows.forEach((row) => {
+      if (paired.has(row.index)) return;
+      const visionQuantity = quantityOf(row.index);
+      const visionPrice = priceOf(row.index);
+      if (visionQuantity == null || visionPrice == null) return;
+      const nativeMatches = nativeRows.filter((nativeRow) => {
+        const nativeQuantity = nativeQuantityOf(nativeRow);
+        const nativePrice = nativePriceOf(nativeRow);
+        return nativeQuantity != null && nativePrice != null
+          && valuesMatch("quantity", nativeQuantity, visionQuantity)
+          && valuesMatch("unitPrice", nativePrice, visionPrice)
+          && oneCharacterApart(row.code, nativeRow.code);
+      });
+      const visionCopies = visionRows.filter((other) => {
+        const quantity = quantityOf(other.index);
+        const price = priceOf(other.index);
+        return quantity != null && price != null
+          && valuesMatch("quantity", quantity, visionQuantity)
+          && valuesMatch("unitPrice", price, visionPrice);
+      }).length;
+      if (nativeMatches.length !== 1 || visionCopies !== 1) return;
+      paired.set(row.index, { row: nativeMatches[0]!, orderPaired: true });
+    });
+  }
 
   const droppedRows: number[] = [];
   if (nativeRows.length > 0) {
@@ -721,19 +763,20 @@ export function bindNativeGoodsCells(
       const current = firstCandidate(candidates.fields, field);
       if (role === "description" && current) continue;
       if (role === "productCode" && current) {
-        const codeWords = words.filter((word) => isRowCode(word.text));
-        const leftmost = codeWords.slice().sort((left, right) => xOf(left) - xOf(right) || yOf(left) - yOf(right))[0];
-        if (!leftmost) continue;
-        const cluster = codeWords.filter((word) => Math.abs(xOf(word) - xOf(leftmost)) <= 0.02);
-        const tokens = [...new Set(cluster.map((word) => compact(word.text)))];
+        const longCodes = words.filter((word) => looksLikeGoodsCode(word.text));
+        const codeWords = longCodes.length > 0 ? longCodes : words.filter((word) => isRowCode(word.text));
+        if (codeWords.length === 0) continue;
+        // The product code is on the first line of the row. A model number printed under it is the description.
+        const topY = Math.min(...codeWords.map((word) => yOf(word)));
+        const onLine = codeWords.filter((word) => yOf(word) - topY <= 0.008);
+        const tokens = [...new Set(onLine.map((word) => compact(word.text)))];
         const nativeCode = tokens.slice().sort((left, right) => right.length - left.length)[0];
-        // The description may repeat the code. The product code is the left-hand cluster.
-        // Two unrelated codes in that cluster stay unresolved.
+        // Two different codes on that line stay unresolved.
         if (!nativeCode || !tokens.every((token) => sameIdentity(token, nativeCode))) continue;
         const visionCode = compact(String(current.value));
         if (nativeCode === visionCode) continue;
         if (sameIdentity(nativeCode, visionCode) && nativeCode.length <= visionCode.length) continue;
-        parsed.value = cluster.find((word) => compact(word.text) === nativeCode)!.text.trim();
+        parsed.value = onLine.find((word) => compact(word.text) === nativeCode)!.text.trim();
       }
       const peers = candidates.fields[field] ?? [];
       const peerDisagrees = peers.some((peer) => !valuesMatch(role, parsed.value, peer.value));

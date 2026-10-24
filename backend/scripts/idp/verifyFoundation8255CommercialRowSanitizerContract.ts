@@ -751,6 +751,51 @@ assert.equal(scaleResolution.fields["goodsLines.3.lineTotal"]?.status, "RESOLVED
 assert.equal(scaleResolution.fields["goodsLines.4.lineTotal"]?.value, 90);
 assert.equal(scaleResolution.fields["goodsLines.4.lineTotal"]?.status, "RESOLVED");
 
+function originCandidate(field: string, value: string) {
+  return {
+    candidateId: field,
+    field,
+    value,
+    confidence: 0.9,
+    extractor: "invoice",
+    logicalDocumentId: "ld-origin",
+    uploadedFileId: "file-origin",
+    documentType: DocumentType.INVOICE,
+    evidence: [{ segmentId: "seg-origin", pageNumber: 1, contentSource: "PAGE_IMAGE" as const }]
+  };
+}
+const mixedOrigin = resolveDeclarationFields({
+  candidates: {
+    version: "1",
+    companyId: "company-origin",
+    declarationId: "declaration-origin",
+    fields: {
+      originCountry: [originCandidate("originCountry", "RO")],
+      "goodsLines.0.origin": [originCandidate("goodsLines.0.origin", "CN")],
+      "goodsLines.1.origin": [originCandidate("goodsLines.1.origin", "DE")]
+    }
+  }
+});
+assert.equal(mixedOrigin.fields.originCountry?.status, "REVIEW_REQUIRED");
+assert.equal(mixedOrigin.fields.originCountry?.value, undefined);
+assert.equal(mixedOrigin.fields.originCountry?.reason, "MIXED_LINE_ORIGINS");
+assert.equal(mixedOrigin.fields["goodsLines.0.origin"]?.value, "CN");
+assert.equal(mixedOrigin.fields["goodsLines.1.origin"]?.value, "DE");
+const uniformOrigin = resolveDeclarationFields({
+  candidates: {
+    version: "1",
+    companyId: "company-origin",
+    declarationId: "declaration-origin",
+    fields: {
+      originCountry: [originCandidate("originCountry", "TR")],
+      "goodsLines.0.origin": [originCandidate("goodsLines.0.origin", "TR")],
+      "goodsLines.1.origin": [originCandidate("goodsLines.1.origin", "TR")]
+    }
+  }
+});
+assert.equal(uniformOrigin.fields.originCountry?.status, "RESOLVED");
+assert.equal(uniformOrigin.fields.originCountry?.value, "TR");
+
 console.log({
   event: "foundation-8.25.5.commercial-row-sanitizer.contract.passed",
   packagingRejectRecoversCorroboratedQuantity: true,

@@ -86,6 +86,33 @@ function applyGoodsLineTotalScaleAuthority(
   appendIdpRuntimeDiag("idp.declaration.line_total_scale", payload);
 }
 
+/**
+ * A declaration origin is one country. When the goods lines already carry
+ * more than one origin, that header value stays for the user.
+ */
+function applyMixedGoodsOriginAuthority(
+  fields: Record<string, ResolvedDeclarationField>,
+  reviewRequiredFields: string[]
+): void {
+  const origins = new Set<string>();
+  for (const [name, field] of Object.entries(fields)) {
+    if (!/^goodsLines\.\d+\.origin$/.test(name) || field.status !== "RESOLVED") continue;
+    if (typeof field.value === "string" && field.value.trim()) origins.add(field.value.trim());
+  }
+  const header = fields.originCountry;
+  if (origins.size < 2 || !header || header.status !== "RESOLVED") return;
+  fields.originCountry = {
+    ...header,
+    status: "REVIEW_REQUIRED",
+    method: "CONFLICT_REVIEW",
+    value: undefined,
+    reason: "MIXED_LINE_ORIGINS",
+    conflict: true,
+    conflictCandidateIds: header.candidateIds
+  };
+  if (!reviewRequiredFields.includes("originCountry")) reviewRequiredFields.push("originCountry");
+}
+
 function assertUniqueCandidateIds(candidates: DeclarationFieldCandidate[]): void {
   const seen = new Set<string>();
   for (const candidate of candidates) {
@@ -180,6 +207,7 @@ export function resolveDeclarationFields(
   }
 
   applyGoodsLineTotalScaleAuthority(fields, reviewRequiredFields);
+  applyMixedGoodsOriginAuthority(fields, reviewRequiredFields);
 
   for (const selection of params.candidateSelections ?? []) {
     if (!Object.prototype.hasOwnProperty.call(params.candidates.fields, selection.field)) {

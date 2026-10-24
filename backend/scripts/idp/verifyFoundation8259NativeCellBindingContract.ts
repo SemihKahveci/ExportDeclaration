@@ -683,6 +683,50 @@ assert.equal(thousandsQuantity.replacements.fields["goodsLines.0.quantity"]?.[0]
 assert.equal(thousandsQuantity.replacements.fields["goodsLines.0.unitPrice"]?.[0]?.value, 15.1685);
 assert.equal(thousandsQuantity.conflicts.fields["goodsLines.0.quantity"], undefined);
 
+const unitBesidePrice = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.05, 0.2),
+  word("Miktar", 0.28, 0.2),
+  word("Birim", 0.36, 0.2),
+  word("Fiyat", 0.42, 0.2),
+  word("Tutar", 0.7, 0.2),
+  word("AG.ISO.BAK.EBL.007", 0.05, 0.4),
+  word("1.068", 0.28, 0.4),
+  word("15,1685", 0.36, 0.4),
+  word("16.200,00", 0.7, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.ISO.BAK.EBL.007"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 1.068),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 15168.5),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 16200)
+}));
+assert.equal(unitBesidePrice.replacements.fields["goodsLines.0.quantity"]?.[0]?.value, 1068);
+assert.equal(unitBesidePrice.replacements.fields["goodsLines.0.unitPrice"]?.[0]?.value, 15.1685);
+assert.equal(unitBesidePrice.conflicts.fields["goodsLines.0.quantity"], undefined);
+
+const unitUnderHeader = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.05, 0.18),
+  word("Aciklama", 0.2, 0.18),
+  word("Miktar", 0.4, 0.222),
+  word("Fiyat", 0.62, 0.238),
+  word("AG.SCH.A9N18371", 0.05, 0.252),
+  word("5", 0.36, 0.252),
+  word("Adet", 0.44, 0.252),
+  word("53,3700", 0.62, 0.252),
+  word("AG.EAT.231273", 0.05, 0.36),
+  word("28", 0.4, 0.36),
+  word("2,9700", 0.62, 0.36)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.263535"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 5),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 53.37),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.EAT.231273"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 28),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 2.97)
+}));
+assert.equal(unitUnderHeader.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.A9N18371");
+assert.equal(unitUnderHeader.replacements.fields["goodsLines.0.quantity"], undefined);
+assert.equal(unitUnderHeader.replacements.fields["goodsLines.1.productCode"], undefined);
+
 const missingLetter = bindNativeGoodsCells(document([page(1, "DIGITAL", [
   word("Kod", 0.05, 0.2),
   word("Miktar", 0.32, 0.2),
@@ -772,5 +816,46 @@ const clauseRow = applyNativeGoodsCellBinding(goods({
 assert.equal(clauseRow.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.C080N420FM");
 assert.equal(clauseRow.fields["goodsLines.1.productCode"], undefined);
 assert.equal(clauseRow.fields["goodsLines.1.unitPrice"], undefined);
+
+const insertedCode = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.05, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9R41440", 0.05, 0.4),
+  word("35Adet", 0.4, 0.4),
+  word("29,5600EUR", 0.62, 0.4),
+  word("AG.SCH.C2544V250", 0.05, 0.5),
+  word("18Adet", 0.4, 0.5),
+  word("371,6100EUR", 0.62, 0.5),
+  word("AG.SCH.EXTRA9", 0.05, 0.6),
+  word("1Adet", 0.4, 0.6),
+  word("10,0000EUR", 0.62, 0.6)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9R141440"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 35),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 29.56),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.C2544V250"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 18),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 371.61)
+}));
+assert.equal(insertedCode.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.A9R41440");
+assert.equal(insertedCode.replacements.fields["goodsLines.1.productCode"], undefined);
+
+const transposedCode = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.05, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9R41463", 0.05, 0.4),
+  word("50Adet", 0.4, 0.4),
+  word("34,5700EUR", 0.62, 0.4),
+  word("AG.SCH.EXTRA9", 0.05, 0.5),
+  word("1Adet", 0.4, 0.5),
+  word("10,0000EUR", 0.62, 0.5)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9R14163"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 50),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 34.57)
+}));
+assert.equal(transposedCode.replacements.fields["goodsLines.0.productCode"], undefined);
 
 console.log("foundation8-25.9 native cell binding contract ok");
