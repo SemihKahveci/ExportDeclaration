@@ -476,6 +476,64 @@ assert.equal(splitCodeDuplicate.replacements.fields["goodsLines.0.quantity"]?.[0
 assert.equal(splitCodeDuplicate.replacements.fields["goodsLines.0.unitPrice"]?.[0]?.value, 21.64);
 assert.equal(splitCodeDuplicate.replacements.fields["goodsLines.1.quantity"], undefined);
 
+const displacedOntoFirstCopy = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.C125N320FM", 0.08, 0.4),
+  word("1Adet", 0.4, 0.4),
+  word("961,4400EUR", 0.62, 0.4),
+  word("AG.EAT.41097", 0.08, 0.48),
+  word("60Adet", 0.4, 0.48),
+  word("12,3000EUR", 0.62, 0.48),
+  word("AG.EAT.41097", 0.08, 0.56),
+  word("20Adet", 0.4, 0.56),
+  word("12,3000EUR", 0.62, 0.56)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.41097"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 1),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 961.44),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.EAT.216887"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 60),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 12.3),
+  "goodsLines.2.productCode": candidate("goodsLines.2.productCode", "AG.EAT.41097"),
+  "goodsLines.2.quantity": candidate("goodsLines.2.quantity", 20),
+  "goodsLines.2.unitPrice": candidate("goodsLines.2.unitPrice", 12.3)
+}));
+assert.equal(displacedOntoFirstCopy.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.C125N320FM");
+assert.equal(displacedOntoFirstCopy.replacements.fields["goodsLines.0.quantity"], undefined);
+assert.equal(displacedOntoFirstCopy.replacements.fields["goodsLines.1.productCode"]?.[0]?.value, "AG.EAT.41097");
+assert.equal(displacedOntoFirstCopy.replacements.fields["goodsLines.1.quantity"], undefined);
+assert.equal(displacedOntoFirstCopy.replacements.fields["goodsLines.2.quantity"], undefined);
+assert.equal(displacedOntoFirstCopy.replacements.fields["goodsLines.2.productCode"], undefined);
+
+const codeOnlyDisplaced = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.C125N320FM", 0.08, 0.4),
+  word("1Adet", 0.4, 0.4),
+  word("961,4400EUR", 0.62, 0.4),
+  word("AG.EAT.41097", 0.08, 0.48),
+  word("60Adet", 0.4, 0.48),
+  word("12,3000EUR", 0.62, 0.48),
+  word("AG.EAT.41097", 0.08, 0.56),
+  word("20Adet", 0.4, 0.56),
+  word("12,3000EUR", 0.62, 0.56)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.41097"),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.EAT.216887"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 60),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 12.3),
+  "goodsLines.2.productCode": candidate("goodsLines.2.productCode", "AG.EAT.41097"),
+  "goodsLines.2.quantity": candidate("goodsLines.2.quantity", 20),
+  "goodsLines.2.unitPrice": candidate("goodsLines.2.unitPrice", 12.3)
+}));
+assert.equal(codeOnlyDisplaced.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.C125N320FM");
+assert.equal(codeOnlyDisplaced.replacements.fields["goodsLines.0.quantity"]?.[0]?.value, 1);
+assert.equal(codeOnlyDisplaced.replacements.fields["goodsLines.0.unitPrice"]?.[0]?.value, 961.44);
+assert.equal(codeOnlyDisplaced.replacements.fields["goodsLines.2.quantity"], undefined);
+
 const conflictingHs = bindNativeGoodsCells(document([page(1, "DIGITAL", [
   word("Kod", 0.08, 0.2),
   word("Miktar", 0.4, 0.2),

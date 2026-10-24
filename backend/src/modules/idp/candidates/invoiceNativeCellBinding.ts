@@ -487,10 +487,32 @@ export function bindNativeGoodsCells(
     group.push(row);
     groups.set(root, group);
   });
+  const quantityOf = (index: number): number | undefined => {
+    const value = firstCandidate(candidates.fields, `goodsLines.${index}.quantity`)?.value;
+    return typeof value === "number" ? value : undefined;
+  };
+  const nativeQuantityOf = (row: NativeRow): number | undefined => {
+    const table = tables.get(row.pageNumber);
+    const column = table?.columns.find((item) => item.role === "quantity");
+    return column ? singleReading(wordsInColumn(row.words, column)) : undefined;
+  };
   for (const vision of groups.values()) {
     const native = nativeRows.filter((row) => vision.some((item) => sameIdentity(row.code, item.code)));
-    if (vision.length !== native.length) continue;
-    vision.forEach((row, offset) => paired.set(row.index, { row: native[offset]!, orderPaired: false }));
+    // Pair each quantity with the printed rows of that same quantity. An offset
+    // zip would give a duplicated code the first real row's numbers.
+    const quantities = [...new Set(vision.flatMap((row) => {
+      const quantity = quantityOf(row.index);
+      return quantity == null ? [] : [quantity];
+    }))];
+    for (const quantity of quantities) {
+      const visionMatches = vision.filter((row) => valuesMatch("quantity", quantityOf(row.index) ?? Number.NaN, quantity));
+      const nativeMatches = native.filter((row) => {
+        const nativeQuantity = nativeQuantityOf(row);
+        return nativeQuantity != null && valuesMatch("quantity", nativeQuantity, quantity);
+      });
+      if (visionMatches.length === 0 || visionMatches.length !== nativeMatches.length) continue;
+      visionMatches.forEach((row, offset) => paired.set(row.index, { row: nativeMatches[offset]!, orderPaired: false }));
+    }
   }
   // A repeated code on the next page makes the per-code counts disagree, so the
   // zip above skips the row and the first page keeps the other page's code.
@@ -511,10 +533,6 @@ export function bindNativeGoodsCells(
     // A duplicated vision row sits on a printed line the model never emitted.
     // The extra copy can take that line. A quantity that appears only once stays
     // where it is, because moving it would trade one real row for another.
-    const quantityOf = (index: number): number | undefined => {
-      const value = firstCandidate(candidates.fields, `goodsLines.${index}.quantity`)?.value;
-      return typeof value === "number" ? value : undefined;
-    };
     visionRows.forEach((row, offset) => {
       if (paired.has(row.index)) return;
       const nativeRow = nativeRows[offset]!;
@@ -525,10 +543,15 @@ export function bindNativeGoodsCells(
       const nativeQuantity = singleReading(wordsInColumn(nativeRow.words, quantityColumn));
       const nativePrice = singleReading(wordsInColumn(nativeRow.words, priceColumn));
       const visionQuantity = quantityOf(row.index);
-      if (nativeQuantity == null || nativePrice == null || visionQuantity == null) return;
-      const copies = visionRows.filter((other) => sameIdentity(other.code, row.code) && valuesMatch("quantity", quantityOf(other.index) ?? Number.NaN, visionQuantity));
+      if (nativeQuantity == null || nativePrice == null) return;
+      const sameCode = visionRows.filter((other) => sameIdentity(other.code, row.code));
+      const copies = visionQuantity == null ? [] : sameCode.filter((other) => valuesMatch("quantity", quantityOf(other.index) ?? Number.NaN, visionQuantity));
       const nativeSeen = visionRows.some((other) => sameIdentity(other.code, nativeRow.code) && valuesMatch("quantity", quantityOf(other.index) ?? Number.NaN, nativeQuantity));
-      if (copies.length >= 2 && !nativeSeen) paired.set(row.index, { row: nativeRow, orderPaired: true });
+      // A second copy of the same quantity covers a line the model never emitted.
+      // A code with no quantity of its own does too, once another row already
+      // holds that code. A different quantity stays unbound.
+      const codeOnlyDuplicate = visionQuantity == null && sameCode.length >= 2 && !sameIdentity(row.code, nativeRow.code);
+      if (!nativeSeen && (copies.length >= 2 || codeOnlyDuplicate)) paired.set(row.index, { row: nativeRow, orderPaired: true });
     });
   }
 
