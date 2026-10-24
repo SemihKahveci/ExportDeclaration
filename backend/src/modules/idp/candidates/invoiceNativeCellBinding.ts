@@ -470,9 +470,25 @@ export function bindNativeGoodsCells(
     return code.length >= 4 ? [{ index, code }] : [];
   });
   const paired = new Map<number, { row: NativeRow; orderPaired: boolean }>();
-  for (const code of new Set(visionRows.map((row) => row.code))) {
-    const vision = visionRows.filter((row) => row.code === code);
-    const native = nativeRows.filter((row) => sameIdentity(row.code, code));
+  // A short code and its printed full code are one product. Counting them apart
+  // lets each half zip onto the real row and leaves the duplicate sitting on
+  // the missing line.
+  const parent = visionRows.map((_, index) => index);
+  const find = (index: number): number => parent[index] === index ? index : (parent[index] = find(parent[index]!));
+  for (let left = 0; left < visionRows.length; left += 1) {
+    for (let right = left + 1; right < visionRows.length; right += 1) {
+      if (sameIdentity(visionRows[left]!.code, visionRows[right]!.code)) parent[find(left)] = find(right);
+    }
+  }
+  const groups = new Map<number, typeof visionRows>();
+  visionRows.forEach((row, index) => {
+    const root = find(index);
+    const group = groups.get(root) ?? [];
+    group.push(row);
+    groups.set(root, group);
+  });
+  for (const vision of groups.values()) {
+    const native = nativeRows.filter((row) => vision.some((item) => sameIdentity(row.code, item.code)));
     if (vision.length !== native.length) continue;
     vision.forEach((row, offset) => paired.set(row.index, { row: native[offset]!, orderPaired: false }));
   }
@@ -491,6 +507,28 @@ export function bindNativeGoodsCells(
       const table = tables.get(nativeRow.pageNumber);
       if (!table || !commercialReadingAgrees(candidates.fields, row.index, nativeRow, table)) return;
       paired.set(row.index, { row: nativeRow, orderPaired: true });
+    });
+    // A duplicated vision row sits on a printed line the model never emitted.
+    // The extra copy can take that line. A quantity that appears only once stays
+    // where it is, because moving it would trade one real row for another.
+    const quantityOf = (index: number): number | undefined => {
+      const value = firstCandidate(candidates.fields, `goodsLines.${index}.quantity`)?.value;
+      return typeof value === "number" ? value : undefined;
+    };
+    visionRows.forEach((row, offset) => {
+      if (paired.has(row.index)) return;
+      const nativeRow = nativeRows[offset]!;
+      const table = tables.get(nativeRow.pageNumber);
+      const quantityColumn = table?.columns.find((column) => column.role === "quantity");
+      const priceColumn = table?.columns.find((column) => column.role === "unitPrice");
+      if (!quantityColumn || !priceColumn) return;
+      const nativeQuantity = singleReading(wordsInColumn(nativeRow.words, quantityColumn));
+      const nativePrice = singleReading(wordsInColumn(nativeRow.words, priceColumn));
+      const visionQuantity = quantityOf(row.index);
+      if (nativeQuantity == null || nativePrice == null || visionQuantity == null) return;
+      const copies = visionRows.filter((other) => sameIdentity(other.code, row.code) && valuesMatch("quantity", quantityOf(other.index) ?? Number.NaN, visionQuantity));
+      const nativeSeen = visionRows.some((other) => sameIdentity(other.code, nativeRow.code) && valuesMatch("quantity", quantityOf(other.index) ?? Number.NaN, nativeQuantity));
+      if (copies.length >= 2 && !nativeSeen) paired.set(row.index, { row: nativeRow, orderPaired: true });
     });
   }
 

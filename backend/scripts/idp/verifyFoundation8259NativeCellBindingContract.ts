@@ -429,6 +429,53 @@ const disagreeingOrder = bindNativeGoodsCells(document([page(1, "DIGITAL", [
 assert.equal(disagreeingOrder.replacements.fields["goodsLines.0.quantity"], undefined);
 assert.equal(disagreeingOrder.replacements.fields["goodsLines.0.productCode"], undefined);
 
+const duplicateDisplaced = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9F74402", 0.08, 0.4),
+  word("6Adet", 0.4, 0.4),
+  word("21,6400EUR", 0.62, 0.4),
+  word("AG.SCH.A9F74202", 0.08, 0.48),
+  word("48Adet", 0.4, 0.48),
+  word("10,6600EUR", 0.62, 0.48)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F74202"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 48),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 10.66),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.A9F74202"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 48),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 10.66)
+}));
+assert.equal(duplicateDisplaced.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.A9F74402");
+assert.equal(duplicateDisplaced.replacements.fields["goodsLines.0.quantity"]?.[0]?.value, 6);
+assert.equal(duplicateDisplaced.replacements.fields["goodsLines.0.unitPrice"]?.[0]?.value, 21.64);
+assert.equal(duplicateDisplaced.replacements.fields["goodsLines.1.quantity"], undefined);
+assert.equal(duplicateDisplaced.replacements.fields["goodsLines.1.productCode"], undefined);
+
+const splitCodeDuplicate = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9F74402", 0.08, 0.4),
+  word("6Adet", 0.4, 0.4),
+  word("21,6400EUR", 0.62, 0.4),
+  word("AG.SCH.A9F74202", 0.08, 0.48),
+  word("48Adet", 0.4, 0.48),
+  word("10,6600EUR", 0.62, 0.48)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "A9F74202"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 48),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 10.66),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.A9F74202"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 48),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 10.66)
+}));
+assert.equal(splitCodeDuplicate.replacements.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.A9F74402");
+assert.equal(splitCodeDuplicate.replacements.fields["goodsLines.0.quantity"]?.[0]?.value, 6);
+assert.equal(splitCodeDuplicate.replacements.fields["goodsLines.0.unitPrice"]?.[0]?.value, 21.64);
+assert.equal(splitCodeDuplicate.replacements.fields["goodsLines.1.quantity"], undefined);
+
 const conflictingHs = bindNativeGoodsCells(document([page(1, "DIGITAL", [
   word("Kod", 0.08, 0.2),
   word("Miktar", 0.4, 0.2),

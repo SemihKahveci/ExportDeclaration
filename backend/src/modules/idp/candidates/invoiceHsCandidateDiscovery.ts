@@ -159,10 +159,7 @@ export function discoverInvoiceHsFieldCandidates(
       hsWords.push({ page, word, digits });
     }
   }
-  if (!hsWords.length) {
-    console.info("idp.hs.discovery", { segmentId, rowCount: rowIndexes.length, emptyRows: emptyRows.length, emitted: 0 });
-    return { version: "1", fields };
-  }
+  if (!hsWords.length) return { version: "1", fields };
 
   const clusters: Cluster[] = [];
   const clusterTolerance = 0.03;
@@ -195,16 +192,7 @@ export function discoverInvoiceHsFieldCandidates(
     .filter((cluster) => cluster.cells.length >= minimumCoverage)
     .sort((a, b) => b.score - a.score);
   const hsCluster = stable[0];
-  if (!hsCluster) {
-    console.info("idp.hs.discovery", {
-      segmentId,
-      rowCount: rowIndexes.length,
-      emptyRows: emptyRows.length,
-      stableClusters: 0,
-      emitted: 0
-    });
-    return { version: "1", fields };
-  }
+  if (!hsCluster) return { version: "1", fields };
 
   const xTolerance = Math.max(
     0.03,
@@ -232,7 +220,6 @@ export function discoverInvoiceHsFieldCandidates(
     return true;
   };
 
-  let anchored = 0;
   for (const rowIndex of emptyRows) {
     const product = firstCandidate(goodsCandidates.fields, `goodsLines.${rowIndex}.productCode`);
     const description = firstCandidate(goodsCandidates.fields, `goodsLines.${rowIndex}.description`);
@@ -265,15 +252,12 @@ export function discoverInvoiceHsFieldCandidates(
       .sort((a, b) =>
         Math.abs(cy(a.word.bbox) - cy(anchorBox!)) - Math.abs(cy(b.word.bbox) - cy(anchorBox!))
       );
-    if (nearby[0] && emitHs(rowIndex, nearby[0].page, nearby[0].word, nearby[0].digits)) {
-      anchored += 1;
-    }
+    if (nearby[0]) emitHs(rowIndex, nearby[0].page, nearby[0].word, nearby[0].digits);
   }
 
   // 1:1 Y-order zip only when every empty row still lacks HS and the cluster
   // cardinality matches — typical when Vision bound description/qty but left
   // the tariff column blank and product codes are absent (no safe text anchors).
-  let zipped = 0;
   const stillEmpty = emptyRows.filter((rowIndex) => !fields[`goodsLines.${rowIndex}.hsCode`]?.length);
   const anyProduct = emptyRows.some((rowIndex) =>
     firstCandidate(goodsCandidates.fields, `goodsLines.${rowIndex}.productCode`)?.value
@@ -290,19 +274,9 @@ export function discoverInvoiceHsFieldCandidates(
     for (let index = 0; index < stillEmpty.length; index += 1) {
       const cell = orderedCells[index]!;
       const rowIndex = stillEmpty[index]!;
-      if (emitHs(rowIndex, cell.page, cell.word, cell.digits)) zipped += 1;
+      emitHs(rowIndex, cell.page, cell.word, cell.digits);
     }
   }
-
-  console.info("idp.hs.discovery", {
-    segmentId,
-    rowCount: rowIndexes.length,
-    emptyRows: emptyRows.length,
-    clusterCells: hsCluster.cells.length,
-    anchored,
-    zipped,
-    emitted: Object.keys(fields).length
-  });
 
   return { version: "1", fields };
 }

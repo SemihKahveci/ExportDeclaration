@@ -510,8 +510,6 @@ export function enforceVisionDocumentRoleAuthority(
   // evidence page (or is already a 2-letter ISO token).
   const goodsOriginRole = /\b(?:MENSEI|MENSE\s*I|ORIJIN|URSPRUG|URSPRUNG|COUNTRY\s+OF\s+ORIGIN(?:\s+OF\s+GOODS)?|ORIGIN\s+OF\s+GOODS|MADE\s+IN|MENSEILIDIR|ORIGIN|COO)\b/;
   const documentHasGoodsOriginRole = [...pageText.values()].some((text) => goodsOriginRole.test(text));
-  let goodsOriginKept = 0;
-  let goodsOriginDropped = 0;
   for (const field of Object.keys(fields)) {
     if (!/^goodsLines\.\d+\.origin$/.test(field)) continue;
     const source = fields[field];
@@ -530,20 +528,8 @@ export function enforceVisionDocumentRoleAuthority(
         return pageNorm.includes(iso) || (valueNorm.length >= 2 && pageNorm.includes(valueNorm));
       });
     });
-    if (retained.length > 0) {
-      fields[field] = retained;
-      goodsOriginKept += retained.length;
-    } else {
-      delete fields[field];
-      goodsOriginDropped += source.length;
-    }
-  }
-  if (goodsOriginKept || goodsOriginDropped) {
-    console.info("idp.vision.goods_origin_role_guard", {
-      documentHasGoodsOriginRole,
-      kept: goodsOriginKept,
-      dropped: goodsOriginDropped
-    });
+    if (retained.length > 0) fields[field] = retained;
+    else delete fields[field];
   }
 
   // Header/shipment scalars that are especially prone to numeric-role
@@ -852,11 +838,6 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         .map((page) => page.nativeText || page.ocrText || "")
         .join("\n")
     );
-    console.info("idp.origin.document_scoped_discover", {
-      segmentId: result.segmentId,
-      iso: documentScopedOrigin ?? null,
-      pageCount: params.canonicalDocument.pages.length
-    });
     const guardedVisionCandidates = applyDocumentScopedGoodsOriginAuthority(
       roleGuardedVisionCandidates,
       documentScopedOrigin,
@@ -896,12 +877,6 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         )
       )
     };
-    if (Object.keys(originFillIn.fields).length) {
-      console.info("idp.origin.vision_fill_in", {
-        segmentId: result.segmentId,
-        filled: Object.keys(originFillIn.fields).length
-      });
-    }
     // Same pattern for HS/HSN: Vision often binds qty/price/origin but leaves the
     // tariff column blank. Fill only empty hsCode from a stable digit column.
     const visionBoundHs = discoverInvoiceHsFieldCandidates(
@@ -917,12 +892,6 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
         )
       )
     };
-    if (Object.keys(hsFillIn.fields).length) {
-      console.info("idp.hs.vision_fill_in", {
-        segmentId: result.segmentId,
-        filled: Object.keys(hsFillIn.fields).length
-      });
-    }
     const fusedCandidates = mergeInvoiceCandidateSources(
       primaryFused,
       roleBoundWithoutCompetingGoods,
@@ -1111,15 +1080,6 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       productionCandidates,
       { requireCountryColumn: true }
     )));
-    if (Object.keys(tokenNumericFill.fields).length > 0 || Object.keys(lateOriginFill.fields).length > 0) {
-      console.info("idp.goods.token_fill", {
-        segmentId: result.segmentId,
-        numeric: Object.keys(tokenNumericFill.fields).length,
-        origin: Object.keys(lateOriginFill.fields).length,
-        numericFields: Object.keys(tokenNumericFill.fields).slice(0, 8),
-        originFields: Object.keys(lateOriginFill.fields).slice(0, 8)
-      });
-    }
     const tokenCompletedCandidates = mergeInvoiceCandidateSources(
       productionCandidates,
       tokenNumericFill,

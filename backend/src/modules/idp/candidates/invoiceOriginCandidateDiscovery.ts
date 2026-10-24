@@ -135,8 +135,6 @@ export function discoverInvoiceOriginFieldCandidates(
   const rowIndexes = goodsRowIndexes(goodsCandidates.fields);
   if (!rowIndexes.length) return { version: "1", fields };
 
-  let bboxAnchors = 0;
-  let textAnchors = 0;
   const rowCells: RowCell[] = [];
   for (const rowIndex of rowIndexes) {
     const hs = firstCandidate(goodsCandidates.fields, `goodsLines.${rowIndex}.hsCode`);
@@ -149,7 +147,6 @@ export function discoverInvoiceOriginFieldCandidates(
     if (evidence?.bbox) {
       page = canonical.pages.find(item => item.pageNumber === evidence.pageNumber);
       anchorBox = evidence.bbox;
-      if (page && anchorBox) bboxAnchors += 1;
     }
 
     if (!page || !anchorBox) {
@@ -162,7 +159,6 @@ export function discoverInvoiceOriginFieldCandidates(
       if (!located) continue;
       page = located.page;
       anchorBox = located.word.bbox;
-      textAnchors += 1;
     }
 
     const tolerance = Math.max(0.018, (anchorBox.y1 - anchorBox.y0) * 1.8);
@@ -214,18 +210,7 @@ export function discoverInvoiceOriginFieldCandidates(
     });
   const countryColumn = stable.find((cluster) => cluster.countryLikeRows >= Math.max(3, Math.ceil(minimumCoverage * 0.5)));
   const originCluster = options?.requireCountryColumn ? countryColumn : (countryColumn ?? stable[0]);
-  if (!originCluster) {
-    console.info("idp.origin.discovery", {
-      segmentId,
-      rowCount: rowIndexes.length,
-      bboxAnchors,
-      textAnchors,
-      rowCells: rowCells.length,
-      stableClusters: stable.length,
-      emitted: 0
-    });
-    return { version: "1", fields };
-  }
+  if (!originCluster) return { version: "1", fields };
 
   const xTolerance = Math.max(
     0.025,
@@ -269,8 +254,6 @@ export function discoverInvoiceOriginFieldCandidates(
   // Gap pass: multi-line goods rows often place the country below the product
   // code. Search the learned origin X between this row anchor and the next
   // row's anchor (same page), preferring the nearest country below the anchor.
-  let gapFilled = 0;
-  let gapMissed = 0;
   const anchorsByRow = new Map<number, { page: CanonicalPage; box: CanonicalBBox }>();
   for (const rowIndex of rowIndexes) {
     const hs = firstCandidate(goodsCandidates.fields, `goodsLines.${rowIndex}.hsCode`);
@@ -299,10 +282,7 @@ export function discoverInvoiceOriginFieldCandidates(
   for (const rowIndex of rowIndexes) {
     if (fields[`goodsLines.${rowIndex}.origin`]?.length) continue;
     const anchored = anchorsByRow.get(rowIndex);
-    if (!anchored) {
-      gapMissed += 1;
-      continue;
-    }
+    if (!anchored) continue;
     const { page, box: anchorBox } = anchored;
     const anchorY = cy(anchorBox);
     const samePageNext = rowIndexes
@@ -329,22 +309,8 @@ export function discoverInvoiceOriginFieldCandidates(
         if (dy !== 0) return dy;
         return Math.abs(cx(a.bbox) - originCluster.center) - Math.abs(cx(b.bbox) - originCluster.center);
       });
-    if (nearby[0] && emitOrigin(rowIndex, page, nearby[0])) gapFilled += 1;
-    else gapMissed += 1;
+    if (nearby[0]) emitOrigin(rowIndex, page, nearby[0]);
   }
-
-  console.info("idp.origin.discovery", {
-    segmentId,
-    rowCount: rowIndexes.length,
-    bboxAnchors,
-    textAnchors,
-    rowCells: rowCells.length,
-    stableClusters: stable.length,
-    countryLikeRows: originCluster.countryLikeRows,
-    gapFilled,
-    gapMissed,
-    emitted: Object.keys(fields).length
-  });
 
   return { version: "1", fields };
 }
