@@ -351,6 +351,7 @@ export interface EvrakFile {
   customer: string;
   meta: string;
   allReady: boolean;
+  processing?: boolean;
 }
 
 export interface EvrakDocRow {

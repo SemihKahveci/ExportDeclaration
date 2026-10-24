@@ -127,8 +127,15 @@ function DecisionBox({ allReady }: { allReady: boolean }) {
 
 function filePillVariant(f: EvrakFile) {
   if (f.allReady) return 'ok' as const;
+  if (f.processing) return 'blue' as const;
   if (f.meta.includes('eksik')) return 'warn' as const;
   return 'gray' as const;
+}
+
+function filePillLabel(f: EvrakFile) {
+  if (f.allReady) return 'Tamam';
+  if (f.processing) return 'İşleniyor';
+  return 'Eksik';
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -160,6 +167,7 @@ export default function EvrakHazirlikPage() {
   const [previewData, setPreviewData]  = useState<DocPreviewData | null>(null);
 
   const selectedFile = files.find((f) => f.id === selectedId);
+  const anyProcessing = files.some((file) => file.processing);
   const reminderDisabled = docs.length > 0 && !docs.some((doc) => doc.status === 'Eksik');
 
   const stats: EvrakPageStats | null = selectedFile ? {
@@ -218,6 +226,22 @@ export default function EvrakHazirlikPage() {
       if (timer) clearTimeout(timer);
     };
   }, [selectedId, docRefresh]);
+
+  // The open invoice is polled above. Sibling invoices finish on their own,
+  // so the list is refreshed while any of them is still inside IDP.
+  useEffect(() => {
+    if (!anyProcessing) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void evrakService.getFiles().then((next) => {
+        if (!cancelled) setFiles(next);
+      });
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [anyProcessing]);
 
   async function handlePreview(doc: EvrakDocRow) {
     const data = await evrakService.getPreview(doc.name, selectedId, doc.id);
@@ -350,7 +374,7 @@ export default function EvrakHazirlikPage() {
                   <div className="text-[13.5px] font-bold text-text-strong">{f.ref}</div>
                   <div className="text-[12.5px] text-muted mt-0.5">{f.customer}</div>
                   <div className="flex items-center gap-2 mt-2">
-                    <Pill variant={filePillVariant(f)}>{f.allReady ? 'Tamam' : 'Eksik'}</Pill>
+                    <Pill variant={filePillVariant(f)}>{filePillLabel(f)}</Pill>
                     <span className="text-[12px] text-muted-2">{f.meta}</span>
                   </div>
                 </div>

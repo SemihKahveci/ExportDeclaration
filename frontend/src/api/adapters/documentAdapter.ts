@@ -31,7 +31,8 @@ export function toEvrakFile(d: BackendDeclaration, docs: UploadedDocument[]): Ev
     ref: refFromId(d._id),
     customer: mergeNormalizedFromApi(d.normalizedData).parties.buyer?.name ?? "—",
     meta,
-    allReady
+    allReady,
+    processing: pending > 0
   };
 }
 
