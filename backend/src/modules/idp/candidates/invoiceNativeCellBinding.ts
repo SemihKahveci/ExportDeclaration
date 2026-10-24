@@ -89,6 +89,7 @@ interface PageTable {
 export interface NativeCellBinding {
   replacements: FieldCandidateEnvelope;
   conflicts: FieldCandidateEnvelope;
+  droppedRows: number[];
   skipped: Array<{ pageNumber: number; reason: string }>;
 }
 
@@ -408,6 +409,64 @@ function sameIdentity(cell: string, vision: string): boolean {
   return left === right || left.includes(right) || right.includes(left);
 }
 
+function oneCharacterApart(left: string, right: string): boolean {
+  const a = compact(left);
+  const b = compact(right);
+  if (!a || !b || sameIdentity(a, b)) return false;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  if (longer.length - shorter.length > 1) return false;
+  if (longer.length === shorter.length) {
+    let differences = 0;
+    for (let index = 0; index < shorter.length; index += 1) {
+      if (shorter[index] !== longer[index]) differences += 1;
+    }
+    return differences === 1;
+  }
+  let shortIndex = 0;
+  let longIndex = 0;
+  let skipped = false;
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex += 1;
+      longIndex += 1;
+      continue;
+    }
+    if (skipped) return false;
+    skipped = true;
+    longIndex += 1;
+  }
+  return shortIndex === shorter.length;
+}
+
+function commercialAgrees(left: number, right: number): boolean {
+  return Math.abs(left - right) <= Math.max(0.05, Math.abs(right) * 0.001);
+}
+
+function singleColumnReading(nativeRow: NativeRow, table: PageTable, role: GoodsRole): number | undefined {
+  const column = table.columns.find((item) => item.role === role);
+  if (!column) return undefined;
+  const readings = cellReadings(wordsInColumn(nativeRow.words, column));
+  return readings.length === 1 ? readings[0] : undefined;
+}
+
+function resolveScaleReading(role: BoundRole, readings: number[], nativeRow: NativeRow, table: PageTable): number | undefined {
+  if (readings.length !== 2 || (role !== "quantity" && role !== "unitPrice" && role !== "lineTotal")) return undefined;
+  const low = Math.min(readings[0]!, readings[1]!);
+  const high = Math.max(readings[0]!, readings[1]!);
+  const ratio = high / low;
+  if (Math.abs(ratio - 1000) > 1e-6 && Math.abs(ratio - 100) > 1e-3) return undefined;
+  const quantity = role === "quantity" ? undefined : singleColumnReading(nativeRow, table, "quantity");
+  const price = role === "unitPrice" ? undefined : singleColumnReading(nativeRow, table, "unitPrice");
+  const total = role === "lineTotal" ? undefined : singleColumnReading(nativeRow, table, "lineTotal");
+  const hits = [low, high].filter((reading) => {
+    if (role === "quantity" && price != null && total != null) return commercialAgrees(reading * price, total);
+    if (role === "unitPrice" && quantity != null && total != null) return commercialAgrees(quantity * reading, total);
+    if (role === "lineTotal" && quantity != null && price != null) return commercialAgrees(quantity * price, reading);
+    return false;
+  });
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
 function candidateValue(role: BoundRole, words: CanonicalWord[]): { value: unknown; readings: number[] } | undefined {
   if (role === "quantity" || role === "unitPrice" || role === "lineTotal") {
     const readings = cellReadings(words);
@@ -573,6 +632,48 @@ export function bindNativeGoodsCells(
       const codeOnlyDuplicate = visionQuantity == null && sameCode.length >= 2 && !sameIdentity(row.code, nativeRow.code);
       if (!nativeSeen && (copies.length >= 2 || codeOnlyDuplicate)) paired.set(row.index, { row: nativeRow, orderPaired: true });
     });
+    // A code that appears once keeps the printed cells on that same line.
+    // A shifted quantity must not stay when the printed code is the same product.
+    // A repeated code is left to the quantity zip above.
+    visionRows.forEach((row, offset) => {
+      if (paired.has(row.index)) return;
+      const nativeRow = nativeRows[offset]!;
+      if (!sameIdentity(row.code, nativeRow.code)) return;
+      const visionCopies = visionRows.filter((other) => sameIdentity(other.code, row.code)).length;
+      const nativeCopies = nativeRows.filter((other) => sameIdentity(other.code, row.code)).length;
+      if (visionCopies !== 1 || nativeCopies !== 1) return;
+      paired.set(row.index, { row: nativeRow, orderPaired: false });
+    });
+    // One missing or extra letter, with that quantity printed only once, is the same line.
+    visionRows.forEach((row, offset) => {
+      if (paired.has(row.index)) return;
+      const nativeRow = nativeRows[offset]!;
+      const nativeQuantity = nativeQuantityOf(nativeRow);
+      const visionQuantity = quantityOf(row.index);
+      if (nativeQuantity == null || visionQuantity == null || !valuesMatch("quantity", nativeQuantity, visionQuantity)) return;
+      if (!oneCharacterApart(row.code, nativeRow.code)) return;
+      const visionCopies = visionRows.filter((other) => {
+        const quantity = quantityOf(other.index);
+        return quantity != null && valuesMatch("quantity", quantity, visionQuantity);
+      }).length;
+      const nativeCopies = nativeRows.filter((other) => {
+        const quantity = nativeQuantityOf(other);
+        return quantity != null && valuesMatch("quantity", quantity, nativeQuantity);
+      }).length;
+      if (visionCopies !== 1 || nativeCopies !== 1) return;
+      paired.set(row.index, { row: nativeRow, orderPaired: true });
+    });
+  }
+
+  const droppedRows: number[] = [];
+  if (nativeRows.length > 0) {
+    for (const row of visionRows) {
+      if (paired.has(row.index) || looksLikeGoodsCode(row.code)) continue;
+      const raw = String(firstCandidate(candidates.fields, `goodsLines.${row.index}.productCode`)?.value ?? "");
+      if (!/^\d+\s*\/\s*\d+/.test(raw.trim())) continue;
+      if (nativeRows.some((native) => sameIdentity(native.code, row.code))) continue;
+      droppedRows.push(row.index);
+    }
   }
 
   for (const [index, pair] of paired) {
@@ -601,15 +702,20 @@ export function bindNativeGoodsCells(
         contentSource: "NATIVE_TEXT" as const
       };
       if (parsed.readings.length > 1) {
-        conflicts[field] = parsed.readings.slice(0, 4).map((reading, readingIndex) => ({
-          candidateId: `${segmentId}:native-cell:line-${index + 1}:${role}:conflict-${readingIndex + 1}`,
-          field,
-          value: roundValue(role, reading),
-          confidence: 0.5,
-          extractor: NATIVE_CELL_EXTRACTOR,
-          evidence: [evidence]
-        }));
-        continue;
+        const resolved = resolveScaleReading(role, parsed.readings, nativeRow, table);
+        if (resolved == null) {
+          conflicts[field] = parsed.readings.slice(0, 4).map((reading, readingIndex) => ({
+            candidateId: `${segmentId}:native-cell:line-${index + 1}:${role}:conflict-${readingIndex + 1}`,
+            field,
+            value: roundValue(role, reading),
+            confidence: 0.5,
+            extractor: NATIVE_CELL_EXTRACTOR,
+            evidence: [evidence]
+          }));
+          continue;
+        }
+        parsed.readings = [resolved];
+        parsed.value = roundValue(role, resolved);
       }
       if (parsed.value == null) continue;
       const current = firstCandidate(candidates.fields, field);
@@ -748,6 +854,7 @@ export function bindNativeGoodsCells(
   return {
     replacements: { version: "1", fields: replacements },
     conflicts: { version: "1", fields: conflicts },
+    droppedRows,
     skipped
   };
 }
@@ -757,6 +864,11 @@ export function applyNativeGoodsCellBinding(
   binding: NativeCellBinding
 ): FieldCandidateEnvelope {
   const fields = { ...candidates.fields };
+  for (const index of binding.droppedRows) {
+    for (const field of Object.keys(fields)) {
+      if (field.startsWith(`goodsLines.${index}.`)) delete fields[field];
+    }
+  }
   for (const [field, list] of Object.entries(binding.conflicts.fields)) fields[field] = list;
   for (const [field, list] of Object.entries(binding.replacements.fields)) {
     if (!binding.conflicts.fields[field]) fields[field] = list;
