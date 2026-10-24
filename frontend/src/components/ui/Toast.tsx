@@ -18,14 +18,22 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 let nextId = 0;
 
 function measureAnchor(): { top: number; left: number; width: number; height: number } {
+  const viewport = { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
   const el =
     document.querySelector('[data-toast-anchor]') ??
     document.querySelector('main');
-  if (el) {
-    const r = el.getBoundingClientRect();
-    return { top: r.top, left: r.left, width: r.width, height: r.height };
-  }
-  return { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
+  if (!el) return viewport;
+  const rect = el.getBoundingClientRect();
+  // The anchor can be taller than the screen when a long list scrolls with the page.
+  // Keep the toast in the part of that anchor that is on screen now.
+  const top = Math.max(rect.top, 0);
+  const left = Math.max(rect.left, 0);
+  const right = Math.min(rect.right, window.innerWidth);
+  const bottom = Math.min(rect.bottom, window.innerHeight);
+  const width = right - left;
+  const height = bottom - top;
+  if (width <= 0 || height <= 0) return viewport;
+  return { top, left, width, height };
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {

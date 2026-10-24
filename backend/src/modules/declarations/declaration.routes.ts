@@ -50,6 +50,7 @@ router.post("/:id/normalize", asyncHandler(ctrl.postNormalize));
 router.post("/:id/validate", asyncHandler(ctrl.postValidate));
 router.post("/:id/generate-xml", asyncHandler(ctrl.postGenerateXml));
 router.post("/:id/exports/evrim-excel", asyncHandler(ctrl.postExportEvrimExcel));
+router.post("/:id/exports/declaration-excel", asyncHandler(ctrl.postExportDeclarationWorkbook));
 router.post("/:id/exports/ubl-ihracat", asyncHandler(ctrl.postExportUblIhracat));
 
 router.use("/:id/documents", documentSubRouter);

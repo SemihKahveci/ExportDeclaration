@@ -1,4 +1,5 @@
-import { apiGetBlob, apiGetJson, apiPatchJson, apiPostJson } from "./apiClient";
+import { apiBaseUrl } from "@/config/appEnv";
+import { ApiError, apiGetBlob, apiGetJson, apiPatchJson, apiPostJson } from "./apiClient";
 import type { Declaration, OperationMeta, ValidationResult } from "@/api/types/declaration.types";
 
 export async function listDeclarations(): Promise<Declaration[]> {
@@ -40,6 +41,18 @@ export async function generateXml(id: string): Promise<{ path: string; declarati
 
 export async function downloadXmlBlob(id: string): Promise<Blob> {
   return apiGetBlob(`/api/declarations/${encodeURIComponent(id)}/download-xml`);
+}
+
+export async function downloadDeclarationExcel(id: string): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(`${apiBaseUrl()}/api/declarations/${encodeURIComponent(id)}/exports/declaration-excel`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: "{}"
+  });
+  if (!res.ok) throw new ApiError(res.statusText, res.status);
+  const match = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "");
+  return { blob: await res.blob(), filename: match?.[1] || "beyanname.xlsx" };
 }
 
 export async function transitionApprovalWorkflow(

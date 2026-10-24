@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, Loader2, AlertTriangle, Truck, Ship, Plane, Search, X } from 'lucide-react';
+import { ChevronLeft, Download, Loader2, AlertTriangle, Truck, Ship, Plane, Search, X } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameRecord, TransportMode } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
+import { downloadDeclarationExcel } from '../../api/declarationApi';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
@@ -42,6 +43,25 @@ export default function BeyannameOnayPage() {
 
   // List filters
   const [search, setSearch] = useState('');
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadWorkbook(id: string) {
+    setDownloading(true);
+    try {
+      const file = await downloadDeclarationExcel(id);
+      const url = URL.createObjectURL(file.blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast('Beyanname indirildi');
+    } catch {
+      toast('Beyanname indirilemedi');
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -154,6 +174,18 @@ export default function BeyannameOnayPage() {
               MT kontrolü tamamlanan beyannameleri kontrol edin ve onaylayın.
             </p>
           </div>
+          <Button
+            variant="primary"
+            icon={Download}
+            disabled={downloading || !(filtered.length === 1 ? filtered[0] : filtered.find((item) => item.id === selectedId))}
+            title={filtered.length === 1 || filtered.some((item) => item.id === selectedId) ? undefined : 'Kaydı açınca bu dosya iner'}
+            onClick={() => {
+              const target = filtered.length === 1 ? filtered[0] : filtered.find((item) => item.id === selectedId);
+              if (target) void downloadWorkbook(target.id);
+            }}
+          >
+            Beyanname İndir
+          </Button>
         </div>
 
         {/* Stat row */}
@@ -313,7 +345,15 @@ export default function BeyannameOnayPage() {
           </h1>
         </div>
         {selected && (
-          <div className="mt-6">
+          <div className="mt-6 flex items-center gap-2">
+            <Button
+              variant="primary"
+              icon={Download}
+              disabled={downloading}
+              onClick={() => void downloadWorkbook(selected.id)}
+            >
+              Beyanname İndir
+            </Button>
             <Pill variant={approvalStep === 'second' ? 'warn' : 'ok'}>
               {approvalStep === 'second' ? '2. Onay Bekliyor' : '1. Onay Bekliyor'}
             </Pill>

@@ -353,9 +353,13 @@ function extendHeaderBand(band: CanonicalWord[], native: CanonicalWord[]): Canon
   const bottom = Math.max(...band.map((word) => yOf(word)));
   // A wrapped header prints "Tutarı" on the next line, just under "Hizmet".
   // A unit such as Adet on the first goods row is not another header.
+  // A country label on that same goods line is a cell, so it must not pull the
+  // row up into the header and hide the GTİP printed beside it.
   const extra = native.filter((word) => {
     if (band.includes(word) || yOf(word) <= bottom || yOf(word) - bottom > 0.016 || !headerRole(word.text)) return false;
-    return !["ADET", "PCS", "KG", "SET", "MT"].includes(tokenOf(word));
+    if (["ADET", "PCS", "KG", "SET", "MT"].includes(tokenOf(word))) return false;
+    const line = native.filter((other) => Math.abs(yOf(other) - yOf(word)) <= 0.008);
+    return !line.some((other) => looksLikeGoodsCode(other.text) || /\d+[.,]\d{2}/.test(other.text));
   });
   return extra.length ? [...band, ...extra] : band;
 }

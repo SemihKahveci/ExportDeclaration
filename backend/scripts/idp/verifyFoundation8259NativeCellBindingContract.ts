@@ -984,4 +984,30 @@ const twoTariffCodes = bindNativeGoodsCells(document([page(1, "DIGITAL", [
 }));
 assert.equal(twoTariffCodes.replacements.fields["goodsLines.0.hsCode"], undefined);
 
+const originLabelOnGoodsRow = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "OG.RVT.BAR.24.040.065"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 1),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 752),
+  "goodsLines.0.hsCode": candidate("goodsLines.0.hsCode", "24.040.065")
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  placed("Kodu", 0.14, 0.18, 0.268),
+  placed("Aciklamasi", 0.12, 0.2, 0.296),
+  placed("Miktar", 0.32, 0.36, 0.277),
+  placed("Fiyat", 0.36, 0.41, 0.282),
+  placed("Tutari", 0.58, 0.64, 0.287),
+  placed("Gtip", 0.88, 0.91, 0.277),
+  placed("OG.RVT.BAR.24.040.065", 0.1, 0.22, 0.307),
+  placed("MENSEI", 0.23, 0.27, 0.307),
+  placed("1", 0.32, 0.33, 0.307),
+  placed("752,0000", 0.36, 0.41, 0.307),
+  placed("752,00", 0.58, 0.62, 0.307),
+  placed("853690950000", 0.86, 0.94, 0.307)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "OG.RVT.BAR.24.040.065"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 1),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 752),
+  "goodsLines.0.hsCode": candidate("goodsLines.0.hsCode", "24.040.065")
+})));
+assert.equal(originLabelOnGoodsRow.fields["goodsLines.0.hsCode"]?.[0]?.value, "853690950000");
+
 console.log("foundation8-25.9 native cell binding contract ok");

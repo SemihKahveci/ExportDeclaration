@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { DeclarationModel } from "../declarations/declaration.model.js";
 import { buildEvrimExcel } from "../evrim-excel/evrimExcelAdapter.service.js";
+import { buildDeclarationWorkbook } from "../evrim-excel/declarationWorkbook.js";
 import type { EvrimExcelAdapterOptions } from "../evrim-excel/evrimExcelAdapter.types.js";
 import { buildExportDeclarationContract } from "../export-contract/exportDeclarationContract.service.js";
 import type { ExportContractIssue, ExportDeclarationSupplements } from "../export-contract/exportDeclarationContract.types.js";
@@ -69,6 +70,41 @@ export async function exportDeclarationAsEvrimExcel(
     output: { filename, rowCount: excel.rowCount, buffer: excel.buffer },
   });
   return { ready: true, buffer: excel.buffer, filename, rowCount: excel.rowCount };
+}
+
+export async function exportDeclarationWorkbook(
+  companyId: mongoose.Types.ObjectId,
+  declarationId: string,
+): Promise<EvrimExcelExportResult> {
+  if (!mongoose.isValidObjectId(declarationId)) throw new HttpError(400, "Geçersiz beyanname id.");
+
+  const declaration = await DeclarationModel.findOne({ _id: declarationId, companyId });
+  if (!declaration) throw new HttpError(404, "Beyanname bulunamadı.");
+  if (!declaration.normalizedData) throw new HttpError(409, "Beyanname henüz normalize edilmemiş.");
+
+  const normalized = declaration.normalizedData as NormalizedDeclaration;
+  const master = await resolveCustomsMasterData(companyId, declaration.operation?.customerId, normalized);
+  const persistentHuman = await resolvePersistentCustomsSupplements(companyId, declarationId);
+  const supplements = overlayHumanSupplements(master.supplements, persistentHuman);
+  const contract = buildExportDeclarationContract(normalized, supplements);
+  if ((normalized.goodsLines ?? []).length === 0) {
+    return { ready: false, issues: contract.readiness.issues };
+  }
+
+  const workbook = buildDeclarationWorkbook(normalized, contract);
+  const filename = `${safeFilenamePart(contract.invoice.invoiceNo)}-beyanname.xlsx`;
+  await recordExportAudit({
+    companyId, declarationId, format: "EVRIM_EXCEL",
+    normalizedSnapshot: normalized,
+    masterDataSnapshot: master.supplements,
+    persistentHumanSnapshot: persistentHuman,
+    requestHumanSnapshot: {},
+    effectiveSupplementsSnapshot: supplements,
+    contractSnapshot: contract,
+    masterDataTraceSnapshot: master.trace,
+    output: { filename, rowCount: workbook.rowCount, buffer: workbook.buffer },
+  });
+  return { ready: true, buffer: workbook.buffer, filename, rowCount: workbook.rowCount };
 }
 
 

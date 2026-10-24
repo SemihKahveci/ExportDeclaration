@@ -20,6 +20,7 @@ import fs from "node:fs/promises";
 import {
   exportDeclarationAsEvrimExcel,
   exportDeclarationAsUnsignedUblIhracat,
+  exportDeclarationWorkbook,
   type EvrimExcelExportInput,
   type UblIhracatExportInput
 } from "../declaration-exports/declarationExport.service.js";
@@ -95,6 +96,17 @@ export async function postExportEvrimExcel(req: Request, res: Response): Promise
   res.send(result.buffer);
 }
 
+export async function postExportDeclarationWorkbook(req: Request, res: Response): Promise<void> {
+  const result = await exportDeclarationWorkbook(req.auth!.operationalCompanyId, req.params.id!);
+  if (!result.ready) {
+    res.status(409).json({ ok: false, code: "EXPORT_NOT_READY", issues: result.issues });
+    return;
+  }
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+  res.setHeader("X-Export-Row-Count", String(result.rowCount));
+  res.send(result.buffer);
+}
 
 export async function postExportUblIhracat(req: Request, res: Response): Promise<void> {
   const result = await exportDeclarationAsUnsignedUblIhracat(
