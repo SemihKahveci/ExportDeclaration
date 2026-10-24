@@ -858,4 +858,130 @@ const transposedCode = bindNativeGoodsCells(document([page(1, "DIGITAL", [
 }));
 assert.equal(transposedCode.replacements.fields["goodsLines.0.productCode"], undefined);
 
+const splitPage = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C2544V250"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 18),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 371.61)
+}), bindNativeGoodsCells(document([
+  page(1, "DIGITAL", [
+    word("Kod", 0.04, 0.2),
+    word("Aciklama", 0.24, 0.2),
+    word("Miktar", 0.44, 0.2),
+    word("Fiyat", 0.58, 0.2),
+    word("Tutar", 0.74, 0.2),
+    word("Gtip", 0.88, 0.2),
+    word("AG.SCH.C2544V250", 0.04, 0.45),
+    word("18Adet", 0.44, 0.45),
+    word("371,6100EUR", 0.58, 0.45),
+    word("6.688,98EUR", 0.74, 0.45),
+    word("FRANCE", 0.24, 0.85),
+    word("4.697,70EUR", 0.74, 0.85),
+    word("853620100011", 0.88, 0.85)
+  ]),
+  page(2, "DIGITAL", [
+    word("AG.SCH.A9V41463", 0.04, 0.08),
+    word("VIGI", 0.24, 0.08),
+    word("105Adet", 0.44, 0.08),
+    word("44,7400EUR", 0.58, 0.08)
+  ])
+]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C2544V250"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 18),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 371.61)
+})));
+assert.equal(splitPage.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.C2544V250");
+assert.equal(splitPage.fields["goodsLines.1.productCode"]?.[0]?.value, "AG.SCH.A9V41463");
+assert.equal(splitPage.fields["goodsLines.1.quantity"]?.[0]?.value, 105);
+assert.equal(splitPage.fields["goodsLines.1.unitPrice"]?.[0]?.value, 44.74);
+assert.equal(splitPage.fields["goodsLines.1.lineTotal"]?.[0]?.value, 4697.7);
+assert.equal(splitPage.fields["goodsLines.1.origin"]?.[0]?.value, "FR");
+assert.equal(splitPage.fields["goodsLines.1.hsCode"]?.[0]?.value, "853620100011");
+assert.equal(splitPage.fields["goodsLines.1.description"]?.[0]?.value, "VIGI");
+assert.equal(String(splitPage.fields["goodsLines.1.lineTotal"]?.[0]?.candidateId).includes("page-break-review"), false);
+
+const splitPageUnjoined = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C2544V250"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 18)
+}), bindNativeGoodsCells(document([
+  page(1, "DIGITAL", [
+    word("Kod", 0.04, 0.2),
+    word("Aciklama", 0.24, 0.2),
+    word("Miktar", 0.44, 0.2),
+    word("Fiyat", 0.58, 0.2),
+    word("Tutar", 0.74, 0.2),
+    word("AG.SCH.C2544V250", 0.04, 0.45),
+    word("18Adet", 0.44, 0.45),
+    word("371,6100EUR", 0.58, 0.45),
+    word("999,00EUR", 0.74, 0.85)
+  ]),
+  page(2, "DIGITAL", [
+    word("AG.SCH.A9V41463", 0.04, 0.08),
+    word("105Adet", 0.44, 0.08),
+    word("44,7400EUR", 0.58, 0.08)
+  ])
+]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C2544V250"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 18)
+})));
+assert.equal(splitPageUnjoined.fields["goodsLines.1.productCode"]?.[0]?.value, "AG.SCH.A9V41463");
+assert.equal(splitPageUnjoined.fields["goodsLines.1.quantity"]?.[0]?.value, 105);
+assert.equal(splitPageUnjoined.fields["goodsLines.1.lineTotal"]?.[0]?.value, null);
+assert.equal(String(splitPageUnjoined.fields["goodsLines.1.lineTotal"]?.[0]?.candidateId).includes("page-break-review"), true);
+
+const postalBesideGtip = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.28, 0.2),
+  word("Fiyat", 0.42, 0.2),
+  word("Tutar", 0.56, 0.2),
+  word("Gtip", 0.88, 0.2),
+  word("OG.RVT.BAR.24.040.065", 0.08, 0.4),
+  word("1Adet", 0.28, 0.4),
+  word("752,0000EUR", 0.42, 0.4),
+  word("752,00EUR", 0.56, 0.4),
+  word("4000", 0.76, 0.4),
+  word("853690950000", 0.88, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "OG.RVT.BAR.24.040.065"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 1),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 752)
+}));
+assert.equal(postalBesideGtip.replacements.fields["goodsLines.0.hsCode"]?.[0]?.value, "853690950000");
+
+const shipmentBesideGtip = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.28, 0.2),
+  word("Fiyat", 0.42, 0.2),
+  word("Tutar", 0.56, 0.2),
+  word("Gonderilme", 0.78, 0.2),
+  word("Gtip", 0.9, 0.2),
+  word("OG.RVT.BAR.24.040.065", 0.08, 0.4),
+  word("1Adet", 0.28, 0.4),
+  word("752,0000EUR", 0.42, 0.4),
+  word("752,00EUR", 0.56, 0.4),
+  word("4000", 0.7, 0.4),
+  word("853690950000", 0.9, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "OG.RVT.BAR.24.040.065"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 1),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 752)
+}));
+assert.equal(shipmentBesideGtip.replacements.fields["goodsLines.0.hsCode"]?.[0]?.value, "853690950000");
+
+const twoTariffCodes = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.28, 0.2),
+  word("Fiyat", 0.42, 0.2),
+  word("Gtip", 0.88, 0.2),
+  word("OG.RVT.BAR.24.040.065", 0.08, 0.4),
+  word("1Adet", 0.28, 0.4),
+  word("752,0000EUR", 0.42, 0.4),
+  word("853690950000", 0.82, 0.4),
+  word("853620100011", 0.9, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "OG.RVT.BAR.24.040.065"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 1),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 752)
+}));
+assert.equal(twoTariffCodes.replacements.fields["goodsLines.0.hsCode"], undefined);
+
 console.log("foundation8-25.9 native cell binding contract ok");

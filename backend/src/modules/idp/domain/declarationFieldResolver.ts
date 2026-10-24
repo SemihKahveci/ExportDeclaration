@@ -113,6 +113,32 @@ function applyMixedGoodsOriginAuthority(
   if (!reviewRequiredFields.includes("originCountry")) reviewRequiredFields.push("originCountry");
 }
 
+/**
+ * A goods row split by a page break is still a row. Cells printed on one side
+ * of the break stay resolved. A cell that the break did not show stays empty
+ * and in review, so the line is not dropped and the gap is not filled in.
+ */
+function applyPageBreakRowReview(
+  fields: Record<string, ResolvedDeclarationField>,
+  reviewRequiredFields: string[]
+): void {
+  for (const [name, field] of Object.entries(fields)) {
+    if (!field.candidates.some((candidate) => candidate.candidateId.includes(":page-break-review:"))) continue;
+    if (field.status !== "REVIEW_REQUIRED" || field.value !== undefined) {
+      fields[name] = {
+        ...field,
+        status: "REVIEW_REQUIRED",
+        method: "CONFLICT_REVIEW",
+        value: undefined,
+        reason: "PAGE_BREAK_ROW",
+        conflict: true,
+        conflictCandidateIds: field.candidateIds
+      };
+    }
+    if (!reviewRequiredFields.includes(name)) reviewRequiredFields.push(name);
+  }
+}
+
 function assertUniqueCandidateIds(candidates: DeclarationFieldCandidate[]): void {
   const seen = new Set<string>();
   for (const candidate of candidates) {
@@ -208,6 +234,7 @@ export function resolveDeclarationFields(
 
   applyGoodsLineTotalScaleAuthority(fields, reviewRequiredFields);
   applyMixedGoodsOriginAuthority(fields, reviewRequiredFields);
+  applyPageBreakRowReview(fields, reviewRequiredFields);
 
   for (const selection of params.candidateSelections ?? []) {
     if (!Object.prototype.hasOwnProperty.call(params.candidates.fields, selection.field)) {

@@ -795,6 +795,25 @@ const uniformOrigin = resolveDeclarationFields({
 });
 assert.equal(uniformOrigin.fields.originCountry?.status, "RESOLVED");
 assert.equal(uniformOrigin.fields.originCountry?.value, "TR");
+const pageBreakReview = resolveDeclarationFields({
+  candidates: {
+    version: "1",
+    companyId: "company-origin",
+    declarationId: "declaration-origin",
+    fields: {
+      "goodsLines.1.productCode": [originCandidate("goodsLines.1.productCode", "AG.SCH.A9V41463")],
+      "goodsLines.1.lineTotal": [{
+        ...originCandidate("goodsLines.1.lineTotal", null),
+        candidateId: "seg:native-cell:page-break-review:goodsLines.1.lineTotal"
+      }]
+    }
+  }
+});
+assert.equal(pageBreakReview.fields["goodsLines.1.productCode"]?.status, "RESOLVED");
+assert.equal(pageBreakReview.fields["goodsLines.1.lineTotal"]?.status, "REVIEW_REQUIRED");
+assert.equal(pageBreakReview.fields["goodsLines.1.lineTotal"]?.value, undefined);
+assert.equal(pageBreakReview.fields["goodsLines.1.lineTotal"]?.reason, "PAGE_BREAK_ROW");
+assert.equal(pageBreakReview.reviewRequiredFields.includes("goodsLines.1.lineTotal"), true);
 
 console.log({
   event: "foundation-8.25.5.commercial-row-sanitizer.contract.passed",

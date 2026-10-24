@@ -86,10 +86,16 @@ interface PageTable {
   rows: NativeRow[];
 }
 
+export interface InsertedGoodsRow {
+  insertAt: number;
+  fields: FieldCandidateEnvelope["fields"];
+}
+
 export interface NativeCellBinding {
   replacements: FieldCandidateEnvelope;
   conflicts: FieldCandidateEnvelope;
   droppedRows: number[];
+  insertedRows: InsertedGoodsRow[];
   skipped: Array<{ pageNumber: number; reason: string }>;
 }
 
@@ -260,15 +266,22 @@ function headerBand(clusters: CanonicalWord[][]): CanonicalWord[] | undefined {
   return bands[0];
 }
 
-function toColumns(anchors: Array<{ role: GoodsRole; x: number }>): Column[] {
+function toColumns(anchors: Array<{ role: GoodsRole; x: number }>, headerWords: CanonicalWord[] = []): Column[] {
   const sorted = anchors.slice().sort((left, right) => left.x - right.x);
+  const fences = headerWords.map((word) => xOf(word));
   return sorted.map((anchor, index) => {
     const previous = sorted[index - 1];
     const next = sorted[index + 1];
+    // A header we do not extract, such as Gönderilme Şekli, still ends the goods column.
+    // Birim sitting on Fiyat is the same header, so only a word clearly apart counts.
+    const leftFence = fences.filter((x) => anchor.x - x > 0.08).sort((left, right) => right - left)[0];
+    const rightFence = fences.filter((x) => x - anchor.x > 0.08).sort((left, right) => left - right)[0];
+    const roleLeft = previous ? (previous.x + anchor.x) / 2 : 0;
+    const roleRight = next ? (anchor.x + next.x) / 2 : 1;
     return {
       role: anchor.role,
-      left: previous ? (previous.x + anchor.x) / 2 : 0,
-      right: next ? (anchor.x + next.x) / 2 : 1
+      left: leftFence == null ? roleLeft : Math.max(roleLeft, (leftFence + anchor.x) / 2),
+      right: rightFence == null ? roleRight : Math.min(roleRight, (anchor.x + rightFence) / 2)
     };
   });
 }
@@ -354,7 +367,7 @@ function buildPageTable(page: CanonicalPage, sharedColumns?: Column[]): PageTabl
   const band = headerBand(clusters);
   const extended = band ? extendHeaderBand(band, native) : undefined;
   const anchors = extended ? headerAnchors(extended) : undefined;
-  const columns = anchors ? toColumns(anchors) : sharedColumns;
+  const columns = anchors ? toColumns(anchors, extended ?? []) : sharedColumns;
   if (!columns) return undefined;
   const headerBottom = extended ? Math.max(...extended.map((word) => word.bbox.y1)) : 0;
   const codeColumn = columns.find((column) => column.role === "productCode") ?? columns.find((column) => column.role === "hsCode");
@@ -479,9 +492,13 @@ function candidateValue(role: BoundRole, words: CanonicalWord[]): { value: unkno
     return { value: readings.length === 1 ? roundValue(role, readings[0]!) : undefined, readings };
   }
   if (role === "hsCode") {
-    const digits = words.map((word) => word.text.replace(/\D/g, "")).filter((value) => value.length >= 4);
-    if (digits.length !== 1) return digits.length > 1 ? { value: undefined, readings: [] } : undefined;
-    return { value: digits[0], readings: [] };
+    const chunks = words.map((word) => word.text.replace(/\D/g, "")).filter((value) => value.length >= 4 && value.length <= 14);
+    const twelve = [...new Set(chunks.filter((value) => value.length === 12))];
+    // A short number that still lands in the GTİP cell is not a second tariff code.
+    if (twelve.length === 1) return { value: twelve[0], readings: [] };
+    if (twelve.length > 1) return { value: undefined, readings: [] };
+    if (chunks.length !== 1) return chunks.length > 1 ? { value: undefined, readings: [] } : undefined;
+    return { value: chunks[0], readings: [] };
   }
   const text = words.map((word) => word.text.trim()).filter(Boolean).join(role === "productCode" ? "" : " ").replace(/\s+/g, " ").trim();
   if (!text) return undefined;
@@ -520,6 +537,148 @@ function commercialReadingAgrees(
   if (quantity == null || typeof visionQuantity !== "number" || !valuesMatch("quantity", quantity, visionQuantity)) return false;
   const priceAgrees = price != null && typeof visionPrice === "number" && valuesMatch("unitPrice", price, visionPrice);
   return priceAgrees || sameIdentity(nativeRow.code, visionCode);
+}
+
+function printedRowCode(row: NativeRow, table: PageTable): string | undefined {
+  const column = table.columns.find((item) => item.role === "productCode");
+  if (!column) return undefined;
+  const longCodes = wordsInColumn(row.words, column).filter((word) => looksLikeGoodsCode(word.text));
+  const codeWords = longCodes.length > 0 ? longCodes : wordsInColumn(row.words, column).filter((word) => isRowCode(word.text));
+  if (codeWords.length === 0) return undefined;
+  const topY = Math.min(...codeWords.map((word) => yOf(word)));
+  const onLine = codeWords.filter((word) => yOf(word) - topY <= 0.008);
+  const tokens = [...new Set(onLine.map((word) => compact(word.text)))];
+  const nativeCode = tokens.slice().sort((left, right) => right.length - left.length)[0];
+  if (!nativeCode || !tokens.every((token) => sameIdentity(token, nativeCode))) return undefined;
+  return onLine.find((word) => compact(word.text) === nativeCode)?.text.trim();
+}
+
+function descriptionWords(words: CanonicalWord[], column: Column | undefined): CanonicalWord[] {
+  if (!column) return [];
+  return wordsInColumn(words, column).filter((word) => {
+    if (originIso(word.text)) return false;
+    if (isRowCode(word.text)) return false;
+    if (numericReadings(word.text).length > 0) return false;
+    const token = tokenOf(word);
+    if (["ADET", "PCS", "KG", "SET", "MT", "EUR", "EURO", "USD", "TL"].includes(token)) return false;
+    return /[A-Za-z]/.test(word.text);
+  });
+}
+
+function pageBreakCandidate(
+  segmentId: string,
+  field: string,
+  value: unknown,
+  words: CanonicalWord[],
+  pageNumber: number,
+  review: boolean
+): FieldCandidate {
+  return {
+    candidateId: `${segmentId}:native-cell:${review ? "page-break-review" : "page-break"}:${field}`,
+    field,
+    value,
+    confidence: review ? 0.5 : 0.98,
+    extractor: NATIVE_CELL_EXTRACTOR,
+    evidence: [{
+      segmentId,
+      pageNumber,
+      bbox: words.length > 0 ? unionBox(words) : undefined,
+      text: words.map((word) => word.text).join(" "),
+      contentSource: "NATIVE_TEXT"
+    }]
+  };
+}
+
+/**
+ * A row cut by the page edge still belongs in the goods list. The head keeps
+ * the printed code, quantity and price. A tail on the previous page fills the
+ * total, origin and HS only when that tail is the one product of those numbers.
+ * A cell the break does not show stays empty and marked for review.
+ */
+function pageBreakInsertions(
+  canonical: CanonicalDocument,
+  segmentId: string,
+  tables: Map<number, PageTable | undefined>,
+  nativeRows: NativeRow[],
+  paired: Map<number, { row: NativeRow }>,
+  fields: FieldCandidateEnvelope["fields"]
+): InsertedGoodsRow[] {
+  const visionIndexes = rowIndexes(fields);
+  const claimed = new Set([...paired.values()].map((pair) => pair.row));
+  const breaks = nativeRows.filter((row) => {
+    if (claimed.has(row)) return false;
+    const table = tables.get(row.pageNumber);
+    if (!table) return false;
+    const onPage = nativeRows.filter((item) => item.pageNumber === row.pageNumber);
+    if (onPage[0] !== row || row.pageNumber <= (nativeRows[0]?.pageNumber ?? row.pageNumber)) return false;
+    const quantity = singleColumnReading(row, table, "quantity");
+    const price = singleColumnReading(row, table, "unitPrice");
+    if (quantity == null || price == null || singleColumnReading(row, table, "lineTotal") != null) return false;
+    return printedRowCode(row, table) != null && !visionIndexes.some((index) => {
+      const visionQuantity = firstCandidate(fields, `goodsLines.${index}.quantity`)?.value;
+      const visionPrice = firstCandidate(fields, `goodsLines.${index}.unitPrice`)?.value;
+      return typeof visionQuantity === "number" && typeof visionPrice === "number"
+        && valuesMatch("quantity", quantity, visionQuantity)
+        && valuesMatch("unitPrice", price, visionPrice);
+    });
+  });
+  if (breaks.length === 0 || !visionIndexes.every((value, index) => value === index) || nativeRows.length !== visionIndexes.length + breaks.length) {
+    return [];
+  }
+  const inserted: InsertedGoodsRow[] = [];
+  for (const row of breaks) {
+    const table = tables.get(row.pageNumber);
+    const previousPage = canonical.pages.find((page) => page.pageNumber === row.pageNumber - 1);
+    const previousRows = nativeRows.filter((item) => item.pageNumber === row.pageNumber - 1);
+    const previousTable = tables.get(row.pageNumber - 1);
+    if (!table || !previousPage || !previousTable || previousRows.length === 0) continue;
+    const native = pageWords(previousPage);
+    const last = previousRows[previousRows.length - 1]!;
+    const floor = Math.max(...last.words.map((word) => yOf(word)));
+    const tail = (native ?? []).filter((word) => yOf(word) > floor + 0.008);
+    if (tail.length === 0) continue;
+    const quantity = singleColumnReading(row, table, "quantity")!;
+    const price = singleColumnReading(row, table, "unitPrice")!;
+    const code = printedRowCode(row, table)!;
+    const insertAt = nativeRows.indexOf(row);
+    const rowFields: FieldCandidateEnvelope["fields"] = {};
+    const put = (role: string, value: unknown, words: CanonicalWord[], pageNumber: number, review: boolean) => {
+      const field = `goodsLines.${insertAt}.${role}`;
+      rowFields[field] = [pageBreakCandidate(segmentId, field, value, words, pageNumber, review)];
+    };
+    const codeWords = wordsInColumn(row.words, table.columns.find((column) => column.role === "productCode")!).filter((word) => compact(word.text) === compact(code));
+    put("productCode", code, codeWords.length > 0 ? codeWords : row.words.slice(0, 1), row.pageNumber, false);
+    const quantityColumn = table.columns.find((column) => column.role === "quantity")!;
+    const priceColumn = table.columns.find((column) => column.role === "unitPrice")!;
+    put("quantity", roundValue("quantity", quantity), wordsInColumn(row.words, quantityColumn), row.pageNumber, false);
+    put("unitPrice", roundValue("unitPrice", price), wordsInColumn(row.words, priceColumn), row.pageNumber, false);
+    const totalColumn = previousTable.columns.find((column) => column.role === "lineTotal");
+    const totalReadings = totalColumn ? cellReadings(wordsInColumn(tail, totalColumn)) : [];
+    const matchedTotal = totalReadings.filter((reading) => commercialAgrees(quantity * price, reading));
+    if (matchedTotal.length === 1 && totalColumn) {
+      put("lineTotal", roundValue("lineTotal", matchedTotal[0]!), wordsInColumn(tail, totalColumn), previousPage.pageNumber, false);
+    } else {
+      put("lineTotal", null, totalColumn ? wordsInColumn(tail, totalColumn) : [], previousPage.pageNumber, true);
+    }
+    const descriptionColumn = previousTable.columns.find((column) => column.role === "description");
+    const countries = descriptionColumn ? wordsInColumn(tail, descriptionColumn).flatMap((word) => {
+      const iso = originIso(word.text);
+      return iso ? [{ iso, word }] : [];
+    }) : [];
+    const isos = [...new Set(countries.map((item) => item.iso))];
+    if (isos.length === 1) put("origin", isos[0], [countries[0]!.word], previousPage.pageNumber, false);
+    else put("origin", null, [], previousPage.pageNumber, true);
+    const hsColumn = previousTable.columns.find((column) => column.role === "hsCode");
+    const hsWords = hsColumn ? wordsInColumn(tail, hsColumn).filter((word) => word.text.replace(/\D/g, "").length === 12) : [];
+    if (hsWords.length === 1) put("hsCode", hsWords[0]!.text.replace(/\D/g, ""), hsWords, previousPage.pageNumber, false);
+    else put("hsCode", null, [], previousPage.pageNumber, true);
+    const headDescription = table.columns.find((column) => column.role === "description");
+    const prose = descriptionWords(row.words, headDescription);
+    if (prose.length > 0 && headDescription) put("description", prose.map((word) => word.text.trim()).join(" "), prose, row.pageNumber, false);
+    else put("description", null, [], row.pageNumber, true);
+    inserted.push({ insertAt, fields: rowFields });
+  }
+  return inserted;
 }
 
 /**
@@ -898,23 +1057,57 @@ export function bindNativeGoodsCells(
     replacements: { version: "1", fields: replacements },
     conflicts: { version: "1", fields: conflicts },
     droppedRows,
+    insertedRows: pageBreakInsertions(canonical, segmentId, tables, nativeRows, paired, candidates.fields),
     skipped
   };
+}
+
+function shiftGoodsFieldKey(field: string, insertAt: number): string {
+  const match = /^goodsLines\.(\d+)\.(.+)$/.exec(field);
+  if (!match) return field;
+  const index = Number(match[1]);
+  return index < insertAt ? field : `goodsLines.${index + 1}.${match[2]}`;
+}
+
+function shiftGoodsFields(fields: FieldCandidateEnvelope["fields"], insertAt: number): FieldCandidateEnvelope["fields"] {
+  const shifted: FieldCandidateEnvelope["fields"] = {};
+  for (const [field, list] of Object.entries(fields)) {
+    const key = shiftGoodsFieldKey(field, insertAt);
+    shifted[key] = list.map((item) => item.field === field ? { ...item, field: key } : item);
+  }
+  return shifted;
 }
 
 export function applyNativeGoodsCellBinding(
   candidates: FieldCandidateEnvelope,
   binding: NativeCellBinding
 ): FieldCandidateEnvelope {
-  const fields = { ...candidates.fields };
+  let fields = { ...candidates.fields };
   for (const index of binding.droppedRows) {
     for (const field of Object.keys(fields)) {
       if (field.startsWith(`goodsLines.${index}.`)) delete fields[field];
     }
   }
-  for (const [field, list] of Object.entries(binding.conflicts.fields)) fields[field] = list;
+  const inserts = [...(binding.insertedRows ?? [])].sort((left, right) => right.insertAt - left.insertAt);
+  for (const inserted of inserts) {
+    fields = shiftGoodsFields(fields, inserted.insertAt);
+    for (const [field, list] of Object.entries(inserted.fields)) fields[field] = list;
+  }
+  const placedKey = (field: string): string => {
+    let key = field;
+    for (const insertAt of inserts.map((item) => item.insertAt).sort((left, right) => left - right)) {
+      key = shiftGoodsFieldKey(key, insertAt);
+    }
+    return key;
+  };
+  for (const [field, list] of Object.entries(binding.conflicts.fields)) {
+    const key = placedKey(field);
+    fields[key] = list.map((item) => ({ ...item, field: key }));
+  }
   for (const [field, list] of Object.entries(binding.replacements.fields)) {
-    if (!binding.conflicts.fields[field]) fields[field] = list;
+    if (binding.conflicts.fields[field]) continue;
+    const key = placedKey(field);
+    fields[key] = list.map((item) => ({ ...item, field: key }));
   }
   return { version: "1", fields };
 }
