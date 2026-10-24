@@ -92,6 +92,26 @@ export interface NativeCellBinding {
   skipped: Array<{ pageNumber: number; reason: string }>;
 }
 
+function originIso(text: string): string | undefined {
+  const trimmed = text.trim();
+  // A bare two-letter fragment such as EA is part of a product name.
+  // U.K still resolves, because the punctuation keeps it out of that shape.
+  // A rating such as 30mA still contains a digit, so it is not a country.
+  if (/^[A-Za-z]{2}$/.test(trimmed) || /\d/.test(trimmed)) return undefined;
+  const exact = canonicalizeVisionCountry(trimmed);
+  if (exact) return exact;
+  const letters = fold(trimmed).replace(/[^A-Z]/g, "");
+  if (letters.length < 6) return undefined;
+  const hits = new Set<string>();
+  for (let index = 0; index < letters.length - 1; index += 1) {
+    if (letters[index] === letters[index + 1]) continue;
+    const swapped = `${letters.slice(0, index)}${letters[index + 1]}${letters[index]}${letters.slice(index + 2)}`;
+    const iso = canonicalizeVisionCountry(swapped);
+    if (iso) hits.add(iso);
+  }
+  return hits.size === 1 ? [...hits][0] : undefined;
+}
+
 function fold(text: string): string {
   return text.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .toLocaleUpperCase("tr-TR")
@@ -625,9 +645,7 @@ export function bindNativeGoodsCells(
     const descriptionColumn = table.columns.find((column) => column.role === "description");
     if (descriptionColumn && !replacements[originField] && !conflicts[originField]) {
       const countries = wordsInColumn(nativeRow.words, descriptionColumn).flatMap((word) => {
-        const letters = fold(word.text).replace(/[^A-Z]/g, "");
-        if (letters.length <= 2) return [];
-        const iso = canonicalizeVisionCountry(word.text);
+        const iso = originIso(word.text);
         return iso ? [{ iso, word }] : [];
       });
       const isos = [...new Set(countries.map((item) => item.iso))];

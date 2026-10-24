@@ -592,4 +592,54 @@ const twoCountries = bindNativeGoodsCells(document([page(1, "DIGITAL", [
 }));
 assert.equal(twoCountries.replacements.fields["goodsLines.0.origin"], undefined);
 
+const punctuatedCountry = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Aciklamasi", 0.28, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.EAT.41097", 0.08, 0.4),
+  word("EA", 0.24, 0.4),
+  word("U.K", 0.3, 0.4),
+  word("60Adet", 0.4, 0.4),
+  word("12,3000EUR", 0.62, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.41097"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 60),
+  "goodsLines.0.origin": candidate("goodsLines.0.origin", "MA")
+}));
+assert.equal(punctuatedCountry.replacements.fields["goodsLines.0.origin"]?.[0]?.value, "GB");
+
+const transposedCountry = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Aciklamasi", 0.28, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.EAT.216557", 0.08, 0.4),
+  word("GERAMNY", 0.3, 0.4),
+  word("540Adet", 0.4, 0.4),
+  word("1,9900EUR", 0.62, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.216557"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 540),
+  "goodsLines.0.origin": candidate("goodsLines.0.origin", "MA")
+}));
+assert.equal(transposedCountry.replacements.fields["goodsLines.0.origin"]?.[0]?.value, "DE");
+
+const ratedCurrent = bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Aciklamasi", 0.28, 0.2),
+  word("Miktar", 0.4, 0.2),
+  word("Fiyat", 0.62, 0.2),
+  word("AG.SCH.A9V41225", 0.08, 0.4),
+  word("30MA", 0.24, 0.4),
+  word("FRANCE", 0.3, 0.4),
+  word("173Adet", 0.4, 0.4),
+  word("12,3000EUR", 0.62, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9V41225"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 173),
+  "goodsLines.0.origin": candidate("goodsLines.0.origin", "MA")
+}));
+assert.equal(ratedCurrent.replacements.fields["goodsLines.0.origin"]?.[0]?.value, "FR");
+
 console.log("foundation8-25.9 native cell binding contract ok");
