@@ -123,7 +123,7 @@ function applyPageBreakRowReview(
   reviewRequiredFields: string[]
 ): void {
   for (const [name, field] of Object.entries(fields)) {
-    if (!field.candidates.some((candidate) => candidate.candidateId.includes(":page-break-review:"))) continue;
+    if (!field.candidates.some((candidate) => candidate.candidateId.includes(":page-break-review:") || candidate.candidateId.includes(":cell-review:"))) continue;
     if (field.status !== "REVIEW_REQUIRED" || field.value !== undefined) {
       fields[name] = {
         ...field,

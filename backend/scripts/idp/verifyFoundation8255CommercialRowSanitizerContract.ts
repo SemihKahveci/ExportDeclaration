@@ -572,6 +572,12 @@ const yemTotalPreserved = sanitizeNaturalGoodsLines([{
 assert.equal(yemTotalPreserved[0]?.quantity, 25000);
 assert.equal(yemTotalPreserved[0]?.lineTotal, 17500);
 
+const goodsTotalDropped = sanitizeNaturalGoodsLines([{
+  description: "Malzeme / Hizmet Toplam Tutarı",
+  lineTotal: 193093.26
+}] as never[]);
+assert.equal(goodsTotalDropped.length, 0);
+
 // Wrong-role lineTotal evidence must not survive when qty×price corroborates.
 const adaptedTotals = adaptNaturalInvoiceResponse(
   {

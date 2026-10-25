@@ -106,6 +106,9 @@ function originIso(text: string): string | undefined {
   // A rating such as 30mA still contains a digit, so it is not a country.
   if (/^[A-Za-z]{2}$/.test(trimmed) || /\d/.test(trimmed)) return undefined;
   const exact = canonicalizeVisionCountry(trimmed);
+  // "EĞ" folds to EG and would otherwise become Egypt. A non-ASCII token that
+  // collapses to a two-letter code is a product word, not a country.
+  if (exact && fold(trimmed).replace(/[^A-Z]/g, "").length <= 2 && /[^\u0000-\u007F]/.test(trimmed)) return undefined;
   if (exact) return exact;
   const letters = fold(trimmed).replace(/[^A-Z]/g, "");
   if (letters.length < 6) return undefined;
@@ -569,6 +572,72 @@ function descriptionWords(words: CanonicalWord[], column: Column | undefined): C
   });
 }
 
+function countryOnlyText(text: string): boolean {
+  const tokens = text.split(/\s+/).map((token) => token.trim()).filter(Boolean);
+  return tokens.length > 0 && tokens.every((token) => originIso(token) !== undefined);
+}
+
+function reviewCandidate(segmentId: string, field: string, pageNumber: number, words: CanonicalWord[]): FieldCandidate {
+  return {
+    candidateId: `${segmentId}:native-cell:cell-review:${field}`,
+    field,
+    value: null,
+    confidence: 0.5,
+    extractor: NATIVE_CELL_EXTRACTOR,
+    evidence: [{
+      segmentId,
+      pageNumber,
+      bbox: words.length > 0 ? unionBox(words) : undefined,
+      text: words.map((word) => word.text).join(" "),
+      contentSource: "NATIVE_TEXT"
+    }]
+  };
+}
+
+function countryHits(words: CanonicalWord[]): Array<{ iso: string; word: CanonicalWord }> {
+  const sorted = words.slice().sort((left, right) => yOf(left) - yOf(right) || xOf(left) - xOf(right));
+  const hits: Array<{ iso: string; word: CanonicalWord }> = [];
+  for (let index = 0; index < sorted.length; index += 1) {
+    const word = sorted[index]!;
+    const next = sorted[index + 1];
+    if (next && Math.abs(yOf(next) - yOf(word)) <= 0.012 && xOf(next) >= xOf(word) && xOf(next) - xOf(word) <= 0.12) {
+      const phrase = originIso(`${word.text} ${next.text}`);
+      if (phrase) {
+        hits.push({ iso: phrase, word });
+        index += 1;
+        continue;
+      }
+    }
+    const iso = originIso(word.text);
+    if (iso) hits.push({ iso, word });
+  }
+  return hits;
+}
+
+function significantTokens(text: string): string[] {
+  return fold(text).split(" ").filter((token) => token.length >= 5 && originIso(token) === undefined);
+}
+
+function stripCountryWords(text: string): string {
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (/^\d{1,3}$/.test(parts[0] ?? "")) parts.shift();
+  return parts.filter((token) => originIso(token) === undefined && fold(token) !== "REPUBLIC").join(" ").trim();
+}
+
+function productWrapWords(nativeRow: NativeRow, column: Column | undefined): CanonicalWord[] {
+  if (!column) return [];
+  return wordsInColumn(nativeRow.words, column)
+    .filter((word) => {
+      const token = compact(word.text);
+      if (yOf(word) <= nativeRow.y + 0.004) return false;
+      if (token === nativeRow.code || originIso(word.text)) return false;
+      if (numericReadings(word.text).length > 0) return false;
+      if (["ADET", "PCS", "KG", "SET", "MT", "EUR", "EURO", "USD", "TL"].includes(token)) return false;
+      return /[A-Za-z]/.test(word.text);
+    })
+    .sort((left, right) => yOf(left) - yOf(right) || xOf(left) - xOf(right));
+}
+
 function pageBreakCandidate(
   segmentId: string,
   field: string,
@@ -738,9 +807,18 @@ export function bindNativeGoodsCells(
     const value = firstCandidate(candidates.fields, `goodsLines.${index}.quantity`)?.value;
     return typeof value === "number" ? value : undefined;
   };
+  const priceOf = (index: number): number | undefined => {
+    const value = firstCandidate(candidates.fields, `goodsLines.${index}.unitPrice`)?.value;
+    return typeof value === "number" ? value : undefined;
+  };
   const nativeQuantityOf = (row: NativeRow): number | undefined => {
     const table = tables.get(row.pageNumber);
     const column = table?.columns.find((item) => item.role === "quantity");
+    return column ? singleReading(wordsInColumn(row.words, column)) : undefined;
+  };
+  const nativePriceOf = (row: NativeRow): number | undefined => {
+    const table = tables.get(row.pageNumber);
+    const column = table?.columns.find((item) => item.role === "unitPrice");
     return column ? singleReading(wordsInColumn(row.words, column)) : undefined;
   };
   for (const vision of groups.values()) {
@@ -836,15 +914,6 @@ export function bindNativeGoodsCells(
   // not run. One extra or missing character with that quantity and price printed
   // once is still that line. A swapped pair of characters is not.
   if (visionRows.length !== nativeRows.length) {
-    const priceOf = (index: number): number | undefined => {
-      const value = firstCandidate(candidates.fields, `goodsLines.${index}.unitPrice`)?.value;
-      return typeof value === "number" ? value : undefined;
-    };
-    const nativePriceOf = (row: NativeRow): number | undefined => {
-      const table = tables.get(row.pageNumber);
-      const column = table?.columns.find((item) => item.role === "unitPrice");
-      return column ? singleReading(wordsInColumn(row.words, column)) : undefined;
-    };
     visionRows.forEach((row) => {
       if (paired.has(row.index)) return;
       const visionQuantity = quantityOf(row.index);
@@ -870,14 +939,54 @@ export function bindNativeGoodsCells(
     });
   }
 
+  // A misread code still belongs to the one printed row with that quantity and price.
+  // A code that also sits on a different row is a shift: leave it unpaired for review.
+  visionRows.forEach((row) => {
+    if (paired.has(row.index) || /^\d{4,8}$/.test(row.code)) return;
+    const visionQuantity = quantityOf(row.index);
+    const visionPrice = priceOf(row.index);
+    if (visionQuantity == null || visionPrice == null) return;
+    const nativeMatches = nativeRows.filter((nativeRow) => {
+      const nativeQuantity = nativeQuantityOf(nativeRow);
+      const nativePrice = nativePriceOf(nativeRow);
+      return nativeQuantity != null && nativePrice != null
+        && valuesMatch("quantity", nativeQuantity, visionQuantity)
+        && valuesMatch("unitPrice", nativePrice, visionPrice);
+    });
+    if (nativeMatches.length !== 1) return;
+    const claimed = [...paired.values()].some((pair) => pair.row === nativeMatches[0]);
+    if (claimed) return;
+    const livesElsewhere = nativeRows.some((nativeRow) => nativeRow !== nativeMatches[0]
+      && sameIdentity(nativeRow.code, row.code)
+      && (nativeQuantityOf(nativeRow) == null || !valuesMatch("quantity", nativeQuantityOf(nativeRow)!, visionQuantity)));
+    if (livesElsewhere) return;
+    paired.set(row.index, { row: nativeMatches[0]!, orderPaired: true });
+  });
+
   const droppedRows: number[] = [];
   if (nativeRows.length > 0) {
     for (const row of visionRows) {
       if (paired.has(row.index) || looksLikeGoodsCode(row.code)) continue;
       const raw = String(firstCandidate(candidates.fields, `goodsLines.${row.index}.productCode`)?.value ?? "");
-      if (!/^\d+\s*\/\s*\d+/.test(raw.trim())) continue;
+      if (!/^\d+\s*\/\s*\d+/.test(raw.trim()) && !/^\d{4,8}$/.test(row.code)) continue;
       if (nativeRows.some((native) => sameIdentity(native.code, row.code))) continue;
       droppedRows.push(row.index);
+    }
+    const fake = visionRows.filter((row) => /^\d{4,8}$/.test(row.code) && !paired.has(row.index) && !nativeRows.some((native) => sameIdentity(native.code, row.code)));
+    const claimed = new Set([...paired.values()].map((pair) => pair.row));
+    const unclaimed = nativeRows.filter((native) => !claimed.has(native) && looksLikeGoodsCode(native.code));
+    if (fake.length === 1 && unclaimed.length === 1) {
+      paired.set(fake[0]!.index, { row: unclaimed[0]!, orderPaired: true });
+      const dropAt = droppedRows.indexOf(fake[0]!.index);
+      if (dropAt >= 0) droppedRows.splice(dropAt, 1);
+    }
+    for (const field of Object.keys(candidates.fields)) {
+      const match = /^goodsLines\.(\d+)\.description$/.exec(field);
+      if (!match) continue;
+      const index = Number(match[1]);
+      const code = String(firstCandidate(candidates.fields, `goodsLines.${index}.productCode`)?.value ?? "");
+      const text = fold(String(firstCandidate(candidates.fields, field)?.value ?? ""));
+      if (!code && /MALZEME\s+HIZMET\s+TOPLAM/.test(text) && !droppedRows.includes(index)) droppedRows.push(index);
     }
   }
 
@@ -890,12 +999,63 @@ export function bindNativeGoodsCells(
     const identityText = identityWords.map((word) => word.text).join("");
     const visionIdentity = firstCandidate(candidates.fields, `goodsLines.${index}.productCode`)?.value
       ?? firstCandidate(candidates.fields, `goodsLines.${index}.hsCode`)?.value;
-    if (!pair.orderPaired && visionIdentity != null && identityText && !sameIdentity(identityText, String(visionIdentity))) continue;
+    let trustedPair = pair.orderPaired;
+    if (!trustedPair && visionIdentity != null && identityText && !sameIdentity(identityText, String(visionIdentity))) {
+      const nativeQuantity = nativeQuantityOf(nativeRow);
+      const visionQuantity = quantityOf(index);
+      const nativePrice = nativePriceOf(nativeRow);
+      const visionPrice = priceOf(index);
+      trustedPair = nativeQuantity != null && visionQuantity != null && nativePrice != null && visionPrice != null
+        && valuesMatch("quantity", nativeQuantity, visionQuantity)
+        && valuesMatch("unitPrice", nativePrice, visionPrice);
+      if (!trustedPair) continue;
+    }
     for (const column of table.columns) {
       if (column.role === "packaging") continue;
       const role = column.role as BoundRole;
       const field = `goodsLines.${index}.${role}`;
-      const words = wordsInColumn(nativeRow.words, column);
+      let words = wordsInColumn(nativeRow.words, column);
+      if (role === "description") {
+        const descriptionField = `goodsLines.${index}.description`;
+        const currentDescription = firstCandidate(candidates.fields, descriptionField);
+        const currentText = String(currentDescription?.value ?? "");
+        const prose = descriptionWords(words, column);
+        const seen = new Set(prose.map((word) => compact(word.text)));
+        const chosen = prose.concat(productWrapWords(nativeRow, identityColumn).filter((word) => !seen.has(compact(word.text))));
+        const printed = chosen.map((word) => word.text.trim()).join(" ");
+        const countryInCurrent = currentText.split(/\s+/).some((token) => originIso(token) !== undefined || fold(token) === "REPUBLIC");
+        const currentSig = significantTokens(currentText);
+        const printedSig = significantTokens(printed);
+        const sameProduct = currentSig.some((token) => printedSig.includes(token));
+        const printedRicher = sameProduct && printedSig.length >= currentSig.length && printedSig.some((token) => !currentSig.includes(token));
+        if (!countryInCurrent && !countryOnlyText(currentText)) continue;
+        if (printedRicher || (chosen.length > 0 && countryOnlyText(currentText))) {
+          words = chosen;
+        } else if (countryInCurrent || countryOnlyText(currentText)) {
+          const stripped = stripCountryWords(currentText);
+          if (significantTokens(stripped).length === 0) {
+            conflicts[descriptionField] = [reviewCandidate(segmentId, descriptionField, nativeRow.pageNumber, words)];
+          } else {
+            replacements[descriptionField] = [{
+              candidateId: `${segmentId}:native-cell:line-${index + 1}:description`,
+              field: descriptionField,
+              value: stripped,
+              confidence: 0.98,
+              extractor: NATIVE_CELL_EXTRACTOR,
+              evidence: [{
+                segmentId,
+                pageNumber: nativeRow.pageNumber,
+                bbox: words.length > 0 ? unionBox(words) : undefined,
+                text: stripped,
+                contentSource: "NATIVE_TEXT"
+              }]
+            }];
+          }
+          continue;
+        } else {
+          continue;
+        }
+      }
       const parsed = candidateValue(role, words);
       if (!parsed) continue;
       const box = unionBox(words);
@@ -924,18 +1084,20 @@ export function bindNativeGoodsCells(
       }
       if (parsed.value == null) continue;
       const current = firstCandidate(candidates.fields, field);
-      if (role === "description" && current) continue;
       if (role === "productCode" && current) {
         const longCodes = words.filter((word) => looksLikeGoodsCode(word.text));
         const codeWords = longCodes.length > 0 ? longCodes : words.filter((word) => isRowCode(word.text));
         if (codeWords.length === 0) continue;
-        // The product code is on the first line of the row. A model number printed under it is the description.
+        // The product code is on the first line of the row. A shorter model further right is the description.
         const topY = Math.min(...codeWords.map((word) => yOf(word)));
         const onLine = codeWords.filter((word) => yOf(word) - topY <= 0.008);
-        const tokens = [...new Set(onLine.map((word) => compact(word.text)))];
-        const nativeCode = tokens.slice().sort((left, right) => right.length - left.length)[0];
-        // Two different codes on that line stay unresolved.
-        if (!nativeCode || !tokens.every((token) => sameIdentity(token, nativeCode))) continue;
+        const tokens = [...new Set(onLine.map((word) => compact(word.text)))].sort((left, right) => right.length - left.length);
+        const nativeCode = tokens[0];
+        const rivals = tokens.slice(1).filter((token) => !sameIdentity(token, nativeCode ?? ""));
+        if (!nativeCode || rivals.some((token) => nativeCode.length - token.length < 3)) {
+          conflicts[field] = [reviewCandidate(segmentId, field, nativeRow.pageNumber, onLine)];
+          continue;
+        }
         const visionCode = compact(String(current.value));
         if (nativeCode === visionCode) continue;
         if (sameIdentity(nativeCode, visionCode) && nativeCode.length <= visionCode.length) continue;
@@ -954,12 +1116,13 @@ export function bindNativeGoodsCells(
       }];
     }
     const originField = `goodsLines.${index}.origin`;
-    const descriptionColumn = table.columns.find((column) => column.role === "description");
-    if (descriptionColumn && !replacements[originField] && !conflicts[originField]) {
-      const countries = wordsInColumn(nativeRow.words, descriptionColumn).flatMap((word) => {
-        const iso = originIso(word.text);
-        return iso ? [{ iso, word }] : [];
-      });
+    const quantityColumnForOrigin = table.columns.find((column) => column.role === "quantity");
+    const quantityAnchor = quantityColumnForOrigin
+      ? wordsInColumn(nativeRow.words, quantityColumnForOrigin).sort((left, right) => xOf(left) - xOf(right))[0]
+      : undefined;
+    const originLimit = quantityAnchor ? xOf(quantityAnchor) - 0.008 : quantityColumnForOrigin ? quantityColumnForOrigin.left : 0.48;
+    if (!replacements[originField] && !conflicts[originField]) {
+      const countries = countryHits(nativeRow.words.filter((word) => xOf(word) < originLimit));
       const isos = [...new Set(countries.map((item) => item.iso))];
       if (isos.length === 1) {
         const iso = isos[0]!;
@@ -982,6 +1145,11 @@ export function bindNativeGoodsCells(
               contentSource: "NATIVE_TEXT"
             }]
           }];
+        }
+      } else if (isos.length > 1) {
+        const current = firstCandidate(candidates.fields, originField);
+        if (current && !isos.includes(String(current.value ?? ""))) {
+          conflicts[originField] = [reviewCandidate(segmentId, originField, nativeRow.pageNumber, countries.map((item) => item.word))];
         }
       }
     }
@@ -1057,6 +1225,14 @@ export function bindNativeGoodsCells(
     }
   }
 
+  if (nativeRows.length > 0) for (const row of visionRows) {
+    if (paired.has(row.index) || droppedRows.includes(row.index)) continue;
+    if (nativeRows.some((native) => sameIdentity(native.code, row.code))) continue;
+    const field = `goodsLines.${row.index}.productCode`;
+    if (conflicts[field] || replacements[field]) continue;
+    conflicts[field] = [reviewCandidate(segmentId, field, nativeRows[0]?.pageNumber ?? 1, [])];
+  }
+
   return {
     replacements: { version: "1", fields: replacements },
     conflicts: { version: "1", fields: conflicts },
@@ -1111,6 +1287,10 @@ export function applyNativeGoodsCellBinding(
   for (const [field, list] of Object.entries(binding.replacements.fields)) {
     if (binding.conflicts.fields[field]) continue;
     const key = placedKey(field);
+    if (list.length === 0) {
+      delete fields[key];
+      continue;
+    }
     fields[key] = list.map((item) => ({ ...item, field: key }));
   }
   return { version: "1", fields };

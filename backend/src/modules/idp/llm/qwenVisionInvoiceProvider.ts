@@ -517,6 +517,12 @@ function hasCommercialGoodsIdentity(line: NaturalGoodsLine): boolean {
   return hasCatalogGoodsIdentity(line) || price != null || total != null;
 }
 
+/** The invoice total line is not a goods row, even when it carries the grand total. */
+export function isGoodsAmountTotalText(text: string): boolean {
+  const normalized = foldInvoiceLatinText(text);
+  return /malzeme\s*\/?\s*hizmet\s+toplam/i.test(normalized);
+}
+
 /** Shipment/export summary prose is not a commercial goods description. */
 export function isExportShipmentFooterText(text: string): boolean {
   const normalized = foldInvoiceLatinText(text);
@@ -529,6 +535,7 @@ export function isNonCommercialGoodsLine(line: NaturalGoodsLine): boolean {
   // Amount-in-words is never a commercial goods description. Vision may invent
   // price/total/productCode/short numeric "HS" on that footer — still drop it.
   if (description && isAmountInWordsText(description)) return true;
+  if (description && isGoodsAmountTotalText(description) && !hasCatalogGoodsIdentity(line)) return true;
   // All-goods origin/menşe statements are footers even when Vision invents
   // order-like HS/productCode/price on the same line (Çelikel page-2 class).
   if (description && isOriginDeclarationText(description)) return true;
@@ -574,7 +581,7 @@ const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
   BULGARIA: "BG", BULGARISTAN: "BG", BG: "BG",
   GREECE: "GR", YUNANISTAN: "GR", GR: "GR",
   HUNGARY: "HU", MACARISTAN: "HU", HU: "HU",
-  CZECHIA: "CZ", CZECHREPUBLIC: "CZ", CEKYA: "CZ", CZ: "CZ",
+  CZECHIA: "CZ", CZECH: "CZ", CZECHREPUBLIC: "CZ", CEKYA: "CZ", CZ: "CZ",
   SWEDEN: "SE", ISVEC: "SE", SE: "SE",
   NORWAY: "NO", NORVEC: "NO", NO: "NO",
   DENMARK: "DK", DANIMARKA: "DK", DK: "DK",
@@ -608,6 +615,7 @@ const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
   PAKISTAN: "PK", PK: "PK",
   EGYPT: "EG", MISIR: "EG", EG: "EG",
   MOROCCO: "MA", FAS: "MA", MA: "MA",
+  TUNISIA: "TN", TUNUSIA: "TN", TUNUS: "TN", TN: "TN",
   SOUTHAFRICA: "ZA", GUNEYAFRIKA: "ZA", ZA: "ZA"
 };
 
