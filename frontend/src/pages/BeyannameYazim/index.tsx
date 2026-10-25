@@ -16,7 +16,7 @@ import UploadDrawer from './UploadDrawer';
 import ReminderModal from './ReminderModal';
 import { ApiError, apiErrorCode } from '../../api/apiClient';
 import Note from '../../components/ui/Note';
-import { GtipChoiceModal, useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
+import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import { listDocuments } from '../../api/documentApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
 
@@ -36,7 +36,6 @@ function actionError(error: unknown, fallback: string): string {
 export default function BeyannameYazimPage() {
   const { toast } = useToast();
   const { confirmIfHeld, dialog: holdDialog } = useHoldStepConfirm();
-  const [gtipOpen, setGtipOpen] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const declarationIdParam = searchParams.get('declarationId');
@@ -122,27 +121,29 @@ export default function BeyannameYazimPage() {
     setListeItems(liste); setRecords(recs);
   }
 
-  async function handleSendToControl(options?: { gtipDecision?: 'continue' | 'ask-customer'; holdConfirmed?: boolean }) {
+  async function handleSendToControl(options?: { holdConfirmed?: boolean }) {
     if (!selected) return;
     if (selected.operationFileStatus === 'beklemede' && !options?.holdConfirmed) {
       if (!(await confirmIfHeld(true))) return;
     }
     try {
-      const updated = await beyannameService.transitionWriting(selected.id,{ action:'SUBMIT_TO_MT', gtipDecision: options?.gtipDecision });
-      if (updated.operation?.fileStatus === 'gtip-hazirlik') {
+      // Sayfadaki GTİP satırları kaydedildikten sonra kontrol edilir.
+      // Kayıtla tutuyorsa onay penceresi açılmaz; tutmuyorsa mevcut hata kalır.
+      const updated = await beyannameService.transitionWriting(selected.id, {
+        action: 'SUBMIT_TO_MT',
+        gtipDecision: 'continue',
+      });
+      if (updated.operation?.fileStatus === 'gtip-hazirlik' || updated.operation?.fileStatus === 'gtip-eksik') {
         await reloadDeclarationData();
-        setGtipOpen(false);
-        toast('GTİP müşteriden isteniyor. Dosya GTİP hazırlıkta bekliyor.');
+        toast('GTİP kaydı eksik veya hatalı. Kaydı ekleyip düzeltin; kontrole gönderilmedi.', { duration: 7000 });
         return;
       }
-      setGtipOpen(false);
       await reloadDeclarationData();
       setActiveTab('kontrol');
       toast('Beyanname MT kontrole gönderildi');
     } catch (error) {
-      if (apiErrorCode(error) === 'GTIP_MATCH_CONFIRM') {
-        setGtipOpen(true);
-        return;
+      if (apiErrorCode(error) === 'GTIP_NOT_IN_CUSTOMER_DB') {
+        await reloadDeclarationData();
       }
       toast(actionError(error, 'MT kontrole geçiş yapılamadı'), { duration: 7000 });
     }
@@ -362,12 +363,6 @@ export default function BeyannameYazimPage() {
         onClose={() => setPreviewDocId(null)}
       />
       {holdDialog}
-      <GtipChoiceModal
-        open={gtipOpen}
-        onClose={() => setGtipOpen(false)}
-        onAskCustomer={() => void handleSendToControl({ gtipDecision: 'ask-customer', holdConfirmed: true })}
-        onContinue={() => void handleSendToControl({ gtipDecision: 'continue', holdConfirmed: true })}
-      />
     </div>
   );
 }
