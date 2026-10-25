@@ -24,12 +24,14 @@ function InlineInput({
   onBlur,
   multiline = false,
   className = '',
+  scrollable = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   onBlur?: () => void;
   multiline?: boolean;
   className?: string;
+  scrollable?: boolean;
 }) {
   const base =
     'w-full border border-line-strong bg-surface rounded-md px-2.5 font-[inherit] text-[12.5px] text-text-strong focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors';
@@ -48,9 +50,10 @@ function InlineInput({
     <input
       type="text"
       value={value}
+      title={scrollable && value ? value : undefined}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
-      className={`${base} h-[30px] ${className}`}
+      className={`${base} h-[30px] ${scrollable ? 'overflow-x-auto' : ''} ${className}`}
     />
   );
 }
@@ -337,7 +340,7 @@ function GroupSection({
                     ].map((col) => (
                       <th
                         key={col}
-                        className="px-3 py-2 text-[10.5px] font-bold uppercase tracking-[.06em] text-muted-2 whitespace-nowrap border-r border-line last:border-r-0"
+                        className={`px-3 py-2 text-[10.5px] font-bold uppercase tracking-[.06em] text-muted-2 whitespace-nowrap border-r border-line last:border-r-0 ${col === 'GTİP No' ? 'min-w-[196px]' : ''}`}
                       >
                         {col}
                       </th>
@@ -347,24 +350,47 @@ function GroupSection({
                 <tbody>
                   {lineItems.map((item, index) => {
                     const edit = (patch: Partial<BeyannameLineItem>) => onLineChange?.(index, patch);
-                    const cell = (value: string | number | undefined, patch: (text: string) => Partial<BeyannameLineItem>, wide = false) => (
-                      <td className={`px-2 py-1.5 border-r border-line last:border-r-0 ${wide ? 'min-w-[160px]' : 'min-w-[96px]'}`}>
-                        <InlineInput
-                          value={editableText(value)}
-                          onChange={(text) => edit(patch(text))}
-                          onBlur={onLineBlur}
-                          className="font-mono"
-                        />
-                      </td>
-                    );
+                    const cell = (
+                      value: string | number | undefined,
+                      patch: (text: string) => Partial<BeyannameLineItem>,
+                      kind: 'gtip' | 'wide' | 'text' = 'text',
+                    ) => {
+                      const text = editableText(value);
+                      const continues = kind !== 'gtip' && text.length > 16;
+                      return (
+                        <td className={`px-2 py-1.5 border-r border-line last:border-r-0 align-top ${
+                          kind === 'gtip' ? 'min-w-[196px] w-[196px]' : kind === 'wide' ? 'min-w-[140px] max-w-[180px]' : 'min-w-[96px] max-w-[132px]'
+                        }`}>
+                          <div className="relative group">
+                            <InlineInput
+                              value={text}
+                              onChange={(next) => edit(patch(next))}
+                              onBlur={onLineBlur}
+                              scrollable={kind !== 'gtip'}
+                              className={kind === 'gtip' ? 'font-mono tracking-tight' : 'font-mono'}
+                            />
+                            {continues && (
+                              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-muted-2 bg-surface pl-1">
+                                …
+                              </span>
+                            )}
+                            {continues && (
+                              <div className="pointer-events-none absolute left-0 top-[calc(100%+4px)] z-30 hidden group-hover:block w-max max-w-[320px] rounded-md bg-ink px-2.5 py-1.5 text-[12px] leading-snug text-surface shadow-lg whitespace-pre-wrap">
+                                {text}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      );
+                    };
                     return (
                       <tr key={`${item.lineNo}-${index}`} className="border-b border-line last:border-b-0">
                         {cell(item.lineNo, (text) => ({ lineNo: lineNoValue(text, index) }))}
                         {cell(item.faturaNo, (text) => ({ faturaNo: text }))}
                         {cell(item.malzemeNo, (text) => ({ malzemeNo: text }))}
-                        {cell(item.gtip, (text) => ({ gtip: text }))}
-                        {cell(item.ticariTanim, (text) => ({ ticariTanim: text, description: text }), true)}
-                        {cell(item.description, (text) => ({ description: text, ticariTanim: text }), true)}
+                        {cell(item.gtip, (text) => ({ gtip: text }), 'gtip')}
+                        {cell(item.ticariTanim, (text) => ({ ticariTanim: text, description: text }), 'wide')}
+                        {cell(item.description, (text) => ({ description: text, ticariTanim: text }), 'wide')}
                         {cell(item.quantity, (text) => ({ quantity: text }))}
                         {cell(item.miktarBirimi, (text) => ({ miktarBirimi: text }))}
                         {cell(item.mense, (text) => ({ mense: text }))}
