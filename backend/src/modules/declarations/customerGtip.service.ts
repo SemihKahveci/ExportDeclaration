@@ -33,8 +33,9 @@ type GateDeclaration = mongoose.Document & {
   operation?: OperationMetaDoc | null;
 };
 
-function digits(value: unknown): string {
-  return String(value ?? "").replace(/\D/g, "");
+/** Nokta, boşluk ve diğer ayırıcılar yok sayılır: 86.6661.6666.6666 ile 86666166666666 aynıdır. */
+export function normalizeGtipCode(value: unknown): string {
+  return String(value ?? "").replace(/[.\s]/g, "").replace(/\D/g, "");
 }
 
 function folded(value: unknown): string {
@@ -56,16 +57,16 @@ export function gtipMatchIsClean(lines: GtipGoodsLine[], records: GtipMaterialRo
   if (present.length === 0) return false;
   const verified = records.filter((record) => record.status === "verified");
   return present.every((line) => {
-    const hs = digits(line.hsCode);
+    const hs = normalizeGtipCode(line.hsCode);
     if (hs.length < 4) return false;
     const material = folded(line.productCode);
     if (material) {
       const byMaterial = records.filter((record) => folded(record.materialNo) === material);
       if (byMaterial.length > 0) {
-        return byMaterial.some((record) => record.status === "verified" && digits(record.gtipNo) === hs);
+        return byMaterial.some((record) => record.status === "verified" && normalizeGtipCode(record.gtipNo) === hs);
       }
     }
-    return verified.some((record) => digits(record.gtipNo) === hs);
+    return verified.some((record) => normalizeGtipCode(record.gtipNo) === hs);
   });
 }
 
