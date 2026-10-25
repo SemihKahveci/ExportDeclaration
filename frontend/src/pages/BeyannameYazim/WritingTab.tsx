@@ -465,8 +465,10 @@ const FIELD_DEFAULT_DOC: Record<string, string> = {
 interface WritingTabProps {
   record: BeyannameRecord;
   hasViewedPreview: boolean;
+  locked?: boolean;
   onViewDeclaration: () => void;
   onSendToControl: () => void;
+  onRewrite: () => void;
 }
 
 // ─── Modal state ──────────────────────────────────────────────────────────────
@@ -484,8 +486,10 @@ interface PickerState {
 export default function WritingTab({
   record,
   hasViewedPreview,
+  locked = false,
   onViewDeclaration,
   onSendToControl,
+  onRewrite,
 }: WritingTabProps) {
   const { toast } = useToast();
 
@@ -651,7 +655,14 @@ export default function WritingTab({
               ))}
             </div>
             <div className="mt-3 flex justify-end">
-              <Button size="sm" variant="blue" icon={RefreshCw}>
+              <Button
+                size="sm"
+                variant="primary"
+                icon={RefreshCw}
+                onClick={() => void onRewrite()}
+                disabled={locked}
+                title="Bu faturayı yeniden parse eder. İşlem bitene kadar yazım kapalı kalır."
+              >
                 Tekrar Yaz
               </Button>
             </div>

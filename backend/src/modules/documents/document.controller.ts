@@ -38,7 +38,8 @@ export async function postProcessDocument(req: Request, res: Response): Promise<
   const run = await enqueueDocumentProcessing({
     companyId: req.auth!.operationalCompanyId,
     declarationId: req.params.id!,
-    uploadedFileId: req.params.documentId!
+    uploadedFileId: req.params.documentId!,
+    force: true
   });
   res.status(202).json({ ok: true, data: run });
 }

@@ -1,8 +1,14 @@
-import { apiGetJson, apiPostMultipart } from "./apiClient";
+import { apiGetJson, apiPostJson, apiPostMultipart } from "./apiClient";
 import type { DocumentType, UploadedDocument } from "@/api/types/document.types";
 
 export async function listDocuments(declarationId: string): Promise<UploadedDocument[]> {
   return apiGetJson<UploadedDocument[]>(`/api/declarations/${encodeURIComponent(declarationId)}/documents`);
+}
+
+export async function reprocessDocument(declarationId: string, documentId: string): Promise<void> {
+  await apiPostJson(
+    `/api/declarations/${encodeURIComponent(declarationId)}/documents/${encodeURIComponent(documentId)}/process`
+  );
 }
 
 export async function uploadDocument(declarationId: string, file: File, type: DocumentType): Promise<UploadedDocument> {

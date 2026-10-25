@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Save, Send, FileText, Layers, Loader2, ChevronLeft, Bell } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameRecord } from '../../types';
@@ -17,7 +17,7 @@ import ReminderModal from './ReminderModal';
 import { ApiError, apiErrorCode } from '../../api/apiClient';
 import Note from '../../components/ui/Note';
 import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
-import { listDocuments } from '../../api/documentApi';
+import { listDocuments, reprocessDocument } from '../../api/documentApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
 
 const TAB_ITEMS = [
@@ -56,6 +56,8 @@ export default function BeyannameYazimPage() {
   const [uploadRef,        setUploadRef]         = useState<string | undefined>(undefined);
   const [reminderOpen,     setReminderOpen]      = useState(false);
   const [reminderRef,      setReminderRef]       = useState<string | undefined>(undefined);
+  const [rewriting, setRewriting] = useState(false);
+  const sawRewritePending = useRef(false);
 
   useEffect(() => {
     Promise.all([
@@ -183,6 +185,54 @@ export default function BeyannameYazimPage() {
   function handleTaslakKaydet() {
     toast('Taslak kaydedildi');
   }
+
+  async function handleRewrite() {
+    if (!selected || rewriting) return;
+    try {
+      const docs = await listDocuments(selected.id);
+      const invoice = docs.find((doc) =>
+        doc.type === 'INVOICE' || doc.type === 'E_INVOICE_XML' || doc.type === 'EXPORT_INVOICE'
+      ) ?? docs[0];
+      if (!invoice) {
+        toast('Yeniden yazılacak fatura bulunamadı.');
+        return;
+      }
+      sawRewritePending.current = false;
+      await reprocessDocument(selected.id, invoice._id);
+      setRewriting(true);
+      toast('Fatura yeniden parse ediliyor. Beyanname yazımı işlem bitene kadar kapalı.');
+    } catch (error) {
+      toast(actionError(error, 'Fatura yeniden parse edilemedi.'), { duration: 7000 });
+    }
+  }
+
+  useEffect(() => {
+    if (!rewriting || !selectedId) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const docs = await listDocuments(selectedId).catch(() => []);
+        const invoice = docs.find((doc) =>
+          doc.type === 'INVOICE' || doc.type === 'E_INVOICE_XML' || doc.type === 'EXPORT_INVOICE'
+        ) ?? docs[0];
+        if (!invoice || cancelled) return;
+        if (invoice.extractionStatus === 'PENDING') {
+          sawRewritePending.current = true;
+          return;
+        }
+        if (!sawRewritePending.current) return;
+        setRewriting(false);
+        await reloadDeclarationData();
+        toast(invoice.extractionStatus === 'SUCCESS'
+          ? 'Parse tamamlandı. Beyanname yazımı tekrar açıldı.'
+          : 'Parse tamamlanamadı. Beyanname yazımı tekrar açıldı.');
+      })();
+    }, 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [rewriting, selectedId]);
 
   if (loading) {
     return (
@@ -342,13 +392,20 @@ export default function BeyannameYazimPage() {
             className="px-5 shrink-0"
           />
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+            {(rewriting || selected.parsing) && (
+              <Note variant="warn">Parse devam ediyor. Beyanname yazımı işlem bitene kadar kapalı.</Note>
+            )}
             {activeTab === 'yazim' ? (
-              <WritingTab
-                record={selected}
-                hasViewedPreview={hasViewedPreview}
-                onViewDeclaration={handleViewDeclaration}
-                onSendToControl={handleSendToControl}
-              />
+              <div className={rewriting || selected.parsing ? 'pointer-events-none opacity-60' : undefined}>
+                <WritingTab
+                  record={selected}
+                  hasViewedPreview={hasViewedPreview}
+                  locked={Boolean(rewriting || selected.parsing)}
+                  onViewDeclaration={handleViewDeclaration}
+                  onSendToControl={handleSendToControl}
+                  onRewrite={() => void handleRewrite()}
+                />
+              </div>
             ) : (
               <ControlTab
                 declarationId={selected.id}

@@ -26,6 +26,7 @@ export async function enqueueDocumentProcessing(params: {
   companyId: mongoose.Types.ObjectId;
   declarationId: string;
   uploadedFileId: string;
+  force?: boolean;
 }) {
   const { companyId, declarationId, uploadedFileId } = params;
   if (!mongoose.isValidObjectId(uploadedFileId)) throw new HttpError(400, "Geçersiz dosya id.");
@@ -39,6 +40,29 @@ export async function enqueueDocumentProcessing(params: {
     uploadedFileId: file._id,
     processorVersion: env.idpProcessorVersion
   });
+
+  if (params.force) {
+    file.extractionStatus = "PENDING";
+    file.parseErrors = [];
+    await file.save();
+    const retry = await ProcessingRunModel.create({
+      companyId,
+      declarationId: file.declarationId,
+      uploadedFileId: file._id,
+      logicalDocumentId: logical?._id,
+      status: ProcessingStatus.QUEUED,
+      currentStage: ProcessingStage.INGEST,
+      processorVersion: env.idpProcessorVersion,
+      enqueueKey: `${enqueueKey}:${Date.now()}`
+    });
+    const queue = getIdpQueue();
+    await queue.add(
+      "process-document",
+      { processingRunId: String(retry._id) },
+      { jobId: String(retry._id) }
+    );
+    return retry.toObject();
+  }
 
   // The deterministic key is the durable idempotency boundary. Concurrent API
   // requests for the same physical upload + processor version converge on one

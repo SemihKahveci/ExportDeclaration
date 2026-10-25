@@ -492,6 +492,12 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
     };
     run.completedAt = new Date();
     await run.save();
+    const failedFile = await UploadedDocumentModel.findById(run.uploadedFileId);
+    if (failedFile?.extractionStatus === "PENDING") {
+      failedFile.extractionStatus = "FAILED";
+      failedFile.parseErrors = [error instanceof Error ? error.message : "IDP processing hatası"];
+      await failedFile.save();
+    }
     throw error;
   }
 }
