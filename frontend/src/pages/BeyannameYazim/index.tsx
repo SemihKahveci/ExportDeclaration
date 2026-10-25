@@ -322,6 +322,15 @@ export default function BeyannameYazimPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2 mt-6">
+          {selected && (
+            <Button
+              variant="default"
+              icon={FileText}
+              onClick={() => navigate(`/evrak-hazirlik?declarationId=${encodeURIComponent(selected.id)}&ref=${encodeURIComponent(selected.ref)}`)}
+            >
+              Evrak Hazırlık
+            </Button>
+          )}
           <Button variant="default" icon={Save} onClick={handleTaslakKaydet} writeCap="beyanname.write">
             Taslak Kaydet
           </Button>
