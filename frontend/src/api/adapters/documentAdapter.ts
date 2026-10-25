@@ -28,8 +28,11 @@ export function toEvrakFile(d: BackendDeclaration, docs: UploadedDocument[]): Ev
 
   return {
     id: d._id,
-    ref: refFromId(d._id),
-    customer: mergeNormalizedFromApi(d.normalizedData).parties.buyer?.name ?? "—",
+    ref: refFromId(d),
+    customer: d.operation?.customerName
+      ?? mergeNormalizedFromApi(d.normalizedData).parties.buyer?.name
+      ?? mergeNormalizedFromApi(d.normalizedData).parties.seller?.name
+      ?? "—",
     meta,
     allReady,
     processing: pending > 0

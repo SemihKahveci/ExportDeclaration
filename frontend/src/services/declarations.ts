@@ -16,7 +16,9 @@ import {
   fetchPanelDeclarations,
   fetchSourceCardsById,
   fetchTescilRecords,
+  mapDocLabelToType,
 } from './liveApi';
+import { uploadDocument } from '../api/documentApi';
 import { computeKapanisStats, computeTescilStats } from '../api/adapters/operationAdapter';
 import { transitionApprovalWorkflow, transitionWritingWorkflow, transitionRegistrationWorkflow, transitionClosureWorkflow } from '../api/declarationApi';
 
@@ -94,6 +96,7 @@ export interface DocumentUploadPayload {
   docType: string;
   file: File | null;
   note: string;
+  declarationId?: string;
 }
 
 export const beyannameListeService = {
@@ -103,6 +106,9 @@ export const beyannameListeService = {
   },
   uploadDocument: async (payload: DocumentUploadPayload) => {
     if (!payload.file) throw new Error("Yüklenecek dosya seçilmedi");
+    if (payload.declarationId) {
+      return uploadDocument(payload.declarationId, payload.file, mapDocLabelToType(payload.docType));
+    }
     return apiUploadByRef(payload.ref, payload.file, payload.docType);
   },
 };

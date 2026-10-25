@@ -61,18 +61,26 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
     if (!ref || !docType || files.length === 0) return;
     setSaving(true);
     try {
-      let declarationId = '';
+      let declarationId = items.find((item) => item.ref === ref)?.id ?? '';
       for (const file of files) {
-        const uploaded = await beyannameListeService.uploadDocument({ ref, customer, docType, file, note });
-        declarationId = uploaded.declarationId;
+        const uploaded = await beyannameListeService.uploadDocument({
+          ref,
+          customer,
+          docType,
+          file,
+          note,
+          declarationId: declarationId || undefined,
+        });
+        declarationId = uploaded.declarationId || declarationId;
       }
       toast(files.length === 1
         ? `Dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`
         : `${files.length} dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`);
       handleClose();
       if (declarationId) onUploaded?.(declarationId);
-    } catch {
-      toast('Dosya yüklenemedi');
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : 'Dosya yüklenemedi';
+      toast(message);
     } finally {
       setSaving(false);
     }
