@@ -68,7 +68,7 @@ export async function fetchBeyannameListeItems(): Promise<BeyannameListeItem[] |
   return Promise.all(
     rows.map(async (row) => {
       const docs = await listDocuments(row._id).catch(() => []);
-      return toBeyannameListeItem(row, docs.length);
+      return toBeyannameListeItem(row, docs);
     })
   );
 }

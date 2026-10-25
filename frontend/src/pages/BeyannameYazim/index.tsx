@@ -69,7 +69,9 @@ export default function BeyannameYazimPage() {
         const matchByRef = refParam ? recs.find((r) => r.ref === refParam) : null;
         const target = matchById ?? matchByRef;
         setSelectedId((target ?? recs[0]).id);
-        if (target) {
+        if (target?.parsing) {
+          toast('Parse henüz bitmedi. Beyanname yazımı işlem tamamlanınca açılır.');
+        } else if (target) {
           setActiveTab(requestedTab);
           setViewMode('detail');
         }
@@ -90,6 +92,10 @@ export default function BeyannameYazimPage() {
     : null;
 
   function openDetail(item: BeyannameListeItem, tab: 'yazim' | 'kontrol') {
+    if (item.parsing) {
+      toast('Parse henüz bitmedi. Beyanname yazımı işlem tamamlanınca açılır.');
+      return;
+    }
     const match = records.find((r) => r.ref === item.ref) ?? records[0];
     if (match) {
       setSelectedId(match.id);

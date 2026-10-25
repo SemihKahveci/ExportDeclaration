@@ -275,7 +275,17 @@ export function toDocCheckItems(docs: UploadedDocument[]): BeyannameDocCheckItem
   }));
 }
 
-export function toBeyannameListeItem(d: BackendDeclaration, docCount = 0): BeyannameListeItem {
+const INVOICE_TYPES = new Set<DocumentType>(["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"]);
+
+export function documentsAreParsing(docs: UploadedDocument[]): boolean {
+  return docs.some((doc) => doc.extractionStatus === "PENDING");
+}
+
+export function invoiceHasArrived(docs: UploadedDocument[]): boolean {
+  return docs.some((doc) => INVOICE_TYPES.has(doc.type) && doc.extractionStatus === "SUCCESS");
+}
+
+export function toBeyannameListeItem(d: BackendDeclaration, docs: UploadedDocument[] = []): BeyannameListeItem {
   const norm = mergeNormalizedFromApi(d.normalizedData);
   const op = d.operation;
   const islemLabels: Record<string, string> = {
@@ -294,9 +304,11 @@ export function toBeyannameListeItem(d: BackendDeclaration, docCount = 0): Beyan
     status: listeStatusOf(d),
     transportMode: mapTransportMode(op?.transportMode ?? norm.transport.mode),
     lineCount: norm.goodsLines.length,
-    docCount,
-    totalDocCount: docCount,
+    docCount: docs.length,
+    totalDocCount: docs.length,
     warningCount: d.status === "ERROR" ? 1 : 0,
+    parsing: documentsAreParsing(docs),
+    invoiceArrived: invoiceHasArrived(docs),
     missingDocuments: op?.missingDocuments ?? [],
     gtipStatus: d.status === "ERROR" ? "uyumsuz" : "uygun",
     assignee: op?.assigneeName ?? "—",
@@ -333,6 +345,7 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     fields,
     lineItems: toLineItems(norm),
     operationFileStatus: d.operation?.fileStatus ?? "yeni-talep",
+    parsing: documentsAreParsing(docs),
     returnNotice: d.operation?.returnNotice ?? "",
     holdNote: d.operation?.holdNote ?? "",
     docs: toDocCheckItems(docs),

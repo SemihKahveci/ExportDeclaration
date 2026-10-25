@@ -479,6 +479,10 @@ export interface BeyannameListeItem {
   approvalStatus: 'FIRST_PENDING'|'SECOND_PENDING'|'APPROVED'|'RETURNED';
   requiresSecondApproval: boolean;
   approvalNote: string;
+  /** Fatura veya ek evrak IDP kuyruğundayken beyanname yazımı açılmaz. */
+  parsing?: boolean;
+  /** En az bir fatura belgesi başarıyla işlendi. */
+  invoiceArrived?: boolean;
 }
 
 export type BeyannameStatus = 'taslak' | 'kontrol' | 'tescilli' | 'bekliyor';
@@ -556,6 +560,7 @@ export interface BeyannameRecord {
   approvalNote: string;
   approvalHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
   operationFileStatus: string;
+  parsing?: boolean;
   returnNotice: string;
   holdNote: string;
 }

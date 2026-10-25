@@ -23,9 +23,10 @@ interface DocStatusTabProps {
   docs: EvrakDocRow[];
   onPreview: (doc: EvrakDocRow) => void;
   onOpenWriting: (doc: EvrakDocRow) => void;
+  onBlocked: (doc: EvrakDocRow) => void;
 }
 
-export default function DocStatusTab({ docs, onPreview, onOpenWriting }: DocStatusTabProps) {
+export default function DocStatusTab({ docs, onPreview, onOpenWriting, onBlocked }: DocStatusTabProps) {
   return (
     <Table>
       <thead>
@@ -48,7 +49,13 @@ export default function DocStatusTab({ docs, onPreview, onOpenWriting }: DocStat
             <Tr
               key={doc.id}
               className={isMissing ? '!bg-[#fffbf2]' : undefined}
-              onClick={arrived ? () => onOpenWriting(doc) : undefined}
+              onClick={() => {
+                if (!arrived) {
+                  onBlocked(doc);
+                  return;
+                }
+                onOpenWriting(doc);
+              }}
             >
               <Td>
                 <span className={`font-semibold text-[13px] ${arrived ? 'text-accent' : ''}`} title={arrived ? 'Beyanname yazım alanlarına git' : undefined}>

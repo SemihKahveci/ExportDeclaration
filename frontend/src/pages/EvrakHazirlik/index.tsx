@@ -250,8 +250,13 @@ export default function EvrakHazirlikPage() {
   }
 
   function handleSelectFile(id: string, ref: string) {
+    const file = files.find((item) => item.id === id);
     setSelectedId(id);
     setSearchParams({ declarationId: id, ref }, { replace: true });
+    if (file?.processing) {
+      toast('Parse henüz bitmedi. Beyanname yazımı işlem tamamlanınca açılır.');
+      return;
+    }
     toast(ref + ' seçildi');
   }
 
@@ -424,7 +429,18 @@ export default function EvrakHazirlikPage() {
                   <DocStatusTab
                     docs={docs}
                     onPreview={handlePreview}
-                    onOpenWriting={() => navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=yazim`)}
+                    onBlocked={(doc) => toast(
+                      doc.status === 'İşleniyor'
+                        ? 'Parse henüz bitmedi. Beyanname yazımı işlem tamamlanınca açılır.'
+                        : 'Bu evrak tamam değil. Beyanname yazımı için önce evrakın gelmesi gerekir.'
+                    )}
+                    onOpenWriting={() => {
+                      if (selectedFile.processing || docs.some((doc) => doc.status === 'İşleniyor')) {
+                        toast('Parse henüz bitmedi. Beyanname yazımı işlem tamamlanınca açılır.');
+                        return;
+                      }
+                      navigate(`/beyanname?declarationId=${encodeURIComponent(selectedFile.id)}&ref=${encodeURIComponent(selectedFile.ref)}&tab=yazim`);
+                    }}
                   />
                 )}
                 {activeTab === 'conflicts' && (
