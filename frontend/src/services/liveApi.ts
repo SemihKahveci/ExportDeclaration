@@ -197,6 +197,8 @@ export async function fetchParseSnapshot(): Promise<Array<{ id: string; ref: str
   );
   return snapshots.flat();
 }
+
+export async function fetchEvrakDocs(declarationId: string) {
   if (!liveApiEnabled()) return null;
   try {
     const docs = await listDocuments(declarationId);
