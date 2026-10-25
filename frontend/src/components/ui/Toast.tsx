@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useLayoutEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react';
 
 interface ToastItem {
   id: number;
@@ -17,67 +17,34 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 
 let nextId = 0;
 
-function measureAnchor(): { top: number; left: number; width: number; height: number } {
-  const viewport = { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight };
-  const el =
-    document.querySelector('[data-toast-anchor]') ??
-    document.querySelector('main');
-  if (!el) return viewport;
-  const rect = el.getBoundingClientRect();
-  // The anchor can be taller than the screen when a long list scrolls with the page.
-  // Keep the toast in the part of that anchor that is on screen now.
-  const top = Math.max(rect.top, 0);
-  const left = Math.max(rect.left, 0);
-  const right = Math.min(rect.right, window.innerWidth);
-  const bottom = Math.min(rect.bottom, window.innerHeight);
-  const width = right - left;
-  const height = bottom - top;
-  if (width <= 0 || height <= 0) return viewport;
-  return { top, left, width, height };
-}
-
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [box, setBox] = useState({ top: 0, left: 0, width: 0, height: 0 });
 
   const toast = useCallback((message: string, options?: ToastOptions) => {
+    const id = ++nextId;
+    const duration = options?.duration
+      ?? (message.includes('\n') ? 8000 : 3500);
+    setTimeout(() => {
+      setToasts((curr) => curr.filter((t) => t.id !== id));
+    }, duration);
     setToasts((prev) => {
-      if (prev.some((t) => t.message === message)) return prev;
-      const id = ++nextId;
-      const duration = options?.duration
-        ?? (message.includes('\n') ? 8000 : 3500);
-      setTimeout(() => {
-        setToasts((curr) => curr.filter((t) => t.id !== id));
-      }, duration);
-      return [...prev, { id, message }];
+      const withoutSame = prev.filter((t) => t.message !== message);
+      return [...withoutSame, { id, message }].slice(-2);
     });
   }, []);
-
-  useLayoutEffect(() => {
-    if (toasts.length === 0) return;
-    const update = () => setBox(measureAnchor());
-    update();
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => {
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
-    };
-  }, [toasts.length]);
 
   return (
     <ToastContext.Provider value={{ toast }}>
       {children}
       {toasts.length > 0 && (
         <div
-          className="fixed z-[100] flex flex-col items-center justify-center gap-2 pointer-events-none"
-          style={{ top: box.top, left: box.left, width: box.width, height: box.height }}
+          className="fixed z-[100] bottom-4 right-4 flex flex-col items-end gap-2 pointer-events-none"
           aria-live="polite"
         >
           {toasts.map((t) => (
             <div
               key={t.id}
-              className="flex items-start gap-2.5 px-4 py-2.5 rounded-lg bg-ink text-surface text-[13px] font-medium shadow-xl pointer-events-auto animate-in max-w-[min(92vw,560px)]"
+              className="flex items-start gap-2.5 px-4 py-2.5 rounded-lg bg-ink text-surface text-[13px] font-medium shadow-xl pointer-events-auto animate-in max-w-[min(92vw,380px)]"
               style={{ animationDuration: '160ms' }}
             >
               <span className="w-2 h-2 rounded-full bg-accent shrink-0 mt-1.5" />
