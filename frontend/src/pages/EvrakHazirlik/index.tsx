@@ -169,6 +169,9 @@ export default function EvrakHazirlikPage() {
   const selectedFile = files.find((f) => f.id === selectedId);
   const anyProcessing = files.some((file) => file.processing);
   const reminderDisabled = docs.length > 0 && !docs.some((doc) => doc.status === 'Eksik');
+  const invoiceArrived = docs.some((doc) =>
+    doc.status === 'Geldi' && (doc.name === 'Fatura' || doc.name === 'e-Fatura XML' || doc.name === 'İhracat Faturası')
+  );
 
   const stats: EvrakPageStats | null = selectedFile ? {
     required: docs.filter((d) => d.required === 'Evet').length,
@@ -300,11 +303,13 @@ export default function EvrakHazirlikPage() {
           </p>
         </div>
         <div className="flex items-center gap-2.5 shrink-0">
+          {invoiceArrived && (
           <Button
             icon={AlertTriangle}
             disabled={selectedFile?.allReady ?? false}
             onClick={() => setOverrideOpen(true)}
             writeCap="beyanname.write"
+            title="Fatura gelmeden eksik yazım açılmaz"
             style={
               !(selectedFile?.allReady ?? false)
                 ? { background: 'var(--warn-tint)', borderColor: '#e8d0a2', color: '#7a5a16' }
@@ -313,6 +318,7 @@ export default function EvrakHazirlikPage() {
           >
             Eksik Evrakla Yaz
           </Button>
+          )}
           <Button
             variant="primary"
             icon={CheckSquare}

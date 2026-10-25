@@ -298,7 +298,7 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
                         >
                           Hatırlat
                         </Button>
-                        {hasMissing && (
+                        {hasMissing && item.invoiceArrived && (
                           <Button
                             size="mini"
                             variant="warn"
