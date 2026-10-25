@@ -467,6 +467,15 @@ function commercialAgrees(left: number, right: number): boolean {
   return Math.abs(left - right) <= Math.max(0.05, Math.abs(right) * 0.001);
 }
 
+function numberAppears(canonical: CanonicalDocument, value: number): boolean {
+  for (const page of canonical.pages) {
+    for (const word of page.words ?? []) {
+      if (numericReadings(word.text).some((reading) => commercialAgrees(reading, value))) return true;
+    }
+  }
+  return false;
+}
+
 function singleColumnReading(nativeRow: NativeRow, table: PageTable, role: GoodsRole): number | undefined {
   const column = table.columns.find((item) => item.role === role);
   if (!column) return undefined;
@@ -940,7 +949,6 @@ export function bindNativeGoodsCells(
   }
 
   // A misread code still belongs to the one printed row with that quantity and price.
-  // A code that also sits on a different row is a shift: leave it unpaired for review.
   visionRows.forEach((row) => {
     if (paired.has(row.index) || /^\d{4,8}$/.test(row.code)) return;
     const visionQuantity = quantityOf(row.index);
@@ -956,10 +964,6 @@ export function bindNativeGoodsCells(
     if (nativeMatches.length !== 1) return;
     const claimed = [...paired.values()].some((pair) => pair.row === nativeMatches[0]);
     if (claimed) return;
-    const livesElsewhere = nativeRows.some((nativeRow) => nativeRow !== nativeMatches[0]
-      && sameIdentity(nativeRow.code, row.code)
-      && (nativeQuantityOf(nativeRow) == null || !valuesMatch("quantity", nativeQuantityOf(nativeRow)!, visionQuantity)));
-    if (livesElsewhere) return;
     paired.set(row.index, { row: nativeMatches[0]!, orderPaired: true });
   });
 
@@ -1227,9 +1231,32 @@ export function bindNativeGoodsCells(
 
   if (nativeRows.length > 0) for (const row of visionRows) {
     if (paired.has(row.index) || droppedRows.includes(row.index)) continue;
-    if (nativeRows.some((native) => sameIdentity(native.code, row.code))) continue;
     const field = `goodsLines.${row.index}.productCode`;
     if (conflicts[field] || replacements[field]) continue;
+    const visionQuantity = quantityOf(row.index);
+    const matching = nativeRows.filter((native) => sameIdentity(native.code, row.code));
+    const sameQuantity = matching.filter((native) => {
+      const nativeQuantity = nativeQuantityOf(native);
+      return visionQuantity != null && nativeQuantity != null && valuesMatch("quantity", nativeQuantity, visionQuantity);
+    });
+    const shifted = matching.length > 0 && visionQuantity != null && sameQuantity.length === 0;
+    if (matching.length > 0 && !shifted) continue;
+    conflicts[field] = [reviewCandidate(segmentId, field, nativeRows[0]?.pageNumber ?? 1, [])];
+    const originField = `goodsLines.${row.index}.origin`;
+    if (shifted && firstCandidate(candidates.fields, originField) && !conflicts[originField] && !replacements[originField]) {
+      conflicts[originField] = [reviewCandidate(segmentId, originField, nativeRows[0]?.pageNumber ?? 1, [])];
+    }
+  }
+
+  if (nativeRows.length > 0) for (const row of visionRows) {
+    if (droppedRows.includes(row.index)) continue;
+    const field = `goodsLines.${row.index}.lineTotal`;
+    if (conflicts[field] || replacements[field]) continue;
+    const current = firstCandidate(candidates.fields, field);
+    if (typeof current?.value !== "number" || numberAppears(canonical, current.value)) continue;
+    const quantity = quantityOf(row.index);
+    const price = priceOf(row.index);
+    if (quantity != null && price != null && commercialAgrees(quantity * price, current.value)) continue;
     conflicts[field] = [reviewCandidate(segmentId, field, nativeRows[0]?.pageNumber ?? 1, [])];
   }
 

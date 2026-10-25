@@ -1244,4 +1244,51 @@ const reviewed = resolveDeclarationFields({
 assert.equal(reviewed.fields["goodsLines.0.description"]?.status, "REVIEW_REQUIRED");
 assert.equal(reviewed.fields["goodsLines.0.description"]?.value, undefined);
 
+const shiftedDespiteLaterCopy = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C125N320FM"),
+  "goodsLines.0.origin": candidate("goodsLines.0.origin", "CN"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 40),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 30.37),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 1214.8),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.C125N320FM"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 1),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 838.9)
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  ...vedHeaders,
+  placed("AG.SCH.A9V41225", 0.08, 0.2, 0.4),
+  placed("FRANCE", 0.22, 0.28, 0.4),
+  placed("40", 0.38, 0.42, 0.4),
+  placed("30,37", 0.5, 0.56, 0.4),
+  placed("1.214,80", 0.62, 0.7, 0.4),
+  placed("AG.SCH.C125N320FM", 0.08, 0.2, 0.6),
+  placed("1", 0.38, 0.42, 0.6),
+  placed("838,90", 0.5, 0.58, 0.6)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C125N320FM"),
+  "goodsLines.0.origin": candidate("goodsLines.0.origin", "CN"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 40),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 30.37),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 1214.8),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.C125N320FM"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 1),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 838.9)
+})));
+assert.equal(shiftedDespiteLaterCopy.fields["goodsLines.0.productCode"]?.[0]?.value, "AG.SCH.A9V41225");
+assert.equal(shiftedDespiteLaterCopy.fields["goodsLines.0.origin"]?.[0]?.value, "FR");
+
+const unprintedTotal = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C12B3TM160L"),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 17895.9),
+  "goodsLines.0.hsCode": candidate("goodsLines.0.hsCode", "853890990000")
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  ...vedHeaders,
+  placed("AG.SCH.C12B3TM160L", 0.08, 0.2, 0.4),
+  placed("102,0000", 0.5, 0.58, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.C12B3TM160L"),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 17895.9),
+  "goodsLines.0.hsCode": candidate("goodsLines.0.hsCode", "853890990000")
+})));
+assert.equal(String(unprintedTotal.fields["goodsLines.0.lineTotal"]?.[0]?.candidateId).includes(":cell-review:"), true);
+
 console.log("foundation8-25.9 native cell binding contract ok");
