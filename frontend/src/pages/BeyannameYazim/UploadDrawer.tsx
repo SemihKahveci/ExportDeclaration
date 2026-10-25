@@ -22,9 +22,15 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
   const [customer, setCustomer] = useState('');
   const [ref,      setRef]      = useState('');
   const [docType,  setDocType]  = useState('');
-  const [file,     setFile]     = useState<File | null>(null);
-  const [note,     setNote]     = useState('');
-  const [saving,   setSaving]   = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [boxKey, setBoxKey] = useState(0);
+
+  useEffect(() => {
+    if (!open) return;
+    setBoxKey((value) => value + 1);
+  }, [open]);
 
   useEffect(() => {
     if (open && preselectedRef) {
@@ -36,7 +42,7 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
       setRef('');
       setCustomer('');
       setDocType('');
-      setFile(null);
+      setFiles([]);
       setNote('');
     }
   }, [open, preselectedRef, items]);
@@ -52,13 +58,19 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
   }
 
   async function handleSave() {
-    if (!ref || !docType || !file) return;
+    if (!ref || !docType || files.length === 0) return;
     setSaving(true);
     try {
-      const uploaded = await beyannameListeService.uploadDocument({ ref, customer, docType, file, note });
-      toast(`Dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`);
+      let declarationId = '';
+      for (const file of files) {
+        const uploaded = await beyannameListeService.uploadDocument({ ref, customer, docType, file, note });
+        declarationId = uploaded.declarationId;
+      }
+      toast(files.length === 1
+        ? `Dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`
+        : `${files.length} dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`);
       handleClose();
-      onUploaded?.(uploaded.declarationId);
+      if (declarationId) onUploaded?.(declarationId);
     } catch {
       toast('Dosya yüklenemedi');
     } finally {
@@ -111,8 +123,11 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
 
         <Field label="Dosya Yükle">
           <UploadBox
-            onFiles={(files) => setFile(files[0] ?? null)}
-            hint="PDF, DOCX, XLSX, JPG — maks. 20 MB"
+            key={boxKey}
+            multiple
+            accumulate
+            onFiles={setFiles}
+            hint="Birden fazla dosya seçilebilir · PDF, DOCX, XLSX, JPG — maks. 20 MB"
           />
         </Field>
 
@@ -132,7 +147,7 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
           <Button
             variant="primary"
             onClick={handleSave}
-            disabled={!ref || !docType || !file || saving}
+            disabled={!ref || !docType || files.length === 0 || saving}
             writeCap="beyanname.write"
           >
             {saving ? 'Kaydediliyor…' : 'Kaydet'}
