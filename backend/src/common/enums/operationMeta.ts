@@ -1,6 +1,7 @@
 export const FILE_STATUSES = [
   "yeni-talep",
   "gtip-hazirlik",
+  "gtip-eksik",
   "evrak-bekleniyor",
   "beyanname-yazim",
   "ic-kontrol",

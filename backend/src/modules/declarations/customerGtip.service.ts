@@ -5,7 +5,7 @@ import type { OperationMetaDoc } from "./declaration.model.js";
 import { releaseHold } from "./operationStatus.js";
 
 export const GTIP_MISSING_MESSAGE =
-  "Fatura GTİP’i müşterinin onaylı malzeme kaydında yok. Kaydı ekleyip onaylayın. Dosya GTİP hazırlıkta bekliyor.";
+  "Fatura GTİP’i müşterinin onaylı malzeme kaydında yok. Kaydı ekleyip düzeltin. Dosya GTİP eksik/hatalı durumunda bekliyor.";
 export const GTIP_CONFIRM_MESSAGE =
   "Fatura GTİP’i müşterinin onaylı kaydıyla tutuyor. Devam edelim mi, yoksa müşteriden mi isteyelim?";
 export const GTIP_ASKED_ACTIVITY =
@@ -72,20 +72,21 @@ export function gtipMatchIsClean(lines: GtipGoodsLine[], records: GtipMaterialRo
 async function holdForGtip(
   declaration: GateDeclaration,
   actorUserId: mongoose.Types.ObjectId,
-  activity: string
+  activity: string,
+  status: "gtip-hazirlik" | "gtip-eksik"
 ): Promise<void> {
   const operation = declaration.operation;
   if (!operation) throw new HttpError(409, "Beyanname operasyon bilgisi bulunmuyor.");
   const from = operation.fileStatus;
   releaseHold(operation);
-  operation.fileStatus = "gtip-hazirlik";
+  operation.fileStatus = status;
   operation.lastActivity = activity;
   operation.returnNotice = "";
   operation.workflowHistory = operation.workflowHistory ?? [];
   operation.workflowHistory.push({
     action: "GTIP_HOLD",
     fromStatus: from,
-    toStatus: "gtip-hazirlik",
+    toStatus: status,
     actorUserId,
     override: false,
     reason: activity,
@@ -108,14 +109,15 @@ export async function applyUserGtipGate(
     .lean<GtipMaterialRow[]>();
   const lines = (declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
   if (!gtipMatchIsClean(lines, records)) {
-    await holdForGtip(declaration, actorUserId, GTIP_MISSING_MESSAGE);
+    await holdForGtip(declaration, actorUserId, GTIP_MISSING_MESSAGE, "gtip-eksik");
     throw new HttpError(409, GTIP_MISSING_MESSAGE, "GTIP_NOT_IN_CUSTOMER_DB");
   }
   if (decision === "ask-customer") {
-    await holdForGtip(declaration, actorUserId, GTIP_ASKED_ACTIVITY);
+    await holdForGtip(declaration, actorUserId, GTIP_ASKED_ACTIVITY, "gtip-hazirlik");
     return "held";
   }
   if (decision !== "continue") {
+    await holdForGtip(declaration, actorUserId, GTIP_CONFIRM_MESSAGE, "gtip-hazirlik");
     throw new HttpError(409, GTIP_CONFIRM_MESSAGE, "GTIP_MATCH_CONFIRM");
   }
   return "continue";

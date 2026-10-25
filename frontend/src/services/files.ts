@@ -14,6 +14,7 @@ function computeStatusCounts(files: CustomsFile[]): FileStatusCounts {
     total: active.length,
     yeniTalep: count('yeni-talep'),
     gtipHazirlik: count('gtip-hazirlik'),
+    gtipEksik: count('gtip-eksik'),
     evrakBekleniyor: count('evrak-bekleniyor'),
     beyanname: count('beyanname-yazim'),
     icKontrol: count('ic-kontrol'),

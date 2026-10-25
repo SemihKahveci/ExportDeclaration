@@ -12,7 +12,7 @@ type MaterialRow = GtipMaterialRow & {
   customerId: string;
 };
 
-type AdvanceTarget = "evrak-bekleniyor" | "gtip-hazirlik" | "beyanname-yazim";
+type AdvanceTarget = "evrak-bekleniyor" | "gtip-hazirlik" | "gtip-eksik" | "beyanname-yazim";
 
 function documentsReady(statuses: string[], missing: string[]): boolean {
   return missing.length === 0 && statuses.length > 0 && statuses.every((status) => status === "SUCCESS");
@@ -32,8 +32,8 @@ export function decideNewRequestAdvance(input: {
   }
   if (!gtipMatchIsClean(input.lines, input.records)) {
     return {
-      status: "gtip-hazirlik",
-      activity: "15 dakika doldu; fatura GTİP’i müşterinin onaylı kaydıyla birebir tutmuyor. GTİP hazırlıkta bekliyor."
+      status: "gtip-eksik",
+      activity: "15 dakika doldu; fatura GTİP’i müşterinin onaylı kaydıyla tutmuyor. Dosya GTİP eksik/hatalı durumunda bekliyor."
     };
   }
   return {

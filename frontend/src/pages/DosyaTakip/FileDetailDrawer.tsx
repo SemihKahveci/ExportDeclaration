@@ -23,6 +23,13 @@ const TIMELINE_BY_STATUS: Record<string, { title: string; meta: string; state: '
     { title: 'Beyanname', meta: 'Henüz başlamadı', state: 'default' },
     { title: 'Tescil', meta: 'Henüz başlamadı', state: 'default' },
   ],
+  'gtip-eksik': [
+    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
+    { title: 'GTİP Eksik/Hatalı', meta: 'Kayıt eklenmeli veya düzeltilmeli', state: 'wait' },
+    { title: 'Beyanname', meta: 'GTİP düzelince açılır', state: 'default' },
+    { title: 'Onay', meta: 'Henüz başlamadı', state: 'default' },
+    { title: 'Tescil', meta: 'Henüz başlamadı', state: 'default' },
+  ],
   'gtip-hazirlik': [
     { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
     { title: 'GTİP Hazırlık', meta: 'Devam ediyor', state: 'wait' },
@@ -48,7 +55,7 @@ const TIMELINE_BY_STATUS: Record<string, { title: string; meta: string; state: '
     { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
     { title: 'GTİP & Evrak', meta: 'Tamamlandı', state: 'done' },
     { title: 'Beyanname Yazımı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'İç Kontrol', meta: 'Devam ediyor', state: 'wait' },
+    { title: 'Beyanname Yazım Onayı', meta: 'Devam ediyor', state: 'wait' },
     { title: 'Tescil', meta: 'Bekleniyor', state: 'default' },
   ],
   'tescil': [

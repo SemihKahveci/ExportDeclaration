@@ -17,10 +17,12 @@ interface ListeViewProps {
 
 const STATUS_CONFIG: Record<BeyannameListeStatus, { label: string; variant: 'ok' | 'warn' | 'accent' | 'red' | 'blue' }> = {
   'onaya-hazir':        { label: 'Onaya Hazır',        variant: 'ok'     },
-  'kontrol-bekliyor':   { label: 'İç Kontrolde',       variant: 'accent' },
+  'kontrol-bekliyor':   { label: 'Beyanname Yazım Onayında', variant: 'accent' },
   'beyanname-yazimda':  { label: 'Beyanname Yazımda',  variant: 'blue'   },
   'yazim-bekliyor':     { label: 'Yazım Bekliyor',     variant: 'warn'   },
   'kontrol-uyarisi':    { label: 'Kontrol Uyarısı',    variant: 'red'    },
+  'gtip-hazirlik':      { label: 'GTİP Hazırlıkta',    variant: 'warn'   },
+  'gtip-eksik':         { label: 'GTİP Eksik/Hatalı',  variant: 'red'    },
 };
 
 const GTIP_STATUS_CONFIG: Record<GtipSuitabilityStatus, { label: string; variant: 'ok' | 'warn' | 'accent' | 'red' }> = {
@@ -44,7 +46,7 @@ function TransportIcon({ mode }: { mode: TransportMode | null }) {
 }
 
 const ISLEM_TIPI_OPTIONS = ['Tümü', 'Antrepo', 'İhracat', 'İthalat', 'Transit'];
-const DURUM_OPTIONS      = ['Tümü', 'Onaya Hazır', 'İç Kontrolde', 'Beyanname Yazımda', 'Yazım Bekliyor', 'Kontrol Uyarısı'];
+const DURUM_OPTIONS      = ['Tümü', 'Onaya Hazır', 'Beyanname Yazım Onayında', 'Beyanname Yazımda', 'Yazım Bekliyor', 'GTİP Hazırlıkta', 'GTİP Eksik/Hatalı', 'Kontrol Uyarısı'];
 const TASIMA_OPTIONS     = ['Tümü', 'Karayolu', 'Denizyolu', 'Havayolu'];
 
 export default function ListeView({ items, onSelectYazim, onRowUpload, onRowReminder }: ListeViewProps) {
@@ -56,9 +58,11 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
 
   const durumToStatus: Record<string, BeyannameListeStatus> = {
     'Onaya Hazır':       'onaya-hazir',
-    'İç Kontrolde':      'kontrol-bekliyor',
+    'Beyanname Yazım Onayında': 'kontrol-bekliyor',
     'Beyanname Yazımda': 'beyanname-yazimda',
     'Yazım Bekliyor':    'yazim-bekliyor',
+    'GTİP Hazırlıkta':   'gtip-hazirlik',
+    'GTİP Eksik/Hatalı': 'gtip-eksik',
     'Kontrol Uyarısı':   'kontrol-uyarisi',
   };
 
@@ -102,7 +106,7 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-l" />
         </div>
         <div className="relative overflow-hidden">
-          <StatCard value={kontrolCount} label="İç Kontrolde" />
+          <StatCard value={kontrolCount} label="Beyanname Yazım Onayında" />
           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-l" />
         </div>
         <div className="relative overflow-hidden">
