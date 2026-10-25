@@ -148,6 +148,7 @@ export default function GtipOnayPage() {
   const [newRecordOpen, setNewRecordOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<MaterialRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // load customers once
   useEffect(() => {
@@ -178,6 +179,7 @@ export default function GtipOnayPage() {
     setLoading(true);
     setStatusFilter('pending');
     setSearch('');
+    setSelectedIds([]);
     gtipService.getRecords(selectedCustomerId)
       .then((data) => {
         if (!cancelled) setRecords(data);
@@ -221,6 +223,48 @@ export default function GtipOnayPage() {
       return true;
     });
   }, [records, statusFilter, transactionType, search]);
+
+  const actionableIds = visible
+    .filter((rec) => rec.status === 'pending' || rec.status === 'rejected')
+    .map((rec) => rec.id);
+  const allVisibleSelected = actionableIds.length > 0 && actionableIds.every((id) => selectedIds.includes(id));
+
+  function toggleAllVisible() {
+    setSelectedIds(allVisibleSelected ? [] : actionableIds);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  }
+
+  async function handleApproveSelected() {
+    const ids = selectedIds.filter((id) => actionableIds.includes(id));
+    if (ids.length === 0) return;
+    try {
+      const updated = await Promise.all(ids.map((id) => gtipService.approveRecord(id)));
+      setRecords((prev) => prev.map((rec) => updated.find((item) => item.id === rec.id) ?? rec));
+      setSelectedIds([]);
+      toast(`${ids.length} kayıt onaylandı`);
+    } catch {
+      toast('Seçilen kayıtlar onaylanamadı');
+    }
+  }
+
+  async function handleRejectSelected() {
+    const ids = selectedIds.filter((id) => {
+      const rec = records.find((item) => item.id === id);
+      return rec?.status === 'pending';
+    });
+    if (ids.length === 0) return;
+    try {
+      const updated = await Promise.all(ids.map((id) => gtipService.rejectRecord(id)));
+      setRecords((prev) => prev.map((rec) => updated.find((item) => item.id === rec.id) ?? rec));
+      setSelectedIds([]);
+      toast(`${ids.length} kayıt reddedildi`);
+    } catch {
+      toast('Seçilen kayıtlar reddedilemedi');
+    }
+  }
 
   async function refreshCustomers() {
     const data = await gtipService.getCustomers();
@@ -414,8 +458,20 @@ export default function GtipOnayPage() {
         {/* Toolbar row */}
         <div className="flex items-center gap-3 mb-3">
           <p className="text-[12.5px] text-muted flex-1">
-            Bir özet kartına tıklayarak listeyi süzebilirsin.
+            {selectedIds.length > 0
+              ? `${selectedIds.length} kayıt seçili`
+              : 'Bir özet kartına tıklayarak listeyi süzebilirsin.'}
           </p>
+          {selectedIds.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="primary" icon={Check} onClick={() => void handleApproveSelected()} writeCap="gtip_onay.approve">
+                Seçilenleri Onayla
+              </Button>
+              <Button size="sm" icon={X} onClick={() => void handleRejectSelected()} writeCap="gtip_onay.approve">
+                Seçilenleri Reddet
+              </Button>
+            </div>
+          )}
           <div className="relative w-[300px] shrink-0">
             <Search size={15} strokeWidth={2} className="absolute left-2.5 top-[9px] text-muted-2 pointer-events-none" />
             <input
@@ -451,6 +507,17 @@ export default function GtipOnayPage() {
             <Table>
               <thead>
                 <tr>
+                  <Th className="w-10">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      disabled={!canApprove || actionableIds.length === 0}
+                      aria-label="Tümünü seç"
+                      className="w-3.5 h-3.5 cursor-pointer"
+                      style={{ accentColor: 'var(--accent-d)' }}
+                    />
+                  </Th>
                   <Th>Malzeme No</Th>
                   <Th>Malzeme Tanımı</Th>
                   <Th>GTİP No</Th>
@@ -464,13 +531,26 @@ export default function GtipOnayPage() {
               <tbody>
                 {visible.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-muted text-[13px]">
+                    <td colSpan={9} className="py-12 text-center text-muted text-[13px]">
                       Bu kriterlere uyan kayıt bulunamadı.
                     </td>
                   </tr>
                 ) : (
                   visible.map((rec) => (
                     <Tr key={rec.id}>
+                      <Td>
+                        {(rec.status === 'pending' || rec.status === 'rejected') ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(rec.id)}
+                            onChange={() => toggleSelected(rec.id)}
+                            disabled={!canApprove}
+                            aria-label={`${rec.materialNo} seç`}
+                            className="w-3.5 h-3.5 cursor-pointer"
+                            style={{ accentColor: 'var(--accent-d)' }}
+                          />
+                        ) : null}
+                      </Td>
                       <Td>
                         <span className="font-mono text-[12.5px] font-semibold text-text-strong">
                           {rec.materialNo}
