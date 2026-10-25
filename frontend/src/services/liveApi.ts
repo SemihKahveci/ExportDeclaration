@@ -181,7 +181,22 @@ export async function fetchEvrakFiles() {
   );
 }
 
-export async function fetchEvrakDocs(declarationId: string) {
+export async function fetchParseSnapshot(): Promise<Array<{ id: string; ref: string; name: string; status: string }> | null> {
+  const rows = await fetchDeclarationsFromApi();
+  if (rows === null) return null;
+  const snapshots = await Promise.all(
+    rows.map(async (row) => {
+      const docs = await listDocuments(row._id).catch(() => []);
+      return docs.map((doc) => ({
+        id: doc._id,
+        ref: refFromId(row),
+        name: doc.fileName ?? doc.type,
+        status: doc.extractionStatus
+      }));
+    })
+  );
+  return snapshots.flat();
+}
   if (!liveApiEnabled()) return null;
   try {
     const docs = await listDocuments(declarationId);
