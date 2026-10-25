@@ -17,6 +17,10 @@ const STATUS_CONFIG: Record<FileStatus, { label: string; variant: PillVariant }>
   'beklemede':         { label: 'Beklemede',            variant: 'warn' },
 };
 
+export function fileStatusLabel(status: FileStatus): string {
+  return STATUS_CONFIG[status]?.label ?? status;
+}
+
 export default function FileStatusPill({ status }: { status: FileStatus }) {
   const cfg = STATUS_CONFIG[status];
   return <Pill variant={cfg.variant}>{cfg.label}</Pill>;

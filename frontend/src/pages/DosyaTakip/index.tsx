@@ -133,6 +133,29 @@ export default function DosyaTakipPage() {
     }).catch(() => setLoading(false));
   }, []);
 
+  const watchingStatus = detailFile !== null || files.some((file) => file.status === 'yeni-talep');
+
+  useEffect(() => {
+    if (!watchingStatus) return;
+    let cancelled = false;
+    const timer = setInterval(() => {
+      filesService.list().then((data) => {
+        if (!cancelled) setFiles(data);
+      }).catch(() => undefined);
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [watchingStatus]);
+
+  const openDetail = useMemo(() => {
+    if (!detailFile) return null;
+    return files.find((file) =>
+      (detailFile.declarationId && file.declarationId === detailFile.declarationId) || file.ref === detailFile.ref
+    ) ?? detailFile;
+  }, [files, detailFile]);
+
   const filtered = useMemo(() => {
     return files.filter((f) => {
       const closed = f.status === 'kapandi' || f.isArchived;
@@ -563,7 +586,7 @@ export default function DosyaTakipPage() {
       />
 
       <FileDetailDrawer
-        file={detailFile}
+        file={openDetail}
         onClose={() => setDetailFile(null)}
       />
 

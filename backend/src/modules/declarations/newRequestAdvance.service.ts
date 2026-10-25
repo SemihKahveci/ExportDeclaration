@@ -18,36 +18,78 @@ function documentsReady(statuses: string[], missing: string[]): boolean {
   return missing.length === 0 && statuses.length > 0 && statuses.every((status) => status === "SUCCESS");
 }
 
+function parseHasSettled(statuses: string[]): boolean {
+  return statuses.length > 0 && statuses.every((status) => status !== "PENDING" && status !== "");
+}
+
 export function decideNewRequestAdvance(input: {
   missingDocuments: string[];
   extractionStatuses: string[];
   lines: GtipGoodsLine[];
   records: MaterialRow[];
+  trigger?: "timeout" | "parsed";
 }): { status: AdvanceTarget; activity: string } {
+  const lead = input.trigger === "parsed" ? "Parse tamamlandı" : "15 dakika doldu";
   if (!documentsReady(input.extractionStatuses, input.missingDocuments)) {
     const activity = input.missingDocuments.length > 0
-      ? "15 dakika doldu; eksik evrak bekleniyor."
-      : "15 dakika doldu; evraklar henüz yazıma hazır değil.";
+      ? `${lead}; eksik evrak bekleniyor.`
+      : `${lead}; evraklar henüz yazıma hazır değil.`;
     return { status: "evrak-bekleniyor", activity };
   }
   if (!gtipMatchIsClean(input.lines, input.records)) {
     return {
       status: "gtip-eksik",
-      activity: "15 dakika doldu; fatura GTİP’i müşterinin onaylı kaydıyla tutmuyor. Dosya GTİP eksik/hatalı durumunda bekliyor."
+      activity: `${lead}; fatura GTİP’i müşterinin onaylı kaydıyla tutmuyor. Dosya GTİP eksik/hatalı durumunda bekliyor.`
     };
   }
   return {
     status: "beyanname-yazim",
-    activity: "15 dakika doldu; evraklar hazır ve GTİP onaylı kayıtla tutuyor. Beyanname yazımına alındı."
+    activity: `${lead}; evraklar hazır ve GTİP onaylı kayıtla tutuyor. Beyanname yazımına alındı.`
   };
+}
+
+async function persistAdvance(
+  file: { _id: mongoose.Types.ObjectId; createdBy?: mongoose.Types.ObjectId },
+  companyId: mongoose.Types.ObjectId,
+  decision: { status: AdvanceTarget; activity: string },
+  now: Date
+): Promise<boolean> {
+  const history: {
+    action: "AUTO_ADVANCE";
+    fromStatus: "yeni-talep";
+    toStatus: AdvanceTarget;
+    override: false;
+    reason: string;
+    at: Date;
+    actorUserId?: mongoose.Types.ObjectId;
+  } = {
+    action: "AUTO_ADVANCE",
+    fromStatus: "yeni-talep",
+    toStatus: decision.status,
+    override: false,
+    reason: decision.activity,
+    at: now
+  };
+  if (file.createdBy) history.actorUserId = file.createdBy;
+
+  const updated = await DeclarationModel.updateOne(
+    { _id: file._id, companyId, "operation.fileStatus": "yeni-talep" },
+    {
+      $set: {
+        "operation.fileStatus": decision.status,
+        "operation.lastActivity": decision.activity
+      },
+      $push: { "operation.workflowHistory": history }
+    }
+  );
+  return updated.modifiedCount > 0;
 }
 
 export async function advanceExpiredNewRequests(now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - NEW_REQUEST_LIMIT_MS);
   const files = await DeclarationModel.find({
     "operation.fileStatus": "yeni-talep",
-    "operation.isArchived": { $ne: true },
-    "operation.receivedAt": { $lte: cutoff }
+    "operation.isArchived": { $ne: true }
   }).select({ companyId: 1, createdBy: 1, normalizedData: 1, operation: 1 });
 
   if (files.length === 0) return 0;
@@ -84,48 +126,62 @@ export async function advanceExpiredNewRequests(now = new Date()): Promise<numbe
 
     for (const file of group) {
       const id = String(file._id);
+      const statuses = statusesByFile.get(id) ?? [];
+      const receivedAt = file.operation?.receivedAt ? new Date(file.operation.receivedAt) : null;
+      const expired = receivedAt !== null && receivedAt.getTime() <= cutoff.getTime();
+      const settled = parseHasSettled(statuses);
+      if (!expired && !settled) continue;
+
       const customerId = file.operation?.customerId ?? "";
       const customerRecords = records.filter((record) => String(record.customerId) === customerId);
       const lines = ((file.normalizedData as { goodsLines?: GtipGoodsLine[] } | null | undefined)?.goodsLines ?? []);
       const decision = decideNewRequestAdvance({
         missingDocuments: missingByFile.get(id) ?? [],
-        extractionStatuses: statusesByFile.get(id) ?? [],
+        extractionStatuses: statuses,
         lines,
-        records: customerRecords
+        records: customerRecords,
+        trigger: settled ? "parsed" : "timeout"
       });
-      const history: {
-        action: "AUTO_ADVANCE";
-        fromStatus: "yeni-talep";
-        toStatus: AdvanceTarget;
-        override: false;
-        reason: string;
-        at: Date;
-        actorUserId?: mongoose.Types.ObjectId;
-      } = {
-        action: "AUTO_ADVANCE",
-        fromStatus: "yeni-talep",
-        toStatus: decision.status,
-        override: false,
-        reason: decision.activity,
-        at: now
-      };
-      if (file.createdBy) history.actorUserId = file.createdBy;
-
-      const updated = await DeclarationModel.updateOne(
-        { _id: file._id, companyId, "operation.fileStatus": "yeni-talep" },
-        {
-          $set: {
-            "operation.fileStatus": decision.status,
-            "operation.lastActivity": decision.activity
-          },
-          $push: { "operation.workflowHistory": history }
-        }
-      );
-      if (updated.modifiedCount > 0) moved += 1;
+      if (await persistAdvance(file, companyId, decision, now)) moved += 1;
     }
   }
 
   return moved;
+}
+
+export async function advanceNewRequestAfterParse(input: {
+  companyId: mongoose.Types.ObjectId | string;
+  declarationId: mongoose.Types.ObjectId | string;
+}): Promise<boolean> {
+  const companyId = new mongoose.Types.ObjectId(String(input.companyId));
+  const declarationId = new mongoose.Types.ObjectId(String(input.declarationId));
+  const file = await DeclarationModel.findOne({
+    _id: declarationId,
+    companyId,
+    "operation.fileStatus": "yeni-talep",
+    "operation.isArchived": { $ne: true }
+  }).select({ companyId: 1, createdBy: 1, normalizedData: 1, operation: 1 });
+  if (!file) return false;
+
+  const [missingByFile, documents, records] = await Promise.all([
+    missingDocumentsByDeclaration(companyId, [file]),
+    UploadedDocumentModel.find({ companyId, declarationId }).select({ extractionStatus: 1 }).lean(),
+    MaterialRecordModel.find({ companyId, customerId: file.operation?.customerId ?? "" })
+      .select({ companyId: 1, customerId: 1, materialNo: 1, gtipNo: 1, status: 1 })
+      .lean<MaterialRow[]>()
+  ]);
+  const statuses = documents.map((document) => String(document.extractionStatus ?? ""));
+  if (!parseHasSettled(statuses)) return false;
+
+  const lines = ((file.normalizedData as { goodsLines?: GtipGoodsLine[] } | null | undefined)?.goodsLines ?? []);
+  const decision = decideNewRequestAdvance({
+    missingDocuments: missingByFile.get(String(file._id)) ?? [],
+    extractionStatuses: statuses,
+    lines,
+    records,
+    trigger: "parsed"
+  });
+  return persistAdvance(file, companyId, decision, new Date());
 }
 
 let running = false;

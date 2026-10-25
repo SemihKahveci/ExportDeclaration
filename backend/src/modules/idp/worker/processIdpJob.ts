@@ -26,9 +26,29 @@ import { tryOrchestrateDeclarationIntelligenceAfterProcessing } from "../domain/
 import { tryOrchestrateDeclarationLlmAssistAfterProcessing } from "../llm/declarationLlmAssistLifecycle.service.js";
 import { tryAssessDeclarationExceptionsAfterProcessing } from "../domain/declarationExceptionLifecycle.service.js";
 import { fuseInvoiceVisionIntoWorkerCandidates } from "../llm/invoiceProductionWorkerFusion.js";
+import { advanceNewRequestAfterParse } from "../../declarations/newRequestAdvance.service.js";
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields }));
+}
+
+async function advanceSettledNewRequest(
+  companyId: unknown,
+  declarationId: unknown,
+  jobId: string
+): Promise<void> {
+  try {
+    const moved = await advanceNewRequestAfterParse({
+      companyId: String(companyId),
+      declarationId: String(declarationId)
+    });
+    if (moved) log("idp.new-request.advanced", { jobId });
+  } catch (error) {
+    log("idp.new-request.advance.failed", {
+      jobId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }
 
 /**
@@ -306,6 +326,7 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
           file.extractionStatus = "MANUAL_REQUIRED";
           file.parseErrors = resolution.issues.map((issue) => issue.message);
           await file.save();
+          await advanceSettledNewRequest(run.companyId, run.declarationId, processingRunId);
 
           log("idp.resolve.review_required", {
             jobId: processingRunId,
@@ -357,6 +378,7 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
           file.extractionStatus = "MANUAL_REQUIRED";
           file.parseErrors = validation.issues.filter((issue) => issue.severity === "ERROR").map((issue) => issue.message);
           await file.save();
+          await advanceSettledNewRequest(run.companyId, run.declarationId, processingRunId);
           log("idp.validation.review_required", { jobId: processingRunId, issues: validation.issues.map((issue) => issue.code) });
           return;
         }
@@ -484,6 +506,7 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
         error: exceptionError instanceof Error ? exceptionError.message : String(exceptionError)
       });
     }
+    await advanceSettledNewRequest(run.companyId, run.declarationId, processingRunId);
   } catch (error) {
     run.status = ProcessingStatus.FAILED;
     run.error = {
@@ -498,6 +521,7 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
       failedFile.parseErrors = [error instanceof Error ? error.message : "IDP processing hatası"];
       await failedFile.save();
     }
+    await advanceSettledNewRequest(run.companyId, run.declarationId, processingRunId);
     throw error;
   }
 }

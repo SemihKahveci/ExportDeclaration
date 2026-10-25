@@ -1,10 +1,10 @@
-import type { CustomsFile, SystemMailRecord } from '../../types';
+import type { CustomsFile, FileStatus, SystemMailRecord } from '../../types';
 import Drawer from '../../components/ui/Drawer';
 import { Card, CardBody } from '../../components/ui/Card';
 import Timeline from '../../components/ui/Timeline';
 import Pill from '../../components/ui/Pill';
 import { useToast } from '../../components/ui/Toast';
-import FileStatusPill from './FileStatusPill';
+import FileStatusPill, { fileStatusLabel } from './FileStatusPill';
 import TransportIcon from './TransportIcon';
 import HatCell from './HatCell';
 import AssigneeCell from './AssigneeCell';
@@ -15,75 +15,38 @@ interface FileDetailDrawerProps {
   onClose: () => void;
 }
 
-const TIMELINE_BY_STATUS: Record<string, { title: string; meta: string; state: 'done' | 'wait' | 'default' }[]> = {
-  'yeni-talep': [
-    { title: 'Talep alındı', meta: 'Sisteme aktarıldı', state: 'done' },
-    { title: 'GTİP Hazırlık', meta: 'Bekleniyor', state: 'wait' },
-    { title: 'Evrak Toplama', meta: 'Henüz başlamadı', state: 'default' },
-    { title: 'Beyanname', meta: 'Henüz başlamadı', state: 'default' },
-    { title: 'Tescil', meta: 'Henüz başlamadı', state: 'default' },
-  ],
-  'gtip-eksik': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP Eksik/Hatalı', meta: 'Kayıt eklenmeli veya düzeltilmeli', state: 'wait' },
-    { title: 'Beyanname', meta: 'GTİP düzelince açılır', state: 'default' },
-    { title: 'Onay', meta: 'Henüz başlamadı', state: 'default' },
-    { title: 'Tescil', meta: 'Henüz başlamadı', state: 'default' },
-  ],
-  'gtip-hazirlik': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP Hazırlık', meta: 'Devam ediyor', state: 'wait' },
-    { title: 'Evrak Toplama', meta: 'Bekleniyor', state: 'default' },
-    { title: 'Beyanname', meta: 'Henüz başlamadı', state: 'default' },
-    { title: 'Tescil', meta: 'Henüz başlamadı', state: 'default' },
-  ],
-  'evrak-bekleniyor': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP Hazırlık', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Evrak Toplama', meta: 'Müşteriden bekleniyor', state: 'wait' },
-    { title: 'Beyanname', meta: 'Henüz başlamadı', state: 'default' },
-    { title: 'Tescil', meta: 'Henüz başlamadı', state: 'default' },
-  ],
-  'beyanname-yazim': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP Hazırlık', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Evrak Toplama', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Beyanname Yazımı', meta: 'Devam ediyor', state: 'wait' },
-    { title: 'Tescil', meta: 'Bekleniyor', state: 'default' },
-  ],
-  'ic-kontrol': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP & Evrak', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Beyanname Yazımı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Beyanname Yazım Onayı', meta: 'Devam ediyor', state: 'wait' },
-    { title: 'Tescil', meta: 'Bekleniyor', state: 'default' },
-  ],
-  'tescil': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP & Evrak', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Beyanname', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Tescil', meta: 'Hat ataması bekleniyor', state: 'wait' },
-    { title: 'Kapanış', meta: 'Henüz başlamadı', state: 'default' },
-  ],
-  'kapanis-bekleyen': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP & Evrak', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Beyanname & Tescil', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Kapanış', meta: 'Belgeler hazırlanıyor', state: 'wait' },
-    { title: 'Arşivleme', meta: 'Bekleniyor', state: 'default' },
-  ],
-  'beklemede': [
-    { title: 'Süreç durduruldu', meta: 'Beklemede', state: 'wait' },
-    { title: 'Devam', meta: 'Bırakılan statüye dönülecek', state: 'default' },
-  ],
-  'kapandi': [
-    { title: 'Talep alındı', meta: 'Tamamlandı', state: 'done' },
-    { title: 'GTİP & Evrak', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Beyanname & Tescil', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Kapanış', meta: 'Tamamlandı', state: 'done' },
-    { title: 'Arşivlendi', meta: 'Müşteriye iletildi', state: 'done' },
-  ],
-};
+const FLOW: FileStatus[] = [
+  'yeni-talep',
+  'evrak-bekleniyor',
+  'gtip-hazirlik',
+  'beyanname-yazim',
+  'ic-kontrol',
+  'tescil',
+  'kapanis-bekleyen',
+  'kapandi',
+];
+
+function isFileStatus(value: string | undefined): value is FileStatus {
+  return Boolean(value && FLOW.includes(value as FileStatus)) || value === 'gtip-eksik' || value === 'beklemede';
+}
+
+function timelineFor(file: CustomsFile) {
+  const held = file.status === 'beklemede';
+  const anchor = held && isFileStatus(file.holdPreviousStatus) && file.holdPreviousStatus !== 'beklemede'
+    ? file.holdPreviousStatus
+    : file.status;
+  const steps = FLOW.map((status) => (status === 'gtip-hazirlik' && anchor === 'gtip-eksik' ? 'gtip-eksik' : status));
+  const index = Math.max(0, steps.indexOf(anchor === 'beklemede' ? 'yeni-talep' : anchor));
+  return steps.map((step, position) => ({
+    title: held && position === index ? fileStatusLabel('beklemede') : fileStatusLabel(step),
+    meta: position < index
+      ? 'Tamamlandı'
+      : position === index
+        ? (held ? (file.holdNote || file.lastActivity || 'Devam ediyor') : (file.lastActivity || 'Devam ediyor'))
+        : 'Henüz başlamadı',
+    state: position < index ? 'done' as const : position === index ? 'wait' as const : 'default' as const,
+  }));
+}
 
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -137,7 +100,7 @@ function MailHistoryRow({ record, onDetail }: { record: SystemMailRecord; onDeta
 
 export default function FileDetailDrawer({ file, onClose }: FileDetailDrawerProps) {
   const { toast } = useToast();
-  const timeline = file ? (TIMELINE_BY_STATUS[file.status] ?? TIMELINE_BY_STATUS['yeni-talep']) : [];
+  const timeline = file ? timelineFor(file) : [];
 
   return (
     <Drawer
