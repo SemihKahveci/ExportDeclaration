@@ -33,6 +33,7 @@ export function toEvrakFile(d: BackendDeclaration, docs: UploadedDocument[]): Ev
       ?? mergeNormalizedFromApi(d.normalizedData).parties.buyer?.name
       ?? mergeNormalizedFromApi(d.normalizedData).parties.seller?.name
       ?? "—",
+    customerId: d.operation?.customerId,
     meta,
     allReady,
     processing: pending > 0

@@ -31,7 +31,7 @@ function getBreadcrumb(pathname: string): Breadcrumb {
 export default function Topbar() {
   const location = useLocation();
   const { role, logout } = useAppContext();
-  const { notices, unread, markRead } = usePanelNotifications();
+  const { notices, unread, markRead, clearNotices } = usePanelNotifications();
   const [open, setOpen] = useState(false);
   const breadcrumb = getBreadcrumb(location.pathname);
 
@@ -95,8 +95,16 @@ export default function Topbar() {
           </button>
           {open && (
             <div className="absolute right-0 top-10 z-30 w-80 max-w-[80vw] rounded-lg border border-line bg-surface shadow-xl overflow-hidden">
-              <div className="px-3 py-2 border-b border-line text-[12px] font-bold text-text-strong">
-                Bildirimler
+              <div className="px-3 py-2 border-b border-line flex items-center justify-between gap-3">
+                <span className="text-[12px] font-bold text-text-strong">Bildirimler</span>
+                <button
+                  type="button"
+                  disabled={notices.length === 0}
+                  onClick={clearNotices}
+                  className="text-[12px] font-semibold text-accent hover:text-accent-d disabled:opacity-40 disabled:pointer-events-none"
+                >
+                  Temizle
+                </button>
               </div>
               {notices.length === 0 ? (
                 <p className="px-3 py-4 text-[12.5px] text-muted">Parse tamamlanınca burada görünür.</p>

@@ -12,6 +12,7 @@ interface PanelNotificationValue {
   notices: PanelNotice[];
   unread: number;
   markRead: () => void;
+  clearNotices: () => void;
 }
 
 const PanelNotificationContext = createContext<PanelNotificationValue | null>(null);
@@ -30,6 +31,10 @@ export function PanelNotificationProvider({ children }: { children: ReactNode })
   }, []);
 
   const markRead = useCallback(() => setUnread(0), []);
+  const clearNotices = useCallback(() => {
+    setNotices([]);
+    setUnread(0);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,7 +65,10 @@ export function PanelNotificationProvider({ children }: { children: ReactNode })
     };
   }, [push]);
 
-  const value = useMemo(() => ({ notices, unread, markRead }), [notices, unread, markRead]);
+  const value = useMemo(
+    () => ({ notices, unread, markRead, clearNotices }),
+    [notices, unread, markRead, clearNotices]
+  );
 
   return (
     <PanelNotificationContext.Provider value={value}>

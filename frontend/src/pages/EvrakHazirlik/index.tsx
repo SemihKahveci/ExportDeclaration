@@ -18,6 +18,7 @@ import IdpReviewTab from './IdpReviewTab';
 import Modal from '../../components/ui/Modal';
 import { Field, Textarea } from '../../components/ui/Fields';
 import UploadDrawer from '../BeyannameYazim/UploadDrawer';
+import DocumentReminderModal from './DocumentReminderModal';
 
 // ─── Tab bar with tooltip ─────────────────────────────────────────────────────
 
@@ -155,6 +156,7 @@ export default function EvrakHazirlikPage() {
   const [gtipOpen, setGtipOpen] = useState(false);
   const [gtipOverride, setGtipOverride] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   const [docRefresh, setDocRefresh] = useState(0);
 
   const [files, setFiles]       = useState<EvrakFile[]>([]);
@@ -413,7 +415,7 @@ export default function EvrakHazirlikPage() {
                       icon={Bell}
                       disabled={reminderDisabled}
                       title={reminderDisabled ? 'İlgili evraklar geldi' : undefined}
-                      onClick={() => toast('Eksik evrak hatırlatması gönderildi')}
+                      onClick={() => setReminderOpen(true)}
                       writeCap="beyanname.write"
                     >
                       Evrak Hatırlatma Gönder
@@ -481,6 +483,12 @@ export default function EvrakHazirlikPage() {
           <Field label="Gerekçe"><Textarea rows={4} value={overrideReason} onChange={e=>setOverrideReason(e.target.value)} placeholder="Eksik evrakla neden devam edildiğini yazın…"/></Field>
         </div>
       </Modal>
+      <DocumentReminderModal
+        open={reminderOpen}
+        file={selectedFile}
+        docs={docs}
+        onClose={() => setReminderOpen(false)}
+      />
       <GtipChoiceModal
         open={gtipOpen}
         onClose={() => setGtipOpen(false)}

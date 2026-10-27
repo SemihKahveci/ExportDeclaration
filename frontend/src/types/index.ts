@@ -351,6 +351,7 @@ export interface EvrakFile {
   id: string;
   ref: string;
   customer: string;
+  customerId?: string;
   meta: string;
   allReady: boolean;
   processing?: boolean;
