@@ -275,9 +275,9 @@ export default function EvrakHazirlikPage() {
         gtipDecision,
       });
       setGtipOpen(false);
-      if (result.declaration.operation?.fileStatus === 'gtip-hazirlik') {
+      if (gtipDecision === 'ask-customer') {
         setOverrideOpen(false);
-        toast('GTİP müşteriden isteniyor. Dosya GTİP hazırlıkta bekliyor.');
+        toast('GTİP müşteriden istendi. Dosya evrak bekliyor durumunda kaldı.');
         return;
       }
       setOverrideOpen(false); setOverrideReason('');

@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   Plus,
   Download,
+  FileDown,
   Pencil,
   Search,
   Loader2,
@@ -131,7 +132,9 @@ export default function GtipMalzemePage() {
   const [search, setSearch] = useState('');
 
   const [newRecordOpen, setNewRecordOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<MaterialRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // load customers once
   useEffect(() => {
@@ -244,6 +247,53 @@ export default function GtipMalzemePage() {
     }
   }
 
+  async function handleUpdateRecord(id: string, record: Omit<MaterialRecord, 'id' | 'customerId'>) {
+    if (hasDuplicateMaterialNo(records, record.materialNo, id)) {
+      toast(`Bu müşteri için malzeme numarası zaten kayıtlı: ${record.materialNo}`);
+      throw new Error('duplicate-material-no');
+    }
+    try {
+      const updated = await gtipService.updateRecord(id, {
+        materialNo: record.materialNo,
+        description: record.description,
+        gtipNo: record.gtipNo,
+        transactionTypes: record.transactionTypes,
+        status: record.status,
+      });
+      setRecords((prev) => prev.map((row) => (row.id === id ? updated : row)));
+      setEditingRecord(null);
+      setNewRecordOpen(false);
+      toast('Kayıt güncellendi');
+    } catch (err) {
+      if (err instanceof Error && err.message === 'duplicate-material-no') throw err;
+      toast(err instanceof ApiError ? err.message : 'Kayıt güncellenemedi');
+      throw err;
+    }
+  }
+
+  async function handleExport() {
+    if (!selectedCustomerId || exporting) return;
+    const filtered = search.trim() !== '' || statusFilter !== 'all' || transactionType !== 'tumu';
+    const rows = filtered ? visible : records;
+    if (rows.length === 0) {
+      toast('Dışa aktarılacak kayıt yok');
+      return;
+    }
+    setExporting(true);
+    try {
+      await gtipService.downloadMaterialRecordsExcel(rows.map((row) => ({
+        materialNo: row.materialNo,
+        description: row.description,
+        gtipNo: row.gtipNo,
+      })));
+      toast(filtered ? `${rows.length} filtrelenmiş kayıt indirildi` : `${rows.length} kayıt indirildi`);
+    } catch {
+      toast('Kayıtlar indirilemedi');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleTemplateDownload() {
     try {
       await gtipService.downloadMaterialRecordTemplate();
@@ -282,10 +332,13 @@ export default function GtipMalzemePage() {
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
             <TransactionTypeSelector value={transactionType} onChange={setTransactionType} />
+            <Button icon={FileDown} onClick={() => void handleExport()} disabled={exporting || !selectedCustomerId}>
+              {exporting ? 'İndiriliyor…' : 'Dışa Aktar'}
+            </Button>
             <Button icon={Download} onClick={() => setImportOpen(true)} writeCap="gtip_malzeme.edit">
               İçe Aktar
             </Button>
-            <Button variant="primary" icon={Plus} onClick={() => setNewRecordOpen(true)} writeCap="gtip_malzeme.edit">
+            <Button variant="primary" icon={Plus} onClick={() => { setEditingRecord(null); setNewRecordOpen(true); }} writeCap="gtip_malzeme.edit">
               Yeni Kayıt
             </Button>
           </div>
@@ -405,7 +458,7 @@ export default function GtipMalzemePage() {
                       <Td className="w-px">
                         <div className="flex items-center justify-end">
                           <button
-                            onClick={() => setNewRecordOpen(true)}
+                            onClick={() => { setEditingRecord(rec); setNewRecordOpen(true); }}
                             disabled={!canEdit}
                             title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Düzenle'}
                             className={[
@@ -430,8 +483,10 @@ export default function GtipMalzemePage() {
       <NewRecordDrawer
         open={newRecordOpen}
         customerName={selectedCustomer?.name ?? '—'}
-        onClose={() => setNewRecordOpen(false)}
+        initialRecord={editingRecord}
+        onClose={() => { setNewRecordOpen(false); setEditingRecord(null); }}
         onSave={handleNewRecord}
+        onUpdate={handleUpdateRecord}
       />
 
       <ImportModal

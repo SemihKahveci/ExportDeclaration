@@ -1,6 +1,6 @@
 import type { Request, Response } from "express";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
-import { buildMaterialRecordImportTemplate } from "./materialRecordExcel.parser.js";
+import { buildMaterialRecordExport, buildMaterialRecordImportTemplate } from "./materialRecordExcel.parser.js";
 import {
   bulkCreateMaterialRecords,
   createMaterialRecord,
@@ -41,6 +41,18 @@ export async function patchRecord(req: Request, res: Response): Promise<void> {
 export async function deleteRecord(req: Request, res: Response): Promise<void> {
   await deleteMaterialRecord(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data: { deleted: true } });
+}
+
+export async function postExportExcel(req: Request, res: Response): Promise<void> {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  const buffer = buildMaterialRecordExport(rows.map((row: { materialNo?: unknown; description?: unknown; gtipNo?: unknown }) => ({
+    materialNo: String(row?.materialNo ?? ""),
+    description: String(row?.description ?? ""),
+    gtipNo: String(row?.gtipNo ?? "")
+  })));
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", 'attachment; filename="GTIP_Kayitlari.xlsx"');
+  res.send(buffer);
 }
 
 export async function getImportTemplate(_req: Request, res: Response): Promise<void> {

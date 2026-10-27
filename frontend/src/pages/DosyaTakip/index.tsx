@@ -116,7 +116,6 @@ export default function DosyaTakipPage() {
     { key: 'all',               label: 'Tümü',               count: statusCounts.total },
     { key: 'yeni-talep',        label: 'Yeni Talep',          count: statusCounts.yeniTalep },
     { key: 'evrak-bekleniyor',  label: 'Evrak Bekleniyor',   count: statusCounts.evrakBekleniyor },
-    { key: 'gtip-hazirlik',     label: 'GTİP Hazırlıkta',    count: statusCounts.gtipHazirlik },
     { key: 'gtip-eksik',        label: 'GTİP Eksik/Hatalı', count: statusCounts.gtipEksik },
     { key: 'beyanname-yazim',   label: 'Beyanname Yazımda',  count: statusCounts.beyanname },
     { key: 'ic-kontrol',        label: 'Beyanname Yazım Onayında', count: statusCounts.icKontrol },

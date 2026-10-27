@@ -50,7 +50,6 @@ function listeStatusOf(d: BackendDeclaration): BeyannameListeStatus {
   if (d.status === "ERROR") return "kontrol-uyarisi";
   const stage = fileStage(d);
   if (stage === "gtip-eksik") return "gtip-eksik";
-  if (stage === "gtip-hazirlik") return "gtip-hazirlik";
   if (stage === "beyanname-yazim" || d.approvalWorkflow?.status === "RETURNED") return "beyanname-yazimda";
   if (d.status === "READY" || d.status === "XML_GENERATED") return "onaya-hazir";
   if (stage === "ic-kontrol") return "kontrol-bekliyor";
@@ -61,7 +60,6 @@ function durumLabelOf(d: BackendDeclaration): string {
   const status = listeStatusOf(d);
   if (status === "beyanname-yazimda") return "Beyanname Yazımda";
   if (status === "kontrol-bekliyor") return "Beyanname Yazım Onayında";
-  if (status === "gtip-hazirlik") return "GTİP Hazırlıkta";
   if (status === "gtip-eksik") return "GTİP Eksik/Hatalı";
   if (status === "onaya-hazir") return "Onaya Hazır";
   if (status === "kontrol-uyarisi") return "Kontrol Uyarısı";

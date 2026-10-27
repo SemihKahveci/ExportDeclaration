@@ -44,6 +44,16 @@ export function apiErrorCode(error: unknown): string {
   const code = (error.body as { code?: unknown }).code;
   return typeof code === "string" ? code : "";
 }
+export async function apiPostBlob(path: string, body: unknown): Promise<Blob> {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new ApiError((await res.text()) || res.statusText, res.status);
+  return res.blob();
+}
 export async function apiGetBlob(path: string): Promise<Blob> {
   const res = await fetch(`${apiBaseUrl()}${path}`, { credentials: "include" });
   if (!res.ok) throw new ApiError((await res.text()) || res.statusText, res.status);

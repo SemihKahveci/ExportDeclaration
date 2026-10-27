@@ -18,7 +18,6 @@ interface FileDetailDrawerProps {
 const FLOW: FileStatus[] = [
   'yeni-talep',
   'evrak-bekleniyor',
-  'gtip-hazirlik',
   'beyanname-yazim',
   'ic-kontrol',
   'tescil',
@@ -35,8 +34,11 @@ function timelineFor(file: CustomsFile) {
   const anchor = held && isFileStatus(file.holdPreviousStatus) && file.holdPreviousStatus !== 'beklemede'
     ? file.holdPreviousStatus
     : file.status;
-  const steps = FLOW.map((status) => (status === 'gtip-hazirlik' && anchor === 'gtip-eksik' ? 'gtip-eksik' : status));
-  const index = Math.max(0, steps.indexOf(anchor === 'beklemede' ? 'yeni-talep' : anchor));
+  const shown = anchor === 'gtip-hazirlik' ? 'evrak-bekleniyor' : anchor;
+  const steps = shown === 'gtip-eksik'
+    ? FLOW.flatMap((status) => (status === 'evrak-bekleniyor' ? [status, 'gtip-eksik' as FileStatus] : [status]))
+    : FLOW;
+  const index = Math.max(0, steps.indexOf(shown === 'beklemede' ? 'yeni-talep' : shown));
   return steps.map((step, position) => ({
     title: held && position === index ? fileStatusLabel('beklemede') : fileStatusLabel(step),
     meta: position < index

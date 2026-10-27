@@ -9,8 +9,10 @@ import type { TransactionType, RecordSource, MaterialRecord } from '../../types'
 interface NewRecordDrawerProps {
   open: boolean;
   customerName: string;
+  initialRecord?: MaterialRecord | null;
   onClose: () => void;
   onSave: (record: Omit<MaterialRecord, 'id' | 'customerId'>) => void | Promise<void>;
+  onUpdate?: (id: string, record: Omit<MaterialRecord, 'id' | 'customerId'>) => void | Promise<void>;
 }
 
 const ALL_TYPES: TransactionType[] = ['ithalat', 'ihracat', 'transit', 'antrepo'];
@@ -34,9 +36,12 @@ function today(): string {
 export default function NewRecordDrawer({
   open,
   customerName,
+  initialRecord,
   onClose,
   onSave,
+  onUpdate,
 }: NewRecordDrawerProps) {
+  const isEdit = Boolean(initialRecord?.id);
   const [materialNo, setMaterialNo] = useState('');
   const [description, setDescription] = useState('');
   const [gtipNo, setGtipNo] = useState('');
@@ -45,12 +50,12 @@ export default function NewRecordDrawer({
 
   useEffect(() => {
     if (!open) return;
-    setMaterialNo('');
-    setDescription('');
-    setGtipNo('');
-    setSelectedTypes(ALL_TYPES);
+    setMaterialNo(initialRecord?.materialNo ?? '');
+    setDescription(initialRecord?.description ?? '');
+    setGtipNo(initialRecord?.gtipNo ?? '');
+    setSelectedTypes(initialRecord?.transactionTypes?.length ? initialRecord.transactionTypes : ALL_TYPES);
     setSaving(false);
-  }, [open]);
+  }, [open, initialRecord]);
 
   function toggleType(t: TransactionType) {
     setSelectedTypes((prev) =>
@@ -60,19 +65,21 @@ export default function NewRecordDrawer({
 
   async function handleSave() {
     if (saving) return;
-    const source: RecordSource = 'manuel';
+    const source: RecordSource = initialRecord?.source ?? 'manuel';
     const types = selectedTypes.length === 0 ? [...ALL_TYPES] : selectedTypes;
+    const payload = {
+      materialNo: isEdit ? materialNo.trim() : (materialNo.trim() || `MLZ-${Math.floor(100000 + Math.random() * 900000)}`),
+      description: isEdit ? description.trim() : (description.trim() || '(tanımsız malzeme)'),
+      gtipNo: isEdit ? gtipNo.trim() : (gtipNo.trim() || '0000.00.00.00.00'),
+      transactionTypes: types,
+      status: initialRecord?.status ?? 'pending',
+      source,
+      updatedAt: today(),
+    };
     setSaving(true);
     try {
-      await onSave({
-        materialNo: materialNo.trim() || `MLZ-${Math.floor(100000 + Math.random() * 900000)}`,
-        description: description.trim() || '(tanımsız malzeme)',
-        gtipNo: gtipNo.trim() || '0000.00.00.00.00',
-        transactionTypes: types,
-        status: 'pending',
-        source,
-        updatedAt: today(),
-      });
+      if (isEdit && initialRecord && onUpdate) await onUpdate(initialRecord.id, payload);
+      else await onSave(payload);
     } finally {
       setSaving(false);
     }
@@ -84,13 +91,13 @@ export default function NewRecordDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      title="Yeni Kayıt"
+      title={isEdit ? 'Kaydı Düzenle' : 'Yeni Kayıt'}
       subtitle={`${customerName} · malzeme ↔ GTİP eşlemesi`}
       footer={
         <>
           <Button onClick={onClose}>Vazgeç</Button>
           <Button variant="primary" onClick={handleSave} disabled={saving} writeCap="gtip_malzeme.edit">
-            {saving ? 'Kaydediliyor…' : 'Kaydet'}
+            {saving ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Kaydet'}
           </Button>
         </>
       }
@@ -163,9 +170,11 @@ export default function NewRecordDrawer({
           </p>
         </Field>
 
-        <Note variant="warn">
-          Yeni kayıt <strong>Onay Bekleyen</strong> olarak eklenir; doğrulandıktan sonra beyannamede kullanılabilir.
-        </Note>
+        {!isEdit && (
+          <Note variant="warn">
+            Yeni kayıt <strong>Onay Bekleyen</strong> olarak eklenir; doğrulandıktan sonra beyannamede kullanılabilir.
+          </Note>
+        )}
       </div>
     </Drawer>
   );

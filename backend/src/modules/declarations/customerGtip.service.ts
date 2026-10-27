@@ -9,7 +9,7 @@ export const GTIP_MISSING_MESSAGE =
 export const GTIP_CONFIRM_MESSAGE =
   "Fatura GTİP’i müşterinin onaylı kaydıyla tutuyor. Devam edelim mi, yoksa müşteriden mi isteyelim?";
 export const GTIP_ASKED_ACTIVITY =
-  "GTİP müşteri kaydıyla tutuyor; müşteriden teyit istendi. Dosya GTİP hazırlıkta bekliyor.";
+  "GTİP müşteri kaydıyla tutuyor; müşteriden teyit istendi. Dosya evrak bekliyor durumunda kaldı.";
 
 export type GtipDecision = "continue" | "ask-customer";
 
@@ -74,7 +74,7 @@ async function holdForGtip(
   declaration: GateDeclaration,
   actorUserId: mongoose.Types.ObjectId,
   activity: string,
-  status: "gtip-hazirlik" | "gtip-eksik"
+  status: "evrak-bekleniyor" | "gtip-eksik"
 ): Promise<void> {
   const operation = declaration.operation;
   if (!operation) throw new HttpError(409, "Beyanname operasyon bilgisi bulunmuyor.");
@@ -114,11 +114,10 @@ export async function applyUserGtipGate(
     throw new HttpError(409, GTIP_MISSING_MESSAGE, "GTIP_NOT_IN_CUSTOMER_DB");
   }
   if (decision === "ask-customer") {
-    await holdForGtip(declaration, actorUserId, GTIP_ASKED_ACTIVITY, "gtip-hazirlik");
+    await holdForGtip(declaration, actorUserId, GTIP_ASKED_ACTIVITY, "evrak-bekleniyor");
     return "held";
   }
   if (decision !== "continue") {
-    await holdForGtip(declaration, actorUserId, GTIP_CONFIRM_MESSAGE, "gtip-hazirlik");
     throw new HttpError(409, GTIP_CONFIRM_MESSAGE, "GTIP_MATCH_CONFIRM");
   }
   return "continue";

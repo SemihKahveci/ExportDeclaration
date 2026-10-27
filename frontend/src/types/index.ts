@@ -89,7 +89,6 @@ export interface ArchiveStats {
 export interface FileStatusCounts {
   total: number;
   yeniTalep: number;
-  gtipHazirlik: number;
   gtipEksik: number;
   evrakBekleniyor: number;
   beyanname: number;
@@ -458,7 +457,7 @@ export interface TescilPageStats {
 
 // ─── Beyanname Yazım & Kontrol screen ────────────────────────────────────────
 
-export type BeyannameListeStatus = 'yazim-bekliyor' | 'beyanname-yazimda' | 'kontrol-bekliyor' | 'onaya-hazir' | 'kontrol-uyarisi' | 'gtip-hazirlik' | 'gtip-eksik';
+export type BeyannameListeStatus = 'yazim-bekliyor' | 'beyanname-yazimda' | 'kontrol-bekliyor' | 'onaya-hazir' | 'kontrol-uyarisi' | 'gtip-eksik';
 
 export type GtipSuitabilityStatus = 'uygun' | 'eksik' | 'uyumsuz' | 'kontrol-bekliyor';
 

@@ -82,7 +82,6 @@ export default function FilterDrawer({
             <option value="">Tümü</option>
             <option value="yeni-talep">Yeni Talep</option>
             <option value="evrak-bekleniyor">Evrak Bekleniyor</option>
-            <option value="gtip-hazirlik">GTİP Hazırlıkta</option>
             <option value="gtip-eksik">GTİP Eksik/Hatalı</option>
             <option value="beyanname-yazim">Beyanname Yazımda</option>
             <option value="ic-kontrol">Beyanname Yazım Onayında</option>

@@ -12,7 +12,7 @@ type MaterialRow = GtipMaterialRow & {
   customerId: string;
 };
 
-type AdvanceTarget = "evrak-bekleniyor" | "gtip-hazirlik" | "gtip-eksik" | "beyanname-yazim";
+type AdvanceTarget = "evrak-bekleniyor" | "gtip-eksik" | "beyanname-yazim";
 
 function documentsReady(statuses: string[], missing: string[]): boolean {
   return missing.length === 0 && statuses.length > 0 && statuses.every((status) => status === "SUCCESS");

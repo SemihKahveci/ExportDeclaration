@@ -8,6 +8,7 @@ import {
   bulkCreateMaterialRecords,
   createMaterialRecord,
   downloadMaterialRecordTemplate,
+  downloadMaterialRecordsExcel,
   getCustomerRecordCounts,
   deleteMaterialRecord,
   importMaterialRecordsExcel,
@@ -270,6 +271,11 @@ export const gtipService = {
   },
   downloadMaterialRecordTemplate: async (): Promise<void> => {
     return downloadMaterialRecordTemplate();
+  },
+  downloadMaterialRecordsExcel: async (
+    rows: Array<{ materialNo: string; description: string; gtipNo: string }>
+  ): Promise<void> => {
+    return downloadMaterialRecordsExcel(rows);
   },
   importMaterialRecordsExcel: async (
     customerId: string,

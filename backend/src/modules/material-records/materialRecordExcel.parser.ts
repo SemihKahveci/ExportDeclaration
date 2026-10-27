@@ -140,6 +140,19 @@ export function parseMaterialRecordExcel(buffer: Buffer): MaterialExcelParseResu
   return { items, errors };
 }
 
+export function buildMaterialRecordExport(
+  rows: Array<{ materialNo: string; description: string; gtipNo: string }>
+): Buffer {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["Malzeme No", "Malzeme Tanımı", "GTIP"],
+    ...rows.map((row) => [row.materialNo, row.description, row.gtipNo])
+  ]);
+  sheet["!cols"] = [{ wch: 18 }, { wch: 36 }, { wch: 22 }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
+  return Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+}
+
 export function buildMaterialRecordImportTemplate(): Buffer {
   const sheet = XLSX.utils.aoa_to_sheet([
     ["Malzeme No", "Malzeme Tanımı", "GTIP"],

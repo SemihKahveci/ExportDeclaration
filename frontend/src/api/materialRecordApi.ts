@@ -3,6 +3,7 @@ import {
   apiGetBlob,
   apiGetJson,
   apiPatchJson,
+  apiPostBlob,
   apiPostJson,
   apiPostMultipart
 } from "./apiClient";
@@ -55,6 +56,18 @@ export async function patchMaterialRecord(
 
 export async function deleteMaterialRecord(id: string): Promise<void> {
   await apiDeleteJson<{ deleted: boolean }>(`/api/material-records/${encodeURIComponent(id)}`);
+}
+
+export async function downloadMaterialRecordsExcel(
+  rows: Array<{ materialNo: string; description: string; gtipNo: string }>
+): Promise<void> {
+  const blob = await apiPostBlob("/api/material-records/export", { rows });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "GTIP_Kayitlari.xlsx";
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function downloadMaterialRecordTemplate(): Promise<void> {

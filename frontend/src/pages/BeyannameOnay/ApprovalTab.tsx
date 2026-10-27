@@ -7,8 +7,12 @@ import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import { Field, Textarea } from '../../components/ui/Fields';
+import { getDeclaration } from '../../api/declarationApi';
+import { toLineItems, toWritingFieldValues } from '../../api/adapters/declarationAdapter';
+import { mergeNormalizedFromApi } from '../../api/types/document.types';
 import { getDeclarationControlProjection, type ControlProvenanceEntry } from '../../api/declarationControlApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
+import DeclarationSheet, { type DeclarationSheetData } from '../BeyannameYazim/DeclarationSheet';
 
 function authorityLabel(entry: ControlProvenanceEntry) {
   if (entry.authority === 'NORMALIZED_DECLARATION') return 'Belge / IDP';
@@ -52,6 +56,7 @@ export default function ApprovalTab({
   onSendToSecondApproval, onApproveAndSendToTescil, onGeriGonder, onNotEkle,
 }: ApprovalTabProps) {
   const [entries,setEntries]=useState<ControlProvenanceEntry[]>([]);
+  const [sheet,setSheet]=useState<DeclarationSheetData|null>(null);
   const [activePath,setActivePath]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
@@ -62,7 +67,17 @@ export default function ApprovalTab({
   const load=async()=>{
     setLoading(true);setError(null);
     try{
-      const data=await getDeclarationControlProjection(declarationId);
+      const [data, declaration]=await Promise.all([
+        getDeclarationControlProjection(declarationId),
+        getDeclaration(declarationId),
+      ]);
+      const norm=mergeNormalizedFromApi(declaration.normalizedData);
+      setSheet({
+        ref: declaration.operation?.ref || declaration.operation?.declarationNo || '',
+        customer: declaration.operation?.customerName || '',
+        fields: toWritingFieldValues(norm, declaration.operation),
+        lines: toLineItems(norm),
+      });
       setEntries(data.entries);
       setActivePath(current=>current&&data.entries.some(x=>x.path===current)?current:data.entries[0]?.path??null);
     }catch{setError('Beyanname kaynak/provenance bilgileri yüklenemedi.');}
@@ -114,7 +129,7 @@ export default function ApprovalTab({
                 {active.masterData&&<div className="px-4 py-3"><div className="text-muted mb-1">Master Data Kuralı</div><div>{active.masterData.scope} · {active.masterData.key}</div><div className="font-mono text-[10.5px] text-muted mt-1">{active.masterData.masterDataId}</div></div>}
                 {active.human&&<div className="px-4 py-3"><div className="text-muted mb-1">Manuel Karar</div>{active.human.actorEmail&&<div>{active.human.actorEmail}</div>}{active.human.reason&&<div className="mt-1">Gerekçe: {active.human.reason}</div>}{active.human.createdAt&&<div className="text-[10.5px] text-muted mt-1">{new Date(active.human.createdAt).toLocaleString('tr-TR')}</div>}</div>}
               </div>
-              {active.evidence?.bbox&&active.evidence.contentSource!=='DERIVED'&&<div className="p-3 border-t border-line"><Button icon={FileSearch} onClick={()=>setEvidenceOpen(true)}>Belgede Göster</Button></div>}
+              {active.evidence&&<div className="p-3 border-t border-line"><Button icon={FileSearch} onClick={()=>setEvidenceOpen(true)}>Belgede Göster</Button></div>}
             </div>
           </>:<div className="border border-dashed border-line-strong rounded-xl p-8 text-center text-muted">İncelemek için bir alan seçin.</div>}
         </div>
@@ -144,7 +159,8 @@ export default function ApprovalTab({
 
     {active?.evidence&&<DocumentEvidenceViewer open={evidenceOpen} declarationId={declarationId}
       uploadedFileId={active.evidence.uploadedFileId}
-      evidence={{pageNumber:active.evidence.pageNumber,bbox:active.evidence.bbox,text:active.evidence.text,contentSource:active.evidence.contentSource,label:active.label}}
-      onClose={()=>setEvidenceOpen(false)} mode="selected"/>}
+      evidence={{pageNumber:active.evidence.pageNumber,bbox:active.evidence.bbox,text:active.evidence.text,contentSource:active.evidence.contentSource,label:active.label,field:active.path}}
+      onClose={()=>setEvidenceOpen(false)} mode="all"
+      declarationView={sheet ? <DeclarationSheet data={sheet} /> : null}/>}
   </>;
 }

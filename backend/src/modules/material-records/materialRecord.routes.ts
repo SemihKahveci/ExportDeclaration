@@ -14,6 +14,7 @@ materialRecordRouter.get("/import-template", asyncHandler(ctrl.getImportTemplate
 materialRecordRouter.get("/customer-counts", asyncHandler(ctrl.getCustomerCounts));
 materialRecordRouter.get("/", asyncHandler(ctrl.getRecords));
 materialRecordRouter.post("/import", upload.single("file"), asyncHandler(ctrl.postImportExcel));
+materialRecordRouter.post("/export", asyncHandler(ctrl.postExportExcel));
 materialRecordRouter.post("/", asyncHandler(ctrl.postRecord));
 materialRecordRouter.post("/bulk", asyncHandler(ctrl.postBulkRecords));
 materialRecordRouter.patch("/:id", asyncHandler(ctrl.patchRecord));

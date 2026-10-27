@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Bell, FileWarning, AlertTriangle, Truck, Ship, Plane, Search, X } from 'lucide-react';
+import { Upload, Bell, FileWarning, AlertTriangle, Truck, Ship, Plane, Search, X, FolderOpen } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameListeStatus, GtipSuitabilityStatus, TransportMode } from '../../types';
 import StatCard from '../../components/ui/StatCard';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
@@ -21,7 +21,6 @@ const STATUS_CONFIG: Record<BeyannameListeStatus, { label: string; variant: 'ok'
   'beyanname-yazimda':  { label: 'Beyanname Yazımda',  variant: 'blue'   },
   'yazim-bekliyor':     { label: 'Yazım Bekliyor',     variant: 'warn'   },
   'kontrol-uyarisi':    { label: 'Kontrol Uyarısı',    variant: 'red'    },
-  'gtip-hazirlik':      { label: 'GTİP Hazırlıkta',    variant: 'warn'   },
   'gtip-eksik':         { label: 'GTİP Eksik/Hatalı',  variant: 'red'    },
 };
 
@@ -46,7 +45,7 @@ function TransportIcon({ mode }: { mode: TransportMode | null }) {
 }
 
 const ISLEM_TIPI_OPTIONS = ['Tümü', 'Antrepo', 'İhracat', 'İthalat', 'Transit'];
-const DURUM_OPTIONS      = ['Tümü', 'Onaya Hazır', 'Beyanname Yazım Onayında', 'Beyanname Yazımda', 'Yazım Bekliyor', 'GTİP Hazırlıkta', 'GTİP Eksik/Hatalı', 'Kontrol Uyarısı'];
+const DURUM_OPTIONS      = ['Tümü', 'Onaya Hazır', 'Beyanname Yazım Onayında', 'Beyanname Yazımda', 'Yazım Bekliyor', 'GTİP Eksik/Hatalı', 'Kontrol Uyarısı'];
 const TASIMA_OPTIONS     = ['Tümü', 'Karayolu', 'Denizyolu', 'Havayolu'];
 
 export default function ListeView({ items, onSelectYazim, onRowUpload, onRowReminder }: ListeViewProps) {
@@ -61,7 +60,6 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
     'Beyanname Yazım Onayında': 'kontrol-bekliyor',
     'Beyanname Yazımda': 'beyanname-yazimda',
     'Yazım Bekliyor':    'yazim-bekliyor',
-    'GTİP Hazırlıkta':   'gtip-hazirlik',
     'GTİP Eksik/Hatalı': 'gtip-eksik',
     'Kontrol Uyarısı':   'kontrol-uyarisi',
   };
@@ -277,6 +275,15 @@ export default function ListeView({ items, onSelectYazim, onRowUpload, onRowRemi
                         className="flex items-center gap-1"
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <Button
+                          size="mini"
+                          variant="default"
+                          icon={FolderOpen}
+                          onClick={() => navigate(`/evrak-hazirlik?declarationId=${encodeURIComponent(item.id)}&ref=${encodeURIComponent(item.ref)}`)}
+                          title="Bu dosyanın evrak hazırlığı"
+                        >
+                          Evrak Hazırlık
+                        </Button>
                         <Button
                           size="mini"
                           variant="default"
