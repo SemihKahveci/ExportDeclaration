@@ -1,6 +1,7 @@
 import type { Declaration as BackendDeclaration } from "@/api/types/declaration.types";
 import type { DocumentType, NormalizedDeclaration, UploadedDocument } from "@/api/types/document.types";
 import { mergeNormalizedFromApi } from "@/api/types/document.types";
+import { isWeightUnit } from "@/domain/weightUnit";
 import type {
   BeyannameDocCheckItem,
   BeyannameFormFields,
@@ -179,7 +180,7 @@ function hasConflict(_sourceTrace: BackendDeclaration["sourceTrace"] | undefined
   return false;
 }
 
-function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDeclaration["operation"]): Record<string, string> {
+export function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDeclaration["operation"]): Record<string, string> {
   const h = norm.header;
   const pkg = norm.packageInfo;
   const seller = norm.parties.seller;
@@ -190,7 +191,7 @@ function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDeclarati
 
   // This map is intentionally fed only from persisted Declaration.normalizedData / operation.
   // Qwen raw output and UploadedDocument.extractedData are not writing-form authorities.
-  return {
+  const values: Record<string, string> = {
     "Beyanname No": op?.declarationNo ?? "",
     // Business authority: reference/registration date are supplied by Evrim,
     // never borrowed from invoice identity/date.
@@ -250,24 +251,35 @@ function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDeclarati
     "Dolaşım Belgesi No": norm.documents?.circulationDocumentNo ?? "",
     "Menşe Belgesi No": norm.documents?.originDocumentNo ?? "",
   };
+  const extras = evrim.draftFields;
+  if (extras && typeof extras === "object" && !Array.isArray(extras)) {
+    for (const [key, stored] of Object.entries(extras as Record<string, unknown>)) {
+      if (typeof stored === "string" && !values[key]) values[key] = stored;
+    }
+  }
+  return values;
 }
 
-function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
-  return norm.goodsLines.map((line) => ({
-    lineNo: line.lineNo,
-    gtip: line.hsCode ?? "—",
-    malzemeNo: line.productCode,
-    faturaNo: line.invoiceNo,
-    description: line.description ?? "—",
-    quantity: line.quantity != null ? String(line.quantity) : "—",
-    mense: line.origin ?? norm.trade.origin ?? "—",
-    brutKg: line.grossKg != null ? line.grossKg.toLocaleString("tr-TR") : "—",
-    netKg: line.netKg != null ? line.netKg.toLocaleString("tr-TR") : "—",
-    kiymet: line.lineTotal != null ? line.lineTotal.toLocaleString("tr-TR") : "—",
-    ticariTanim: line.description,
-    miktarBirimi: line.unit,
-    dovizCinsi: norm.header.currency
-  }));
+export function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
+  return norm.goodsLines.map((line) => {
+    const quantity = line.quantity != null ? String(line.quantity) : "—";
+    const weight = isWeightUnit(line.unit) && line.quantity != null;
+    return {
+      lineNo: line.lineNo,
+      gtip: line.hsCode ?? "—",
+      malzemeNo: line.productCode,
+      faturaNo: line.invoiceNo,
+      description: line.description ?? "—",
+      quantity,
+      mense: line.origin ?? norm.trade.origin ?? "—",
+      brutKg: line.grossKg != null ? line.grossKg.toLocaleString("tr-TR") : "—",
+      netKg: weight ? quantity : line.netKg != null ? line.netKg.toLocaleString("tr-TR") : "—",
+      kiymet: line.lineTotal != null ? line.lineTotal.toLocaleString("tr-TR") : "—",
+      ticariTanim: line.description,
+      miktarBirimi: line.unit,
+      dovizCinsi: norm.header.currency
+    };
+  });
 }
 
 export function toDocCheckItems(docs: UploadedDocument[]): BeyannameDocCheckItem[] {

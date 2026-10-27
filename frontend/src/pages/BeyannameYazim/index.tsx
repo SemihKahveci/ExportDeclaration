@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, Send, FileText, Layers, Loader2, ChevronLeft, Bell } from 'lucide-react';
+import { Save, Send, FileText, Layers, Loader2, ChevronLeft, Bell, Download, RotateCcw } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameRecord } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
 import StatCard from '../../components/ui/StatCard';
@@ -19,6 +19,9 @@ import Note from '../../components/ui/Note';
 import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import { listDocuments, reprocessDocument } from '../../api/documentApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
+import { downloadDeclarationExcel } from '../../api/declarationApi';
+import DeclarationSheet, { type DeclarationSheetData } from './DeclarationSheet';
+import Modal from '../../components/ui/Modal';
 
 const TAB_ITEMS = [
   { key: 'yazim',   label: 'Beyanname Yazım', icon: FileText },
@@ -57,7 +60,13 @@ export default function BeyannameYazimPage() {
   const [reminderOpen,     setReminderOpen]      = useState(false);
   const [reminderRef,      setReminderRef]       = useState<string | undefined>(undefined);
   const [rewriting, setRewriting] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnNote, setReturnNote] = useState('');
+  const [returning, setReturning] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const sawRewritePending = useRef(false);
+  const saveDraftRef = useRef<(() => Promise<void>) | null>(null);
+  const sheetRef = useRef<DeclarationSheetData | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -159,13 +168,20 @@ export default function BeyannameYazimPage() {
 
   async function handleReturnToWriting() {
     if (!selected) return;
+    const note = returnNote.trim();
+    if (!note) return;
+    setReturning(true);
     try {
-      await beyannameService.transitionWriting(selected.id, { action: 'RETURN_TO_WRITING' });
+      await beyannameService.transitionWriting(selected.id, { action: 'RETURN_TO_WRITING', reason: note });
       await reloadDeclarationData();
+      setReturnOpen(false);
+      setReturnNote('');
       setActiveTab('yazim');
       toast('Beyanname yazıma geri gönderildi');
     } catch (error) {
       toast(actionError(error, 'Yazıma geri gönderilemedi'), { duration: 7000 });
+    } finally {
+      setReturning(false);
     }
   }
 
@@ -182,8 +198,36 @@ export default function BeyannameYazimPage() {
     }
   }
 
-  function handleTaslakKaydet() {
-    toast('Taslak kaydedildi');
+  async function handleTaslakKaydet() {
+    if (!saveDraftRef.current) {
+      toast('Kaydedilecek beyanname yazımı açık değil.');
+      return;
+    }
+    try {
+      await saveDraftRef.current();
+      await reloadDeclarationData();
+      toast('Taslak kaydedildi');
+    } catch (error) {
+      toast(actionError(error, 'Taslak kaydedilemedi'), { duration: 7000 });
+    }
+  }
+
+  async function handleDownloadExcel() {
+    if (!selected || downloading) return;
+    setDownloading(true);
+    try {
+      const { blob, filename } = await downloadDeclarationExcel(selected.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast(actionError(error, 'Beyanname excel indirilemedi'), { duration: 7000 });
+    } finally {
+      setDownloading(false);
+    }
   }
 
   async function handleRewrite() {
@@ -331,9 +375,19 @@ export default function BeyannameYazimPage() {
               Evrak Hazırlık
             </Button>
           )}
-          <Button variant="default" icon={Save} onClick={handleTaslakKaydet} writeCap="beyanname.write">
-            Taslak Kaydet
+          <Button variant="default" icon={Download} onClick={() => void handleDownloadExcel()} disabled={downloading}>
+            Beyanname İndir
           </Button>
+          {activeTab === 'yazim' && (
+            <Button variant="default" icon={Save} onClick={() => void handleTaslakKaydet()} writeCap="beyanname.write">
+              Taslak Kaydet
+            </Button>
+          )}
+          {activeTab === 'kontrol' && (
+            <Button icon={RotateCcw} onClick={() => { setReturnNote(''); setReturnOpen(true); }} writeCap="beyanname.write">
+              Yazıma Geri Gönder
+            </Button>
+          )}
           {activeTab === 'kontrol' && (
             <Button variant="primary" icon={Send} onClick={() => void handleSistemeGonder()} writeCap="beyanname.send">
               Onaya Gönder
@@ -410,17 +464,15 @@ export default function BeyannameYazimPage() {
                   record={selected}
                   hasViewedPreview={hasViewedPreview}
                   locked={Boolean(rewriting || selected.parsing)}
+                  saveDraftRef={saveDraftRef}
+                  sheetRef={sheetRef}
                   onViewDeclaration={handleViewDeclaration}
                   onSendToControl={handleSendToControl}
                   onRewrite={() => void handleRewrite()}
                 />
               </div>
             ) : (
-              <ControlTab
-                declarationId={selected.id}
-                onSistemeGonder={handleSistemeGonder}
-                onReturnToWriting={() => void handleReturnToWriting()}
-              />
+              <ControlTab declarationId={selected.id} />
             )}
           </div>
         </Card>
@@ -431,9 +483,34 @@ export default function BeyannameYazimPage() {
         declarationId={selected?.id ?? ''}
         uploadedFileId={previewDocId ?? ''}
         mode="all"
-        evidence={previewDocId ? { pageNumber: 1, label: previewLabel, contentSource: 'PAGE_IMAGE' } : null}
+        declarationView={sheetRef.current ? <DeclarationSheet data={sheetRef.current} /> : null}
+        evidence={previewDocId ? { pageNumber: 1, label: 'Ön kontrol', contentSource: 'PAGE_IMAGE' } : null}
         onClose={() => setPreviewDocId(null)}
       />
+      <Modal
+        open={returnOpen}
+        onClose={() => !returning && setReturnOpen(false)}
+        title="Yazıma geri gönder"
+        footer={
+          <>
+            <Button onClick={() => setReturnOpen(false)} disabled={returning}>Vazgeç</Button>
+            <Button variant="primary" disabled={returning || !returnNote.trim()} onClick={() => void handleReturnToWriting()}>
+              {returning ? 'Gönderiliyor…' : 'Yazıma Geri Gönder'}
+            </Button>
+          </>
+        }
+      >
+        <label className="flex flex-col gap-1.5 text-[12.5px]">
+          <span className="font-semibold text-text-strong">Not</span>
+          <textarea
+            value={returnNote}
+            onChange={(event) => setReturnNote(event.target.value)}
+            rows={4}
+            className="rounded border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent"
+            placeholder="Yazıma neden geri gönderildiğini yazın"
+          />
+        </label>
+      </Modal>
       {holdDialog}
     </div>
   );

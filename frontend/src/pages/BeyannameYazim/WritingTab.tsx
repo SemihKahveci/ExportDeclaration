@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Eye, Send, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, ExternalLink } from 'lucide-react';
 import type { BeyannameLineItem, BeyannameRecord, DeclarationFieldMapping } from '../../types';
 import { getDeclaration, patchDeclaration } from '../../api/declarationApi';
+import type { MutableRefObject } from 'react';
+import type { DeclarationSheetData } from './DeclarationSheet';
+import { applyWeightQuantity, saveWritingDraft } from './writingDraft';
 import { mergeNormalizedFromApi, type GoodsLine } from '../../api/types/document.types';
 import { FIELD_GROUPS } from '../../services/declarationFieldRules';
 import { isDocumentSourcedField } from '../../services/declarationFieldSourceAuthority';
@@ -98,7 +101,7 @@ async function persistLineItems(declarationId: string, items: BeyannameLineItem[
   const current = await getDeclaration(declarationId);
   const norm = mergeNormalizedFromApi(current.normalizedData);
   const currency = items.map((item) => optionalText(item.dovizCinsi)).find(Boolean);
-  const goodsLines: GoodsLine[] = items.map((item, index) => {
+  const goodsLines: GoodsLine[] = items.map(applyWeightQuantity).map((item, index) => {
     const previous = norm.goodsLines[index];
     const description = optionalText(item.ticariTanim) ?? optionalText(item.description);
     const line: GoodsLine = { lineNo: lineNoValue(item.lineNo, index) };
@@ -466,6 +469,8 @@ interface WritingTabProps {
   record: BeyannameRecord;
   hasViewedPreview: boolean;
   locked?: boolean;
+  saveDraftRef?: MutableRefObject<(() => Promise<void>) | null>;
+  sheetRef?: MutableRefObject<DeclarationSheetData | null>;
   onViewDeclaration: () => void;
   onSendToControl: () => void;
   onRewrite: () => void;
@@ -487,6 +492,8 @@ export default function WritingTab({
   record,
   hasViewedPreview,
   locked = false,
+  saveDraftRef,
+  sheetRef,
   onViewDeclaration,
   onSendToControl,
   onRewrite,
@@ -522,16 +529,32 @@ export default function WritingTab({
   }
 
   useEffect(() => {
-    setLineItems(record.lineItems);
-    lineItemsRef.current = record.lineItems;
+    setFieldValues({ ...record.fieldValues });
+    setLineItems(record.lineItems.map(applyWeightQuantity));
+    lineItemsRef.current = record.lineItems.map(applyWeightQuantity);
   }, [record.id]);
+
+  if (saveDraftRef) {
+    saveDraftRef.current = () => saveWritingDraft(record.id, fieldValues, lineItemsRef.current);
+  }
+  if (sheetRef) {
+    sheetRef.current = {
+      ref: record.ref,
+      customer: record.customer,
+      fields: fieldValues,
+      lines: lineItemsRef.current.map(applyWeightQuantity),
+    };
+  }
 
   function handleValueChange(fieldName: string, value: string) {
     setFieldValues((prev) => ({ ...prev, [fieldName]: value }));
   }
 
   function handleLineChange(index: number, patch: Partial<BeyannameLineItem>) {
-    const next = lineItemsRef.current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item));
+    const current = lineItemsRef.current[index];
+    const next = lineItemsRef.current.map((item, itemIndex) => (
+      itemIndex === index && current ? applyWeightQuantity({ ...current, ...patch }) : item
+    ));
     lineItemsRef.current = next;
     setLineItems(next);
   }
@@ -679,7 +702,7 @@ export default function WritingTab({
             actions={
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="default" icon={Eye} onClick={onViewDeclaration}>
-                  Görünüm
+                  Ön kontrol
                 </Button>
                 <Button
                   size="sm"
@@ -687,7 +710,7 @@ export default function WritingTab({
                   icon={Send}
                   onClick={() => void handleSendClick()}
                   disabled={!hasViewedPreview}
-                  title={!hasViewedPreview ? 'Önce beyanname görünümünü açmanız gerekiyor' : undefined}
+                  title={!hasViewedPreview ? 'Önce ön kontrolü açmanız gerekiyor' : undefined}
                 >
                   Kontrole Gönder
                 </Button>

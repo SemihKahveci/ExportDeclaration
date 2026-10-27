@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Database, FileSearch, History, Loader2, Pencil, RefreshCw, RotateCcw, Send, UserRound } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Database, FileSearch, History, Loader2, UserRound } from 'lucide-react';
 import { ApiError } from '../../api/apiClient';
+import { getDeclaration } from '../../api/declarationApi';
+import { toLineItems, toWritingFieldValues } from '../../api/adapters/declarationAdapter';
+import { mergeNormalizedFromApi } from '../../api/types/document.types';
 import { getDeclarationControlProjection, type ControlProvenanceEntry, type DeclarationControlProjection } from '../../api/declarationControlApi';
-import { appendCustomsSupplementDecision, listCustomsSupplementDecisions, type CustomsSupplementDecision } from '../../api/customsSupplementApi';
+import { listCustomsSupplementDecisions, type CustomsSupplementDecision } from '../../api/customsSupplementApi';
 import DocumentEvidenceViewer, { type DocumentEvidenceSelection } from '../../components/documents/DocumentEvidenceViewer';
-import { Card, CardBody, CardHead } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import Modal from '../../components/ui/Modal';
+import DeclarationSheet, { type DeclarationSheetData } from './DeclarationSheet';
 
 interface ControlTabProps {
   declarationId: string;
-  onSistemeGonder: () => void;
-  onReturnToWriting: () => void;
 }
 
 const AUTHORITY_LABEL: Record<ControlProvenanceEntry['authority'], string> = {
@@ -113,28 +113,30 @@ function AuthorityDetail({
   );
 }
 
-export default function ControlTab({ declarationId, onSistemeGonder, onReturnToWriting }: ControlTabProps) {
+export default function ControlTab({ declarationId }: ControlTabProps) {
   const [projection, setProjection] = useState<DeclarationControlProjection | null>(null);
+  const [sheet, setSheet] = useState<DeclarationSheetData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const [viewerMode, setViewerMode] = useState<'selected' | 'all'>('selected');
-  const [editOpen, setEditOpen] = useState(false);
-  const [editValue, setEditValue] = useState('');
-  const [editReason, setEditReason] = useState('');
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<CustomsSupplementDecision[]>([]);
-  const [clearingDecision, setClearingDecision] = useState(false);
 
   const load = async () => {
     setLoading(true); setError(null);
     try {
-      const [data, history] = await Promise.all([
+      const [data, history, declaration] = await Promise.all([
         getDeclarationControlProjection(declarationId),
         listCustomsSupplementDecisions(declarationId),
+        getDeclaration(declarationId),
       ]);
+      const norm = mergeNormalizedFromApi(declaration.normalizedData);
+      setSheet({
+        ref: declaration.operation?.ref || declaration.operation?.declarationNo || '',
+        customer: declaration.operation?.customerName || '',
+        fields: toWritingFieldValues(norm, declaration.operation),
+        lines: toLineItems(norm),
+      });
       setProjection(data);
       setDecisions(history);
       setActivePath((current) => current && data.entries.some((x) => x.path === current) ? current : data.entries[0]?.path ?? null);
@@ -158,38 +160,6 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
     [decisions, activeSupplementPath],
   );
 
-  const clearManualDecision = async () => {
-    if (!activeSupplementPath || active?.authority !== 'PERSISTENT_HUMAN') return;
-    setClearingDecision(true); setEditError(null);
-    try {
-      await appendCustomsSupplementDecision(declarationId, {
-        fieldPath: activeSupplementPath,
-        action: 'CLEAR',
-        reason: 'MT Kontrol üzerinden manuel karar kaldırıldı',
-      });
-      await load();
-    } catch {
-      setEditError('Manuel karar kaldırılamadı.');
-    } finally {
-      setClearingDecision(false);
-    }
-  };
-
-  const openManualEdit = () => {
-    if (!active || !activeSupplementPath) return;
-    setEditValue(displayValue(active.value) === '—' ? '' : displayValue(active.value));
-    setEditReason(''); setEditError(null); setEditOpen(true);
-  };
-  const saveManualEdit = async () => {
-    if (!activeSupplementPath || !editValue.trim()) { setEditError('Yeni değer gerekli.'); return; }
-    setSavingEdit(true); setEditError(null);
-    try {
-      await appendCustomsSupplementDecision(declarationId, { fieldPath: activeSupplementPath, action: 'SET', value: editValue.trim(), reason: editReason.trim() || undefined });
-      setEditOpen(false); await load();
-    } catch { setEditError('Manuel gümrük kararı kaydedilemedi.'); }
-    finally { setSavingEdit(false); }
-  };
-
   const evidenceSelection: DocumentEvidenceSelection | null = active?.evidence ? {
     pageNumber: active.evidence.pageNumber,
     bbox: active.evidence.bbox,
@@ -199,7 +169,7 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
   } : null;
 
   if (loading) return <div className="h-full min-h-[360px] flex items-center justify-center gap-2 text-muted"><Loader2 size={18} className="animate-spin" /> MT kontrol provenance hazırlanıyor…</div>;
-  if (error || !projection) return <div className="h-full min-h-[360px] flex flex-col items-center justify-center gap-3"><AlertTriangle className="text-warn" /><p className="text-[13px] text-muted">{error ?? 'MT kontrol verisi bulunamadı.'}</p><Button icon={RefreshCw} onClick={() => void load()}>Tekrar Dene</Button></div>;
+  if (error || !projection) return <div className="h-full min-h-[360px] flex flex-col items-center justify-center gap-3"><AlertTriangle className="text-warn" /><p className="text-[13px] text-muted">{error ?? 'MT kontrol verisi bulunamadı.'}</p><Button onClick={() => void load()}>Tekrar Dene</Button></div>;
 
   return (
     <>
@@ -209,15 +179,6 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
             <div>
               <p className="text-[13px] font-bold text-text-strong">Beyanname Alanları</p>
               <p className="text-[11.5px] text-muted mt-0.5">Efektif değer ve üretim otoritesi · {projection.entries.length} alan</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {projection.entries.some((x) => x.evidence) && (
-                <Button icon={FileSearch} size="sm" onClick={() => {
-                  const first = projection.entries.find((x) => x.evidence);
-                  if (first) { setActivePath(first.path); setViewerMode('all'); setEvidenceOpen(true); }
-                }}>Belge Parse Karşılaştır</Button>
-              )}
-              <Button icon={RefreshCw} size="sm" onClick={() => void load()}>Yenile</Button>
             </div>
           </div>
           <div className="flex-1 min-h-0 overflow-auto divide-y divide-line">
@@ -247,7 +208,7 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
                     <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-full border border-line bg-surface-2 text-[11.5px] font-semibold"><AuthorityIcon authority={active.authority}/>{AUTHORITY_LABEL[active.authority]}</div>
                   </div>
                 </div>
-                <AuthorityDetail entry={active} onOpenEvidence={() => { setViewerMode('selected'); setEvidenceOpen(true); }} />
+                <AuthorityDetail entry={active} onOpenEvidence={() => setEvidenceOpen(true)} />
                 {activeSupplementPath && (
                   <div className="border border-line rounded-xl overflow-hidden">
                     <div className="px-4 py-3 bg-surface-2 border-b border-line flex items-center justify-between gap-2">
@@ -275,39 +236,8 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
             ) : <div className="border border-dashed border-line-strong rounded-xl p-8 text-center text-[12px] text-muted">Kontrol edilecek bir alan seçin.</div>}
           </div>
 
-          <Card className="shrink-0">
-            <CardHead title="Kontrol Kararı" />
-            <CardBody>
-              <div className="flex items-center gap-2 justify-end">
-                {active?.authority === 'PERSISTENT_HUMAN' && activeSupplementPath && (
-                  <Button icon={clearingDecision ? Loader2 : RotateCcw} size="sm" onClick={() => void clearManualDecision()} disabled={clearingDecision}>Manuel Kararı Kaldır</Button>
-                )}
-                <Button variant="warn" icon={Pencil} size="sm" onClick={openManualEdit} disabled={!activeSupplementPath} title={!activeSupplementPath ? 'Bu alan customs supplement ile değiştirilemez; belge/IDP gerçeği ayrı korunur.' : undefined}>Manuel Düzelt</Button>
-                <Button icon={RotateCcw} size="sm" onClick={onReturnToWriting}>Yazıma Geri Gönder</Button>
-                <Button variant="primary" icon={Send} size="sm" onClick={onSistemeGonder}>Kontrolü Onayla</Button>
-              </div>
-            </CardBody>
-          </Card>
         </div>
       </div>
-
-      <Modal open={editOpen} onClose={() => !savingEdit && setEditOpen(false)} title="Manuel Gümrük Kararı" footer={<>
-        <Button onClick={() => setEditOpen(false)} disabled={savingEdit}>Vazgeç</Button>
-        <Button variant="primary" icon={savingEdit ? Loader2 : CheckCircle2} onClick={() => void saveManualEdit()} disabled={savingEdit || !editValue.trim()}>Kararı Kaydet</Button>
-      </>}>
-        <div className="flex flex-col gap-4">
-          <div className="rounded-lg border border-line bg-surface-2 p-3 text-[12px]">
-            <div className="font-semibold text-text-strong">{active?.label}</div>
-            <div className="font-mono text-[10.5px] text-muted mt-1">{activeSupplementPath}</div>
-            <div className="mt-2"><span className="text-muted">Mevcut efektif değer: </span><span className="font-mono font-semibold">{active ? displayValue(active.value) : '—'}</span></div>
-            <div className="mt-1"><span className="text-muted">Mevcut otorite: </span><span className="font-semibold">{active ? AUTHORITY_LABEL[active.authority] : '—'}</span></div>
-          </div>
-          <label className="flex flex-col gap-1.5 text-[12px]"><span className="font-semibold text-text-strong">Yeni değer</span><input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)} className="h-9 rounded border border-line bg-surface px-3 text-[13px] font-mono outline-none focus:border-accent" /></label>
-          <label className="flex flex-col gap-1.5 text-[12px]"><span className="font-semibold text-text-strong">Gerekçe <span className="font-normal text-muted">(opsiyonel)</span></span><textarea value={editReason} onChange={e => setEditReason(e.target.value)} rows={3} className="rounded border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent" placeholder="Örn. müşteri teyidi / gümrük operasyon kararı" /></label>
-          <div className="text-[11.5px] text-muted">Bu işlem IDP sonucunu değiştirmez. Yeni karar append-only olarak saklanır ve efektif beyannamede <b>Manuel Gümrük Kararı</b> otoritesiyle uygulanır.</div>
-          {editError && <div className="rounded border border-danger/30 bg-danger/5 p-2.5 text-[12px] text-danger">{editError}</div>}
-        </div>
-      </Modal>
 
       {active?.evidence && (
         <DocumentEvidenceViewer
@@ -316,7 +246,8 @@ export default function ControlTab({ declarationId, onSistemeGonder, onReturnToW
           uploadedFileId={active.evidence.uploadedFileId}
           evidence={evidenceSelection}
           onClose={() => setEvidenceOpen(false)}
-          mode={viewerMode}
+          mode="all"
+          declarationView={sheet ? <DeclarationSheet data={sheet} /> : null}
         />
       )}
     </>

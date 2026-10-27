@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ExternalLink, FileSearch, Loader2, X } from 'lucide-react';
 import Button from '../ui/Button';
 import { apiGetBlob, apiGetJson } from '../../api/apiClient';
@@ -23,6 +23,7 @@ interface Props {
   open: boolean; declarationId: string; uploadedFileId: string;
   evidence: DocumentEvidenceSelection | null; onClose: () => void;
   mode?: 'selected' | 'all';
+  declarationView?: ReactNode;
 }
 
 function boxStyle(b: EvidenceBBox) {
@@ -83,7 +84,7 @@ function PageImage({imageUrl, alt, boxes, selected, caption = 'Seçili alan'}:{i
   </div>;
 }
 
-export default function DocumentEvidenceViewer({ open, declarationId, uploadedFileId, evidence, onClose, mode = 'selected' }: Props) {
+export default function DocumentEvidenceViewer({ open, declarationId, uploadedFileId, evidence, onClose, mode = 'selected', declarationView }: Props) {
   const [page,setPage]=useState(evidence?.pageNumber ?? 1);
   const [imageUrl,setImageUrl]=useState<string|null>(null);
   const [pdfUrl,setPdfUrl]=useState<string|null>(null);
@@ -161,11 +162,13 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
         :error?<div className="h-full flex items-center justify-center text-warn">{error}</div>
         :imageUrl?<div className="h-full grid grid-cols-2 gap-px bg-line">
           <section className="min-w-0 min-h-0 bg-[#e8e5df] flex flex-col">
-            <div className="px-4 py-2.5 bg-surface border-b border-line"><div className="font-bold text-[12.5px]">Orijinal Belge</div><div className="text-[10.5px] text-muted">İşaretsiz fiziksel PDF sayfası</div></div>
-            <div ref={originalScrollRef} onScroll={e=>syncScroll(e.currentTarget,parsedScrollRef.current)} className="flex-1 min-h-0 overflow-auto p-4"><PageImage imageUrl={imageUrl} alt={`Orijinal belge sayfa ${evidence.pageNumber}`}/></div>
+            <div className="px-4 py-2.5 bg-surface border-b border-line"><div className="font-bold text-[12.5px]">Beyanname</div><div className="text-[10.5px] text-muted">Yazılı ihracat beyannamesi</div></div>
+            <div ref={originalScrollRef} onScroll={e=>syncScroll(e.currentTarget,parsedScrollRef.current)} className="flex-1 min-h-0 overflow-auto p-4">
+              {declarationView ?? <PageImage imageUrl={imageUrl} alt={`Orijinal belge sayfa ${evidence.pageNumber}`} />}
+            </div>
           </section>
           <section className="min-w-0 min-h-0 bg-[#e8e5df] flex flex-col">
-            <div className="px-4 py-2.5 bg-surface border-b border-line flex items-center justify-between gap-2"><div><div className="font-bold text-[12.5px]">{mode==='all'?'Parse Edilen':'Seçili Alan'}</div><div className="text-[10.5px] text-muted">{highlight.band?'Tutarın kendi kutusu yok; aynı satırdaki kanıtlardan biraz geniş çizildi.':mode==='all'?'Bu fiziksel dosya ve sayfadaki persisted IDP kanıtları':'Yalnızca seçtiğiniz alanın persisted bbox kanıtı'}</div></div><div className="flex items-center gap-3 text-[10.5px] text-muted">{mode==='all'&&<span className="flex items-center gap-1"><i className="w-3 h-3 border-2 border-emerald-500 inline-block"/>Tespit</span>}<span className="flex items-center gap-1"><i className="w-3 h-3 border-[3px] border-amber-500 inline-block"/>Seçili</span></div></div>
+            <div className="px-4 py-2.5 bg-surface border-b border-line flex items-center justify-between gap-2"><div><div className="font-bold text-[12.5px]">{mode==='all'?'Faturadan parse edilen alanlar':'Seçili Alan'}</div><div className="text-[10.5px] text-muted">{highlight.band?'Tutarın kendi kutusu yok; aynı satırdaki kanıtlardan biraz geniş çizildi.':mode==='all'?'Faturadaki persisted IDP kanıtları':'Yalnızca seçtiğiniz alanın persisted bbox kanıtı'}</div></div><div className="flex items-center gap-3 text-[10.5px] text-muted">{mode==='all'&&<span className="flex items-center gap-1"><i className="w-3 h-3 border-2 border-emerald-500 inline-block"/>Tespit</span>}<span className="flex items-center gap-1"><i className="w-3 h-3 border-[3px] border-amber-500 inline-block"/>Seçili</span></div></div>
             <div ref={parsedScrollRef} onScroll={e=>syncScroll(e.currentTarget,originalScrollRef.current)} className="flex-1 min-h-0 overflow-auto p-4"><PageImage imageUrl={imageUrl} alt={`Parse edilen belge sayfa ${evidence.pageNumber}`} boxes={mode==='all'?(pageEvidence?.evidence??[]):[]} selected={highlight.box} caption={highlight.band?'Satır':'Seçili alan'}/></div>
           </section>
         </div>:null}

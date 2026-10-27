@@ -70,7 +70,7 @@ export async function transitionPreparationWorkflow(
 }
 
 export async function transitionWritingWorkflow(
- id:string,body:{action:"SUBMIT_TO_MT"|"APPROVE_MT"|"RETURN_TO_WRITING";gtipDecision?:"continue"|"ask-customer"}
+ id:string,body:{action:"SUBMIT_TO_MT"|"APPROVE_MT"|"RETURN_TO_WRITING";gtipDecision?:"continue"|"ask-customer";reason?:string}
 ):Promise<Declaration>{
  return apiPostJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}/writing-workflow/transition`,body);
 }

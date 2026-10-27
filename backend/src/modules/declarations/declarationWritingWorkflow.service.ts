@@ -4,7 +4,7 @@ import { DeclarationStatus } from "../../common/enums/declarationStatus.js";
 import { DeclarationModel } from "./declaration.model.js";
 import { toDeclarationDto } from "./declaration.mapper.js";
 import { applyUserGtipGate, type GtipDecision } from "./customerGtip.service.js";
-import { actionableFileStatus, releaseHold, RETURN_TO_WRITING_NOTICE } from "./operationStatus.js";
+import { actionableFileStatus, releaseHold } from "./operationStatus.js";
 
 export type WritingWorkflowAction="SUBMIT_TO_MT"|"APPROVE_MT"|"RETURN_TO_WRITING";
 
@@ -28,7 +28,7 @@ function assertParsedGtip(declaration: { normalizedData?: unknown }): void {
 
 export async function transitionWritingWorkflow(
  companyId:mongoose.Types.ObjectId,declarationId:string,actorUserId:mongoose.Types.ObjectId,
- input:{action?:WritingWorkflowAction;gtipDecision?:GtipDecision}
+ input:{action?:WritingWorkflowAction;gtipDecision?:GtipDecision;reason?:string}
 ){
  if(!mongoose.isValidObjectId(declarationId))throw new HttpError(400,"Geçersiz beyanname id.");
  const declaration=await DeclarationModel.findOne({_id:declarationId,companyId});
@@ -41,10 +41,12 @@ export async function transitionWritingWorkflow(
  const from=actionableFileStatus(actualFrom,declaration.operation.holdPreviousStatus);
  if(action==="RETURN_TO_WRITING"){
    if(from!=="ic-kontrol")throw new HttpError(409,"Yalnız iç kontroldeki dosya yazıma geri gönderilebilir.");
+   const reason=input.reason?.trim()??"";
+   if(!reason)throw new HttpError(400,"Yazıma geri göndermek için not zorunludur.");
    releaseHold(declaration.operation);
    declaration.operation.fileStatus="beyanname-yazim";
-   declaration.operation.returnNotice=RETURN_TO_WRITING_NOTICE;
-   declaration.operation.lastActivity=RETURN_TO_WRITING_NOTICE;
+   declaration.operation.returnNotice=reason;
+   declaration.operation.lastActivity="Beyanname yazıma geri gönderildi";
  }else if(action==="SUBMIT_TO_MT"){
    assertParsedGtip(declaration);
    if(from!=="beyanname-yazim")throw new HttpError(409,"Yalnız beyanname yazım aşamasındaki dosya MT kontrole gönderilebilir.");
@@ -82,7 +84,7 @@ export async function transitionWritingWorkflow(
  const toStatus=action==="RETURN_TO_WRITING"?"beyanname-yazim":"ic-kontrol";
  declaration.operation.workflowHistory.push({
    action,fromStatus:actualFrom,toStatus,
-   actorUserId,override:false,reason:"",at:new Date()
+   actorUserId,override:false,reason:action==="RETURN_TO_WRITING"?input.reason?.trim()??"":"",at:new Date()
  });
  declaration.markModified("operation");
  await declaration.save();
