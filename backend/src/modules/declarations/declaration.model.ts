@@ -33,6 +33,7 @@ export interface OperationMetaDoc {
   lastActivity: string;
   closedAt?: Date | null;
   receivedAt: Date;
+  cutoffAt?: Date | null;
   tescilStatus?: string | null;
   tescilRisk?: string;
   hasSecondNotif: boolean;
@@ -160,6 +161,7 @@ const OperationMetaSchema = new Schema(
     lastActivity: { type: String, default: "Oluşturuldu", trim: true },
     closedAt: { type: Date, default: null },
     receivedAt: { type: Date, default: () => new Date() },
+    cutoffAt: { type: Date, default: null },
     tescilStatus: { type: String, default: null },
     tescilRisk: { type: String, default: "", trim: true },
     hasSecondNotif: { type: Boolean, default: false },

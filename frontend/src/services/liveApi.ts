@@ -103,6 +103,7 @@ export async function apiCreateOperationFile(payload: {
   operationType: string;
   transportMode?: string | null;
   assigneeName?: string | null;
+  cutoffAt?: string | null;
   lastActivity?: string;
 }) {
   const opTypeMap: Record<string, string> = {
@@ -126,6 +127,7 @@ export async function apiCreateOperationFile(payload: {
         ? transportMap[payload.transportMode] ?? payload.transportMode
         : null,
       assigneeName: payload.assigneeName,
+      cutoffAt: payload.cutoffAt,
       fileStatus: "yeni-talep",
       lastActivity: payload.lastActivity ?? "Yeni talep oluşturuldu",
     },

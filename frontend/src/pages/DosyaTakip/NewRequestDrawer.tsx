@@ -17,6 +17,7 @@ export interface NewRequestPayload {
   operationType: string;
   transportMode: string;
   assigneeName: string | null;
+  cutoffAt: string | null;
   files: File[];
 }
 
@@ -40,6 +41,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
   const [operationType, setOperationType] = useState('İhracat');
   const [transportMode, setTransportMode] = useState('Karayolu');
   const [assigneeName, setAssigneeName] = useState('');
+  const [cutoffAt, setCutoffAt] = useState('');
   const [saving, setSaving] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
@@ -61,6 +63,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
     setOperationType('İhracat');
     setTransportMode('Karayolu');
     setAssigneeName('');
+    setCutoffAt('');
     setSaving(false);
     setSelectedFiles([]);
   }, [open]);
@@ -81,6 +84,7 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
         operationType,
         transportMode,
         assigneeName: assigneeName.trim() || assignedMt?.name || null,
+        cutoffAt: cutoffAt ? new Date(cutoffAt).toISOString() : null,
         files: selectedFiles,
       });
     } finally {
@@ -172,6 +176,10 @@ export default function NewRequestDrawer({ open, onClose, onSave }: NewRequestDr
               <option key={u.id} value={u.name}>{u.name}</option>
             ))}
           </Select>
+        </Field>
+
+        <Field label="Cut-off" htmlFor="nr-cutoff" hint="Cut-off kuralı bu tarihe kadar hatırlatır. Boşsa sabah 09:00 kuralı çalışır.">
+          <Input id="nr-cutoff" type="datetime-local" value={cutoffAt} onChange={(e) => setCutoffAt(e.target.value)} />
         </Field>
 
         <Field label="Faturalar">

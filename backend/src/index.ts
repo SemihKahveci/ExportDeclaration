@@ -1,5 +1,6 @@
 import { bootstrapSuperAdmin } from "./modules/auth/bootstrapSuperAdmin.js";
 import { startNewRequestAdvanceJob } from "./modules/declarations/newRequestAdvance.service.js";
+import { startDocumentReminderJob } from "./modules/mail/documentReminderJob.service.js";
 import fs from "node:fs/promises";
 import app from "./app.js";
 import { connectDb } from "./config/db.js";
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
   await connectDb();
   await bootstrapSuperAdmin();
   startNewRequestAdvanceJob();
+  startDocumentReminderJob();
 
   const server = app.listen(env.port, () => {
     // eslint-disable-next-line no-console

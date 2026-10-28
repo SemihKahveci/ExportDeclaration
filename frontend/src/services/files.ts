@@ -62,6 +62,7 @@ export const filesService = {
     operationType: string;
     transportMode?: string;
     assigneeName?: string | null;
+    cutoffAt?: string | null;
     files?: File[];
   }): Promise<CustomsFile> => {
     const { files = [], ...operationPayload } = payload;

@@ -18,6 +18,7 @@ export interface OperationMetaDto {
   lastActivity: string;
   closedAt: string | null;
   receivedAt: string;
+  cutoffAt: string | null;
   tescilStatus: string | null;
   tescilRisk: string;
   hasSecondNotif: boolean;
@@ -80,6 +81,7 @@ function toOperationDto(op?: OperationMetaDoc): OperationMetaDto | undefined {
     lastActivity: op.lastActivity ?? "Oluşturuldu",
     closedAt: toIso(op.closedAt),
     receivedAt: toIso(op.receivedAt) ?? new Date().toISOString(),
+    cutoffAt: toIso(op.cutoffAt),
     tescilStatus: op.tescilStatus ?? null,
     tescilRisk: op.tescilRisk ?? "",
     hasSecondNotif: Boolean(op.hasSecondNotif),

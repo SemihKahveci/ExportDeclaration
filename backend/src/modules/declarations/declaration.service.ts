@@ -126,6 +126,7 @@ export async function createDeclaration(
     lastActivity: body?.operation?.lastActivity?.trim() || "Yeni talep oluşturuldu",
     closedAt: null,
     receivedAt: now,
+    cutoffAt: parseCutoff(body?.operation?.cutoffAt),
     tescilStatus: null,
     tescilRisk: "",
     hasSecondNotif: false,
@@ -190,7 +191,13 @@ type CustomerRuleRow = {
   requiredDocs?: string[];
 };
 
-function ruleCoversFile(
+function parseCutoff(value: unknown): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function ruleCoversFile(
   rule: CustomerRuleRow,
   operationType: string | null | undefined,
   transportMode: string | null | undefined
@@ -210,6 +217,12 @@ function documentSatisfies(required: string, uploadedTypes: Set<string>): boolea
   const accepted = REQUIRED_DOC_TYPES[required];
   if (!accepted) return uploadedTypes.has(required);
   return accepted.some((type) => uploadedTypes.has(type));
+}
+
+export function missingDocsFromRule(requiredDocs: string[] | undefined, uploadedTypes: Set<string>): string[] {
+  return (requiredDocs ?? [])
+    .map((doc) => doc.trim())
+    .filter((doc) => doc && !documentSatisfies(doc, uploadedTypes));
 }
 
 export async function missingDocumentsByDeclaration(

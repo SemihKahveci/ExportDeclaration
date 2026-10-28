@@ -20,6 +20,7 @@ export interface OperationMeta {
   lastActivity: string;
   closedAt: string | null;
   receivedAt: string;
+  cutoffAt?: string | null;
   tescilStatus: string | null;
   tescilRisk: string;
   hasSecondNotif: boolean;
