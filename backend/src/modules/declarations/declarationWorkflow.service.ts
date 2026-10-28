@@ -89,5 +89,18 @@ export async function transitionApprovalWorkflow(
   }
 
   await declaration.save();
+  if (to === "APPROVED" && declaration.operation?.fileStatus === "tescil" && declaration.operation.customerId) {
+    const { notifyStageEntered } = await import("../mail/stageMail.service.js");
+    await notifyStageEntered({
+      companyId,
+      customerId: declaration.operation.customerId,
+      operationType: declaration.operation.operationType,
+      reference: declaration.operation.ref,
+      stage: "tescil",
+      receivedAt: new Date()
+    }).catch((error: unknown) => {
+      console.error(JSON.stringify({ event: "stage-mail.failed", stage: "tescil", message: error instanceof Error ? error.message : "Tescil maili gönderilemedi" }));
+    });
+  }
   return toDeclarationDto(declaration);
 }
