@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { Plus, Search, Pencil, Trash2, Loader2, X, AlertTriangle, Copy } from 'lucide-react';
 import type { MailTemplate } from '../../types';
-import { mailTemplatesService, MAIL_DIGEST_PROCESSES, MAIL_FREQUENCY_OPTIONS, MAIL_PROCESS_OPTIONS, MAIL_VARIABLES } from '../../services/mails';
+import { mailTemplatesService, MAIL_DIGEST_PROCESSES, MAIL_FREQUENCY_OPTIONS, MAIL_PROCESS_OPTIONS, MAIL_VARIABLE_HELP, MAIL_VARIABLES } from '../../services/mails';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
@@ -254,25 +254,27 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
               Konu veya içerik alanına tıklayın, ardından değişkeni seçerek ekleyin.
               {insertTarget === 'subject' ? ' Hedef: Mail Konusu' : ' Hedef: Mail İçeriği'}
             </p>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="space-y-1.5">
               {MAIL_VARIABLES.map((v) => {
                 const used = body.includes(v) || subject.includes(v);
                 return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => insertVariable(v)}
-                    className={[
-                      'inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11.5px] font-mono transition-colors',
-                      used
-                        ? 'bg-accent/10 border-accent/30 text-accent'
-                        : 'bg-surface-2 border-line text-muted hover:border-accent/40 hover:text-text hover:bg-surface',
-                    ].join(' ')}
-                    title={insertTarget === 'subject' ? 'Konuya ekle' : 'İçeriğe ekle'}
-                  >
-                    <Copy size={10} strokeWidth={2} />
-                    {v}
-                  </button>
+                  <div key={v} className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => insertVariable(v)}
+                      className={[
+                        'inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11.5px] font-mono transition-colors shrink-0',
+                        used
+                          ? 'bg-accent/10 border-accent/30 text-accent'
+                          : 'bg-surface-2 border-line text-muted hover:border-accent/40 hover:text-text hover:bg-surface',
+                      ].join(' ')}
+                      title={insertTarget === 'subject' ? 'Konuya ekle' : 'İçeriğe ekle'}
+                    >
+                      <Copy size={10} strokeWidth={2} />
+                      {v}
+                    </button>
+                    <span className="text-[12px] text-muted leading-5">{MAIL_VARIABLE_HELP[v]}</span>
+                  </div>
                 );
               })}
             </div>

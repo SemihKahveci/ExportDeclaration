@@ -31,14 +31,22 @@ export const MAIL_DIGEST_PROCESSES = ['beyanname-kontrol', 'tescil', 'kapanis'] 
 export const MAIL_VARIABLES = [
   '{musteri}',
   '{referans}',
-  '{beyanname_no}',
   '{eksik_evraklar}',
   '{gtip_sonuc}',
   '{tescil_no}',
-  '{kapanis_durumu}',
+  '{beyanname_no}',
   '{tarih}',
-  '{sorumlu}',
 ] as const;
+
+export const MAIL_VARIABLE_HELP: Record<(typeof MAIL_VARIABLES)[number], string> = {
+  '{musteri}': 'Müşteri adı.',
+  '{referans}': 'Sistemdeki dosya numarası. Birden fazla dosya varsa virgülle yazılır.',
+  '{eksik_evraklar}': 'Müşteri evrak kuralında zorunlu olup henüz gelmemiş evraklar. Yalnız gelmeyenler yazılır; birden fazlaysa virgülle ayrılır.',
+  '{gtip_sonuc}': 'Veritabanında olmayan veya hatalı eşleşen malzeme no, tanım ve GTİP.',
+  '{tescil_no}': 'Tescil başladığında Evrim’den gelen numara.',
+  '{beyanname_no}': 'Beyanname numarası.',
+  '{tarih}': 'Mailin gönderildiği tarih.',
+};
 
 function isMongoId(id: string): boolean {
   return /^[a-f\d]{24}$/i.test(id);

@@ -6,7 +6,7 @@ import { MailTemplateModel } from "../mail-templates/mailTemplate.model.js";
 import { env } from "../../config/env.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { dueReminderSlot } from "./documentReminderSchedule.js";
-import { deliverProcessMail } from "./processMail.service.js";
+import { declarationMailVariables, deliverProcessMail, renderMailVariables } from "./processMail.service.js";
 
 type Stage = "beyanname-kontrol" | "tescil" | "kapanis";
 
@@ -24,21 +24,18 @@ const STAGE_STATUS: Record<Stage, string> = {
   kapanis: "kapanis-bekleyen"
 };
 
-const STAGE_LABEL: Record<Stage, { subject: string; body: string; statusText: string }> = {
+const STAGE_LABEL: Record<Stage, { subject: string; body: string }> = {
   "beyanname-kontrol": {
     subject: "Beyanname kontrol · {referans}",
-    body: "Kontrolünüzde bekleyen dosyalar: {referans}.",
-    statusText: "Kontrol bekliyor"
+    body: "Kontrolünüzde bekleyen dosyalar: {referans}."
   },
   tescil: {
     subject: "Tescil · {referans}",
-    body: "Tescil aşamasındaki dosyalar: {referans}.",
-    statusText: "Tescil"
+    body: "Tescil aşamasındaki dosyalar: {referans}."
   },
   kapanis: {
     subject: "Kapanış · {referans}",
-    body: "Kapanış aşamasındaki dosyalar: {referans}.",
-    statusText: "Kapanış"
+    body: "Kapanış aşamasındaki dosyalar: {referans}."
   }
 };
 
@@ -116,6 +113,7 @@ async function suppressOpenSlot(companyId: mongoose.Types.ObjectId, userId: stri
 
 export async function notifyStageEntered(input: {
   companyId: mongoose.Types.ObjectId;
+  declarationId: mongoose.Types.ObjectId;
   customerId: string;
   operationType: string | null | undefined;
   reference: string;
@@ -127,21 +125,15 @@ export async function notifyStageEntered(input: {
   const template = await MailTemplateModel.findOne({ companyId: input.companyId, processStep: input.stage, active: true }).sort({ updatedAt: -1 });
   const copy = STAGE_LABEL[input.stage];
   const now = new Date();
+  const declaration = await DeclarationModel.findById(input.declarationId);
+  const values = declaration
+    ? await declarationMailVariables(input.companyId, declaration)
+    : renderMailVariables({ reference: input.reference });
   await deliverProcessMail({
     companyId: input.companyId,
     processStep: input.stage,
     recipients: people.map((person) => person.email),
-    values: {
-      "{musteri}": "",
-      "{referans}": input.reference,
-      "{beyanname_no}": input.reference,
-      "{eksik_evraklar}": "",
-      "{gtip_sonuc}": "",
-      "{tescil_no}": input.stage === "tescil" ? input.reference : "",
-      "{kapanis_durumu}": input.stage === "kapanis" ? copy.statusText : "",
-      "{tarih}": now.toLocaleDateString("tr-TR"),
-      "{sorumlu}": ""
-    },
+    values,
     fallbackSubject: copy.subject,
     fallbackBody: copy.body
   });
@@ -180,15 +172,17 @@ export async function runStageDigests(now = new Date()): Promise<number> {
       if (!stage || !STAGE_STATUS[stage]) continue;
       const frequency = template.frequency?.trim() ?? "";
       const pending = group.filter((file) => file.operation?.fileStatus === STAGE_STATUS[stage]);
-      const buckets = new Map<string, { email: string; refs: string[]; since: Date }>();
+      const buckets = new Map<string, { email: string; refs: string[]; customers: string[]; tescilNos: string[]; since: Date }>();
       for (const file of pending) {
         const operation = file.operation;
         if (!operation?.customerId) continue;
         const people = await stageRecipients(companyId, operation.customerId, operation.operationType, stage);
         const since = file.updatedAt ? new Date(file.updatedAt) : new Date(operation.receivedAt ?? now);
         for (const person of people) {
-          const bucket = buckets.get(person.userId) ?? { email: person.email, refs: [], since };
+          const bucket = buckets.get(person.userId) ?? { email: person.email, refs: [], customers: [], tescilNos: [], since };
           bucket.refs.push(operation.ref);
+          if (operation.customerName) bucket.customers.push(operation.customerName);
+          if (operation.tescilNo) bucket.tescilNos.push(operation.tescilNo);
           if (since.getTime() < bucket.since.getTime()) bucket.since = since;
           buckets.set(person.userId, bucket);
         }
@@ -217,17 +211,11 @@ export async function runStageDigests(now = new Date()): Promise<number> {
             companyId,
             processStep: stage,
             recipients: [bucket.email],
-            values: {
-              "{musteri}": "",
-              "{referans}": refs,
-              "{beyanname_no}": refs,
-              "{eksik_evraklar}": "",
-              "{gtip_sonuc}": "",
-              "{tescil_no}": stage === "tescil" ? refs : "",
-              "{kapanis_durumu}": stage === "kapanis" ? copy.statusText : "",
-              "{tarih}": now.toLocaleDateString("tr-TR"),
-              "{sorumlu}": ""
-            },
+            values: renderMailVariables({
+              customerName: [...new Set(bucket.customers)].join(", "),
+              reference: refs,
+              tescilNo: [...new Set(bucket.tescilNos)].join(", ")
+            }),
             fallbackSubject: copy.subject,
             fallbackBody: copy.body
           });

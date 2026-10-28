@@ -52,22 +52,36 @@ function meaningfulLines(lines: GtipGoodsLine[]): GtipGoodsLine[] {
   ));
 }
 
+function lineMatchesRecord(line: GtipGoodsLine, records: GtipMaterialRow[]): boolean {
+  const hs = normalizeGtipCode(line.hsCode);
+  if (hs.length < 4) return false;
+  const verified = records.filter((record) => record.status === "verified");
+  const material = folded(line.productCode);
+  if (material) {
+    const byMaterial = records.filter((record) => folded(record.materialNo) === material);
+    if (byMaterial.length > 0) {
+      return byMaterial.some((record) => record.status === "verified" && normalizeGtipCode(record.gtipNo) === hs);
+    }
+  }
+  return verified.some((record) => normalizeGtipCode(record.gtipNo) === hs);
+}
+
 export function gtipMatchIsClean(lines: GtipGoodsLine[], records: GtipMaterialRow[]): boolean {
   const present = meaningfulLines(lines);
   if (present.length === 0) return false;
-  const verified = records.filter((record) => record.status === "verified");
-  return present.every((line) => {
-    const hs = normalizeGtipCode(line.hsCode);
-    if (hs.length < 4) return false;
-    const material = folded(line.productCode);
-    if (material) {
-      const byMaterial = records.filter((record) => folded(record.materialNo) === material);
-      if (byMaterial.length > 0) {
-        return byMaterial.some((record) => record.status === "verified" && normalizeGtipCode(record.gtipNo) === hs);
-      }
-    }
-    return verified.some((record) => normalizeGtipCode(record.gtipNo) === hs);
-  });
+  return present.every((line) => lineMatchesRecord(line, records));
+}
+
+export function gtipFaultSummary(lines: GtipGoodsLine[], records: GtipMaterialRow[]): string {
+  return meaningfulLines(lines)
+    .filter((line) => !lineMatchesRecord(line, records))
+    .map((line) => {
+      const material = String(line.productCode ?? "").trim() || "Malzeme no yok";
+      const description = String(line.description ?? "").trim() || "Tanım yok";
+      const gtip = String(line.hsCode ?? "").trim() || "GTİP yok";
+      return `${material} · ${description} · ${gtip}`;
+    })
+    .join(", ");
 }
 
 async function holdForGtip(

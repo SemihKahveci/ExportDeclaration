@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { missingDocsFromRule } from "../../src/modules/declarations/declaration.service.js";
+import { gtipFaultSummary } from "../../src/modules/declarations/customerGtip.service.js";
 import {
   dailyReminderSlot,
   dueReminderSlot,
   everyTwoHoursSlot,
   twiceReminderSlot
 } from "../../src/modules/mail/documentReminderSchedule.js";
+import { renderMailVariables } from "../../src/modules/mail/processMail.service.js";
 
 const received = new Date("2026-10-28T08:00:00.000Z");
 const none = new Set<string>();
@@ -73,5 +76,33 @@ assert.equal(dueReminderSlot({
   now: new Date("2026-10-28T06:05:00.000Z"),
   sent: none
 }), null);
+
+assert.deepEqual(missingDocsFromRule(["Fatura"], new Set(["INVOICE"])), []);
+assert.deepEqual(missingDocsFromRule(["Fatura"], new Set()), ["Fatura"]);
+assert.deepEqual(missingDocsFromRule(["Fatura", "ATR"], new Set(["INVOICE"])), ["ATR"]);
+assert.deepEqual(missingDocsFromRule(["Fatura", "ATR"], new Set()), ["Fatura", "ATR"]);
+
+assert.equal(gtipFaultSummary(
+  [{ productCode: "M1", description: "Kumaş", hsCode: "1111" }],
+  [{ materialNo: "M1", gtipNo: "2222", status: "verified" }]
+), "M1 · Kumaş · 1111");
+assert.equal(gtipFaultSummary(
+  [{ productCode: "M1", description: "Kumaş", hsCode: "2222" }],
+  [{ materialNo: "M1", gtipNo: "2222", status: "verified" }]
+), "");
+
+const values = renderMailVariables({
+  customerName: "Ada",
+  reference: "EX-1",
+  missingDocuments: ["Fatura", "ATR"],
+  tescilNo: "T-9",
+  gtipResult: "M1 · Kumaş · 1111"
+});
+assert.equal(values["{musteri}"], "Ada");
+assert.equal(values["{referans}"], "EX-1");
+assert.equal(values["{eksik_evraklar}"], "Fatura, ATR");
+assert.equal(values["{tescil_no}"], "T-9");
+assert.equal(values["{kapanis_durumu}"], "");
+assert.equal(values["{sorumlu}"], "");
 
 console.log("document reminder schedule ok");

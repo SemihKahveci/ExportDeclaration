@@ -98,6 +98,7 @@ export async function transitionWritingWorkflow(
    const { notifyStageEntered } = await import("../mail/stageMail.service.js");
    await notifyStageEntered({
      companyId,
+     declarationId: declaration._id,
      customerId: declaration.operation.customerId ?? "",
      operationType: declaration.operation.operationType,
      reference: declaration.operation.ref,

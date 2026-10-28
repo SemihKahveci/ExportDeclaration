@@ -165,10 +165,13 @@ const REQUIRED_DOC_TYPES: Record<string, string[]> = {
   CMR: ["CMR"],
   Konşimento: ["BILL_OF_LADING", "BILL_OF_LADING_INSTRUCTION"],
   AWB: ["AWB"],
+  Booking: ["BOOKING"],
   ATR: ["ATR"],
   "EUR.1": ["EUR1"],
   "Menşe Şahadetnamesi": ["CERTIFICATE_OF_ORIGIN"],
-  "Dolaşım Belgesi": ["ATR", "EUR1"]
+  "Dolaşım Belgesi": ["ATR", "EUR1"],
+  "Sigorta Poliçesi": ["INSURANCE_POLICY"],
+  "Özet Beyan Bilgisi": ["SUMMARY_DECLARATION"]
 };
 
 function folded(value: string | null | undefined): string {

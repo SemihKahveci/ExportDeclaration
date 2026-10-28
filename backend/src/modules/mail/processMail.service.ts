@@ -7,7 +7,7 @@ import { MailTemplateModel, type MailTemplateDoc } from "../mail-templates/mailT
 import { AppUserModel } from "../users/user.model.js";
 import { MaterialRecordModel } from "../material-records/materialRecord.model.js";
 import { DeclarationModel } from "../declarations/declaration.model.js";
-import { gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
+import { gtipFaultSummary, gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { istanbulClock } from "./documentReminderSchedule.js";
 import { sendMail } from "./mail.service.js";
@@ -78,6 +78,74 @@ export async function resolveProcessRecipients(input: {
   return defined;
 }
 
+export function renderMailVariables(input: {
+  customerName?: string | null;
+  reference?: string | null;
+  declarationNo?: string | null;
+  missingDocuments?: string[];
+  gtipResult?: string | null;
+  tescilNo?: string | null;
+}): Record<string, string> {
+  const reference = input.reference?.trim() ?? "";
+  const missing = (input.missingDocuments ?? []).map((item) => item.trim()).filter(Boolean);
+  return {
+    "{musteri}": input.customerName?.trim() || "Müşteri",
+    "{referans}": reference,
+    "{beyanname_no}": input.declarationNo?.trim() || "",
+    "{eksik_evraklar}": missing.join(", "),
+    "{gtip_sonuc}": input.gtipResult?.trim() ?? "",
+    "{tescil_no}": input.tescilNo?.trim() ?? "",
+    "{tarih}": new Date().toLocaleDateString("tr-TR"),
+    "{kapanis_durumu}": "",
+    "{sorumlu}": ""
+  };
+}
+
+export async function declarationMailVariables(
+  companyId: mongoose.Types.ObjectId,
+  declaration: {
+    _id: mongoose.Types.ObjectId;
+    normalizedData?: unknown;
+    operation?: {
+      customerId?: string;
+      customerName?: string;
+      ref?: string;
+      declarationNo?: string | null;
+      tescilNo?: string | null;
+      operationType?: string | null;
+      transportMode?: string | null;
+    } | null;
+  },
+  missingOverride?: string[]
+): Promise<Record<string, string>> {
+  const operation = declaration.operation;
+  const lines = (declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
+  const records = operation?.customerId
+    ? await MaterialRecordModel.find({ companyId, customerId: operation.customerId }).select({ materialNo: 1, gtipNo: 1, status: 1 }).lean<GtipMaterialRow[]>()
+    : [];
+  let missing = missingOverride;
+  if (!missing) {
+    const { missingDocumentsByDeclaration } = await import("../declarations/declaration.service.js");
+    const found = await missingDocumentsByDeclaration(companyId, [{
+      _id: declaration._id,
+      operation: operation ? {
+        customerId: operation.customerId,
+        operationType: operation.operationType ?? undefined,
+        transportMode: operation.transportMode ?? null
+      } : null
+    }]);
+    missing = found.get(String(declaration._id)) ?? [];
+  }
+  return renderMailVariables({
+    customerName: operation?.customerName,
+    reference: operation?.ref,
+    declarationNo: operation?.declarationNo,
+    missingDocuments: missing,
+    gtipResult: gtipFaultSummary(lines, records),
+    tescilNo: operation?.tescilNo
+  });
+}
+
 export async function deliverProcessMail(input: {
   companyId: mongoose.Types.ObjectId;
   processStep: MailTemplateDoc["processStep"];
@@ -137,23 +205,28 @@ export async function sendDocumentReminder(
     senderEmail: await senderEmail(input.actorUserId),
     mode
   });
-  const missing = input.missingDocuments.map((item) => item.trim()).filter(Boolean);
+  const declaration = await DeclarationModel.findOne({
+    companyId,
+    "operation.customerId": input.customerId,
+    "operation.ref": input.reference.trim()
+  });
+  const values = declaration
+    ? await declarationMailVariables(
+      companyId,
+      declaration,
+      mode === "automatic" ? input.missingDocuments : undefined
+    )
+    : renderMailVariables({
+      customerName: input.customerName,
+      reference: input.reference,
+      missingDocuments: input.missingDocuments
+    });
   const sent = await deliverProcessMail({
     companyId,
     processStep: "eksik-evrak",
     recipients,
     manual: mode === "manual",
-    values: {
-      "{musteri}": input.customerName.trim() || "Müşteri",
-      "{referans}": input.reference.trim(),
-      "{beyanname_no}": input.reference.trim(),
-      "{eksik_evraklar}": missing.join(", ") || "Eksik evrak",
-      "{gtip_sonuc}": "",
-      "{tescil_no}": "",
-      "{kapanis_durumu}": "",
-      "{tarih}": new Date().toLocaleDateString("tr-TR"),
-      "{sorumlu}": ""
-    },
+    values,
     fallbackSubject: "Eksik evrak hatırlatması · {referans}",
     fallbackBody: "Sayın {musteri},\n\n{referans} dosyasında bekleyen evraklar: {eksik_evraklar}.\n\nİyi çalışmalar."
   });
@@ -185,22 +258,15 @@ export async function remindCustomerGtip(
     senderEmail: await senderEmail(actorUserId),
     mode: input.mode
   });
+  const faultSummary = gtipFaultSummary(lines, records);
+  const values = await declarationMailVariables(companyId, declaration);
+  values["{gtip_sonuc}"] = faultSummary || (input.allowMatching ? "Müşteriden GTİP teyidi istendi." : "");
   const sent = await deliverProcessMail({
     companyId,
     processStep: "gtip-kontrol",
     recipients,
     manual: input.mode === "manual",
-    values: {
-      "{musteri}": declaration.operation.customerName?.trim() || "Müşteri",
-      "{referans}": declaration.operation.ref,
-      "{beyanname_no}": declaration.operation.declarationNo || declaration.operation.ref,
-      "{eksik_evraklar}": "",
-      "{gtip_sonuc}": clean ? "Müşteriden GTİP teyidi istendi." : "GTİP eksik veya hatalı.",
-      "{tescil_no}": "",
-      "{kapanis_durumu}": "",
-      "{tarih}": new Date().toLocaleDateString("tr-TR"),
-      "{sorumlu}": declaration.operation.assigneeName ?? ""
-    },
+    values,
     fallbackSubject: "GTİP eksik/hatalı · {referans}",
     fallbackBody: "Sayın {musteri},\n\n{referans} dosyasında GTİP sonucu: {gtip_sonuc}.\n\nİyi çalışmalar."
   });
@@ -276,21 +342,15 @@ export async function notifyFileCreated(input: {
       senderEmail: await senderEmail(input.createdBy),
       mode: "automatic"
     });
+    const created = await DeclarationModel.findById(input.declarationId);
+    const values = created
+      ? await declarationMailVariables(input.companyId, created)
+      : renderMailVariables({ customerName: input.customerName, reference: input.reference });
     const sent = await deliverProcessMail({
       companyId: input.companyId,
       processStep: PROCESS_FILE_CREATED,
       recipients,
-      values: {
-        "{musteri}": input.customerName.trim() || "Müşteri",
-        "{referans}": input.reference.trim(),
-        "{beyanname_no}": input.reference.trim(),
-        "{eksik_evraklar}": "",
-        "{gtip_sonuc}": "",
-        "{tescil_no}": "",
-        "{kapanis_durumu}": "",
-        "{tarih}": new Date().toLocaleDateString("tr-TR"),
-        "{sorumlu}": ""
-      },
+      values,
       fallbackSubject: "Dosya oluşturuldu · {referans}",
       fallbackBody: "Sayın {musteri},\n\n{referans} referanslı dosya yeni talep olarak oluşturuldu.\n\nİyi çalışmalar."
     });
