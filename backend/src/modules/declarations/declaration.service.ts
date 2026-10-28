@@ -15,6 +15,7 @@ import { generateEvrimXmlDraft } from "../xml/evrimXml.generator.js";
 import { DeclarationModel, type DeclarationDoc, type OperationMetaDoc } from "./declaration.model.js";
 import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.model.js";
 import { CustomerDocumentRuleModel } from "../customers/customer.models.js";
+import { notifyFileCreated } from "../mail/processMail.service.js";
 import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
 import { HumanReviewDecisionModel } from "../idp/domain/humanReviewDecision.model.js";
 import { buildHumanReviewIssues } from "../idp/review/humanReview.service.js";
@@ -145,6 +146,15 @@ export async function createDeclaration(
     createdBy,
     status: DeclarationStatus.DRAFT,
     operation
+  });
+  await notifyFileCreated({
+    companyId,
+    declarationId: created._id,
+    customerId,
+    customerName: operation.customerName,
+    reference: operation.ref,
+    fileStatus: operation.fileStatus,
+    createdBy
   });
   return toDeclarationDto(created);
 }
