@@ -15,7 +15,6 @@ export const MAIL_PROCESS_OPTIONS = [
   { value: 'tescil',            label: 'Tescil'                   },
   { value: 'kapanis',           label: 'Kapanış'                  },
   { value: 'mutabakat',         label: 'Mutabakat'                },
-  { value: 'musteri-gtip',      label: 'Müşteri GTİP Sorgulama'   },
 ] as const;
 
 export const MAIL_FREQUENCY_OPTIONS = [

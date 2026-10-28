@@ -7,8 +7,7 @@ export const MAIL_PROCESS_STEPS = [
   "beyanname-kontrol",
   "tescil",
   "kapanis",
-  "mutabakat",
-  "musteri-gtip"
+  "mutabakat"
 ] as const;
 
 export interface MailTemplateDoc extends mongoose.Document {
