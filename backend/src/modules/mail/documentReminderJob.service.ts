@@ -2,26 +2,16 @@ import mongoose from "mongoose";
 import { env } from "../../config/env.js";
 import {
   CustomerDocumentRuleModel,
-  CustomerMailModel,
-  type CustomerDocumentRuleDoc,
-  type CustomerMailDoc
+  type CustomerDocumentRuleDoc
 } from "../customers/customer.models.js";
 import { DeclarationModel } from "../declarations/declaration.model.js";
 import { missingDocsFromRule, ruleCoversFile } from "../declarations/declaration.service.js";
 import { UploadedDocumentModel } from "../documents/document.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { dueReminderSlot } from "./documentReminderSchedule.js";
-import { sendDocumentReminder } from "./mail.service.js";
+import { sendDocumentReminder } from "./processMail.service.js";
 
 const TICK_MS = 60_000;
-const REMINDER_PROCESS = "Eksik Evrak Hatırlatma";
-
-function activeAddresses(rows: Array<{ email?: string; status?: string; matchStatus?: string; notificationProcesses?: string[] }>): string[] {
-  const active = rows.filter((row) => row.status !== "passive" && row.matchStatus !== "passive" && row.email?.trim());
-  const tagged = active.filter((row) => (row.notificationProcesses ?? []).includes(REMINDER_PROCESS));
-  const chosen = tagged.length > 0 ? tagged : active;
-  return [...new Set(chosen.map((row) => String(row.email).trim().toLowerCase()))];
-}
 
 export async function runDocumentReminders(now = new Date()): Promise<number> {
   if (!env.mailEnabled) return 0;
@@ -44,14 +34,13 @@ export async function runDocumentReminders(now = new Date()): Promise<number> {
   for (const [companyKey, group] of byCompany) {
     const companyId = new mongoose.Types.ObjectId(companyKey);
     const customerIds = [...new Set(group.map((file) => file.operation?.customerId).filter((id): id is string => Boolean(id)))];
-    const [rules, mails, documents, dispatches] = await Promise.all([
+    const [rules, documents, dispatches] = await Promise.all([
       CustomerDocumentRuleModel.find({
         companyId,
         customerId: { $in: customerIds },
         status: "Aktif",
         reminderType: "Otomatik"
       }).lean<CustomerDocumentRuleDoc[]>(),
-      CustomerMailModel.find({ companyId, customerId: { $in: customerIds } }).lean<CustomerMailDoc[]>(),
       UploadedDocumentModel.find({ companyId, declarationId: { $in: group.map((file) => file._id) } }).select({ declarationId: 1, type: 1 }).lean(),
       DocumentReminderDispatchModel.find({ companyId, declarationId: { $in: group.map((file) => file._id) } }).select({ declarationId: 1, ruleId: 1, slotKey: 1 }).lean()
     ]);
@@ -70,13 +59,6 @@ export async function runDocumentReminders(now = new Date()): Promise<number> {
       slots.add(row.slotKey);
       sentByFile.set(id, slots);
     }
-    const mailsByCustomer = new Map<string, typeof mails>();
-    for (const mail of mails) {
-      const list = mailsByCustomer.get(mail.customerId) ?? [];
-      list.push(mail);
-      mailsByCustomer.set(mail.customerId, list);
-    }
-
     for (const file of group) {
       const operation = file.operation;
       const customerId = operation?.customerId;
@@ -84,8 +66,6 @@ export async function runDocumentReminders(now = new Date()): Promise<number> {
       const receivedAt = operation.receivedAt ? new Date(operation.receivedAt) : null;
       if (!receivedAt || Number.isNaN(receivedAt.getTime())) continue;
       const uploaded = typesByFile.get(String(file._id)) ?? new Set<string>();
-      const addresses = activeAddresses(mailsByCustomer.get(customerId) ?? []);
-      if (addresses.length === 0) continue;
 
       for (const rule of rules) {
         if (rule.customerId !== customerId) continue;
@@ -110,14 +90,16 @@ export async function runDocumentReminders(now = new Date()): Promise<number> {
         if (claimed.upsertedCount !== 1) continue;
 
         try {
-          for (const to of addresses) {
-            await sendDocumentReminder(companyId, {
-              customerId,
-              to,
-              customerName: operation.customerName,
-              reference: operation.ref,
-              missingDocuments: missing
-            });
+          const result = await sendDocumentReminder(companyId, {
+            customerId,
+            customerName: operation.customerName,
+            reference: operation.ref,
+            missingDocuments: missing,
+            mode: "automatic"
+          });
+          if (result.to.length === 0) {
+            await DocumentReminderDispatchModel.deleteOne({ declarationId: file._id, ruleId, slotKey: slot });
+            continue;
           }
           sent += 1;
         } catch (error) {

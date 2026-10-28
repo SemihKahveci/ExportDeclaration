@@ -10,6 +10,7 @@ import { sendMail } from "./mail.service.js";
 
 export const PROCESS_FILE_CREATED = "dosya-olusturuldu";
 export const LABEL_FILE_CREATED = "Dosya Oluşturuldu";
+export const LABEL_MISSING_DOCS = "Eksik Evrak Hatırlatma";
 
 type RecipientKind = "defined" | "sender" | "both";
 
@@ -109,6 +110,48 @@ export async function deliverProcessMail(input: {
     });
   }
   return recipients.length;
+}
+
+export async function sendDocumentReminder(
+  companyId: mongoose.Types.ObjectId,
+  input: {
+    customerId: string;
+    customerName: string;
+    reference: string;
+    missingDocuments: string[];
+    actorUserId?: mongoose.Types.ObjectId | null;
+    mode?: "automatic" | "manual";
+  }
+): Promise<{ to: string[] }> {
+  const mode = input.mode ?? "manual";
+  const recipients = await resolveProcessRecipients({
+    companyId,
+    customerId: input.customerId,
+    processLabel: LABEL_MISSING_DOCS,
+    senderEmail: await senderEmail(input.actorUserId),
+    mode
+  });
+  const missing = input.missingDocuments.map((item) => item.trim()).filter(Boolean);
+  const sent = await deliverProcessMail({
+    companyId,
+    processStep: "eksik-evrak",
+    recipients,
+    manual: mode === "manual",
+    values: {
+      "{musteri}": input.customerName.trim() || "Müşteri",
+      "{referans}": input.reference.trim(),
+      "{beyanname_no}": input.reference.trim(),
+      "{eksik_evraklar}": missing.join(", ") || "Eksik evrak",
+      "{gtip_sonuc}": "",
+      "{tescil_no}": "",
+      "{kapanis_durumu}": "",
+      "{tarih}": new Date().toLocaleDateString("tr-TR"),
+      "{sorumlu}": ""
+    },
+    fallbackSubject: "Eksik evrak hatırlatması · {referans}",
+    fallbackBody: "Sayın {musteri},\n\n{referans} dosyasında bekleyen evraklar: {eksik_evraklar}.\n\nİyi çalışmalar."
+  });
+  return { to: sent > 0 ? recipients : [] };
 }
 
 export async function notifyFileCreated(input: {
