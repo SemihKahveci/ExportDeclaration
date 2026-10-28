@@ -31,6 +31,7 @@ function validatePayload(body: {
   subject?: unknown;
   body?: unknown;
   variables?: unknown;
+  frequency?: unknown;
   active?: unknown;
 }): {
   name: string;
@@ -38,6 +39,7 @@ function validatePayload(body: {
   subject: string;
   body: string;
   variables: string[];
+  frequency: string;
   active: boolean;
 } {
   const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -52,6 +54,7 @@ function validatePayload(body: {
     subject,
     body: typeof body.body === "string" ? body.body : "",
     variables: assertVariables(body.variables),
+    frequency: typeof body.frequency === "string" ? body.frequency.trim() : "",
     active: body.active !== false
   };
 }
@@ -86,6 +89,7 @@ export async function updateMailTemplate(
     subject: body.subject ?? existing.subject,
     body: body.body ?? existing.body,
     variables: body.variables ?? existing.variables,
+    frequency: body.frequency ?? existing.frequency,
     active: body.active ?? existing.active
   };
   const payload = validatePayload(merged);
@@ -95,6 +99,7 @@ export async function updateMailTemplate(
   existing.subject = payload.subject;
   existing.body = payload.body;
   existing.variables = payload.variables;
+  existing.frequency = payload.frequency;
   existing.active = payload.active;
 
   await existing.save();

@@ -65,6 +65,7 @@ const ROLE_OPTIONS: { value: AppUserRole; label: string; desc: string }[] = [
   { value: 'MT',          label: 'MT',                desc: 'MT kontrol işlemleri'             },
   { value: 'Operasyon',   label: 'Operasyon',         desc: 'Operasyon ekranları'              },
   { value: 'Saha',        label: 'Saha Kullanıcısı',  desc: 'Saha evrak yükleme'               },
+  { value: 'Muhasebe',    label: 'Muhasebe',          desc: 'Kapanış bildirimleri'             },
 ];
 
 const APPROVER_OPTIONS: { value: ApproverLevel; label: string; desc: string }[] = [

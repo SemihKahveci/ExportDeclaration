@@ -101,6 +101,7 @@ export default function UserDrawer({ open, initial, onClose, onSave, saving = fa
               <option value="Operasyon">Operasyon</option>
               <option value="MT">MT</option>
               <option value="Saha">Saha</option>
+              <option value="Muhasebe">Muhasebe</option>
             </Select>
           </Field>
           <Field label="Durum" htmlFor="u-status">

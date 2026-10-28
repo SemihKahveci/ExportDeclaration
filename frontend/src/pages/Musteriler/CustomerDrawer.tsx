@@ -65,14 +65,12 @@ function defaultDefinedDomain(domains: MailDomain[], current?: string): string {
 }
 
 const NOTIFICATION_PROCESS_LIST = [
-  'GTİP Eksik · Kontrollü',
-  'GTİP Hatalı · Kontrollü',
-  'Evrak Eksik · Otomatik',
-  'Beyanname Başladı · Otomatik',
-  'Tescil Başladı · Otomatik',
-  'Tescil Edildi · Otomatik',
-  'Kapanış Evrakları · Manuel',
-  'Para Talep · Kontrollü',
+  'Dosya Oluşturuldu',
+  'Eksik Evrak Hatırlatma',
+  'GTİP Eksik/Hatalı',
+  'Beyanname Kontrol',
+  'Tescil',
+  'Kapanış',
 ];
 
 const DOCUMENT_LIST = [
@@ -82,20 +80,26 @@ const DOCUMENT_LIST = [
 ];
 
 const NOTIFY_PROCESS_LIST = [
-  'Eksik Evrak Hatırlatma', 'GTİP Eksik Bildirimi', 'GTİP Hatalı Bildirimi',
-  'Yanlış Beyanname Bildirimi', 'Beyanname Yazımı Başladı',
-  'Tescil Bilgilendirmesi', 'Beyanname Tescil Edildi',
-  'Kapanış Evrakları Gönderimi', 'Para Talep / Ödeme Bildirimi',
+  'Dosya Oluşturuldu',
+  'Eksik Evrak Hatırlatma',
+  'GTİP Eksik/Hatalı',
+  'Beyanname Kontrol',
+  'Tescil',
+  'Kapanış',
 ];
 
 const NOTIFY_MODE_OPTIONS = ['Otomatik', 'Kontrollü', 'Kapalı'] as const;
-const RECIPIENT_RULE_OPTIONS = ['Mail', 'Domain', 'Mail + Domain', 'Kullanıcı seçimi'] as const;
+const RECIPIENT_RULE_OPTIONS = ['Tanımlı mailler', 'Mail gönderen kullanıcı', 'Her ikisi'] as const;
 
 function normalizeRecipientRule(value: string): string {
   const map: Record<string, string> = {
-    'Mail tanımlarından': 'Mail',
-    'Domain eşleşmesine göre': 'Domain',
-    'Operatör seçer': 'Kullanıcı seçimi',
+    'Mail': 'Tanımlı mailler',
+    'Mail tanımlarından': 'Tanımlı mailler',
+    'Domain': 'Tanımlı mailler',
+    'Domain eşleşmesine göre': 'Tanımlı mailler',
+    'Mail + Domain': 'Tanımlı mailler',
+    'Kullanıcı seçimi': 'Mail gönderen kullanıcı',
+    'Operatör seçer': 'Mail gönderen kullanıcı',
   };
   if (value.startsWith('—')) return SELECT_PLACEHOLDER;
   return map[value] ?? value;
@@ -701,9 +705,7 @@ export default function CustomerDrawer({
               onChange={(e) => setNRecipient(e.target.value)}
             >
               <PlaceholderOption />
-              {RECIPIENT_RULE_OPTIONS.filter(
-                (opt) => nMode !== 'Otomatik' || opt !== 'Kullanıcı seçimi'
-              ).map((opt) => (
+              {RECIPIENT_RULE_OPTIONS.map((opt) => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
             </Select>

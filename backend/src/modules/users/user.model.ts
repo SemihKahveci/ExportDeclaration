@@ -6,7 +6,8 @@ export const APP_USER_ROLES = [
   "MT Yönetici",
   "Operasyon",
   "MT",
-  "Saha"
+  "Saha",
+  "Muhasebe"
 ] as const;
 
 export const APP_USER_STATUSES = ["Aktif", "Pasif"] as const;

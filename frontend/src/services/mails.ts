@@ -8,14 +8,25 @@ import {
 } from '../api/mailTemplateApi';
 
 export const MAIL_PROCESS_OPTIONS = [
-  { value: 'eksik-evrak',       label: 'Eksik Evrak'              },
-  { value: 'gtip-kontrol',      label: 'GTİP Kontrol'             },
+  { value: 'dosya-olusturuldu', label: 'Dosya Oluşturuldu'        },
+  { value: 'eksik-evrak',       label: 'Eksik Evrak Hatırlatma'   },
+  { value: 'gtip-kontrol',      label: 'GTİP Eksik/Hatalı'        },
   { value: 'beyanname-kontrol', label: 'Beyanname Kontrol'        },
   { value: 'tescil',            label: 'Tescil'                   },
   { value: 'kapanis',           label: 'Kapanış'                  },
   { value: 'mutabakat',         label: 'Mutabakat'                },
   { value: 'musteri-gtip',      label: 'Müşteri GTİP Sorgulama'   },
 ] as const;
+
+export const MAIL_FREQUENCY_OPTIONS = [
+  'Her 2 saatte bir',
+  'Günde 1 kez',
+  'Günde 2 kez',
+  "Cut-off'a göre dinamik",
+  'Manuel takip',
+] as const;
+
+export const MAIL_DIGEST_PROCESSES = ['beyanname-kontrol', 'tescil', 'kapanis'] as const;
 
 export const MAIL_VARIABLES = [
   '{musteri}',
@@ -40,6 +51,7 @@ function toCreatePayload(template: MailTemplate): CreateMailTemplatePayload {
     subject: template.subject,
     body: template.body,
     variables: template.variables,
+    frequency: template.frequency ?? '',
     active: template.active,
   };
 }

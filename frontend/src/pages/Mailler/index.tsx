@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { Plus, Search, Pencil, Trash2, Loader2, X, AlertTriangle, Copy } from 'lucide-react';
 import type { MailTemplate } from '../../types';
-import { mailTemplatesService, MAIL_PROCESS_OPTIONS, MAIL_VARIABLES } from '../../services/mails';
+import { mailTemplatesService, MAIL_DIGEST_PROCESSES, MAIL_FREQUENCY_OPTIONS, MAIL_PROCESS_OPTIONS, MAIL_VARIABLES } from '../../services/mails';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
@@ -54,6 +54,7 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
   const [subject,    setSubject]    = useState('');
   const [body,       setBody]       = useState('');
   const [active,     setActive]     = useState(true);
+  const [frequency,  setFrequency]  = useState('');
   const [bodyRef,    setBodyRef]    = useState<HTMLTextAreaElement | null>(null);
   const [insertTarget, setInsertTarget] = useState<InsertTarget>('body');
   const subjectSelection = useRef({ start: 0, end: 0 });
@@ -65,12 +66,14 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
       setSubject(template.subject);
       setBody(template.body);
       setActive(template.active);
+      setFrequency(template.frequency ?? '');
     } else if (mode === 'new') {
       setName('');
       setProcess(SELECT_PLACEHOLDER);
       setSubject('');
       setBody('');
       setActive(true);
+      setFrequency('');
       setInsertTarget('body');
     }
   }, [mode, template]);
@@ -87,6 +90,7 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
       subject,
       body,
       variables: usedVars,
+      frequency: MAIL_DIGEST_PROCESSES.includes(process as (typeof MAIL_DIGEST_PROCESSES)[number]) ? frequency : '',
       active,
     });
   }
@@ -192,6 +196,21 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
               </Select>
             </Field>
           </div>
+
+          {MAIL_DIGEST_PROCESSES.includes(process as (typeof MAIL_DIGEST_PROCESSES)[number]) && (
+            <Field
+              label="Sıklık"
+              htmlFor="mt-frequency"
+              hint="İlk bildirim anında gider. Sonraki turda bu kişinin bekleyen kalemleri tek mailde toplanır."
+            >
+              <Select id="mt-frequency" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+                <option value="">Yalnız anlık bildirim</option>
+                {MAIL_FREQUENCY_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </Select>
+            </Field>
+          )}
 
           <Field label="Mail Konusu" htmlFor="mt-subject" required>
             <Input

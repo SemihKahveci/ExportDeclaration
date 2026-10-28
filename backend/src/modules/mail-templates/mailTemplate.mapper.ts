@@ -7,6 +7,7 @@ export interface MailTemplateDto {
   subject: string;
   body: string;
   variables: string[];
+  frequency: string;
   active: boolean;
 }
 
@@ -18,6 +19,7 @@ export function toMailTemplateDto(doc: MailTemplateDoc): MailTemplateDto {
     subject: doc.subject,
     body: doc.body ?? "",
     variables: doc.variables ?? [],
+    frequency: doc.frequency ?? "",
     active: doc.active
   };
 }

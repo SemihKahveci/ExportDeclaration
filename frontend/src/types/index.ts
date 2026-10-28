@@ -246,6 +246,7 @@ export interface MailTemplate {
   subject: string;
   body: string;
   variables: string[];
+  frequency?: string;
   active: boolean;
 }
 
@@ -596,7 +597,7 @@ export interface BeyannamePageStats {
 
 // ─── Ayarlar screen ───────────────────────────────────────────────────────────
 
-export type AppUserRole = 'Admin' | 'Yönetici' | 'MT Yönetici' | 'Operasyon' | 'MT' | 'Saha';
+export type AppUserRole = 'Admin' | 'Yönetici' | 'MT Yönetici' | 'Operasyon' | 'MT' | 'Saha' | 'Muhasebe';
 export type AppUserStatus = 'Aktif' | 'Pasif';
 
 export type ApproverLevel = 'none' | 'first' | 'second';

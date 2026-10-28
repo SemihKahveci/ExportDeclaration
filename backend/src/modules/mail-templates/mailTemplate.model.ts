@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 
 export const MAIL_PROCESS_STEPS = [
+  "dosya-olusturuldu",
   "eksik-evrak",
   "gtip-kontrol",
   "beyanname-kontrol",
@@ -17,6 +18,7 @@ export interface MailTemplateDoc extends mongoose.Document {
   subject: string;
   body: string;
   variables: string[];
+  frequency: string;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -30,6 +32,7 @@ const MailTemplateSchema = new Schema(
     subject: { type: String, required: true, trim: true },
     body: { type: String, default: "" },
     variables: { type: [String], default: [] },
+    frequency: { type: String, default: "" },
     active: { type: Boolean, default: true }
   },
   { timestamps: true }
