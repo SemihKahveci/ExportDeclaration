@@ -41,5 +41,18 @@ export async function transitionRegistrationWorkflow(
  });
  declaration.markModified("operation");
  await declaration.save();
+ if (action === "COMPLETE_REGISTRATION" && op.customerId) {
+   const { notifyStageEntered } = await import("../mail/stageMail.service.js");
+   await notifyStageEntered({
+     companyId,
+     customerId: op.customerId,
+     operationType: op.operationType,
+     reference: op.ref,
+     stage: "kapanis",
+     receivedAt: new Date()
+   }).catch((error: unknown) => {
+     console.error(JSON.stringify({ event: "stage-mail.failed", stage: "kapanis", message: error instanceof Error ? error.message : "Kapanış maili gönderilemedi" }));
+   });
+ }
  return toDeclarationDto(declaration);
 }
