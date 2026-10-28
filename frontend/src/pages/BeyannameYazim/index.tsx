@@ -20,6 +20,7 @@ import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import { listDocuments, reprocessDocument } from '../../api/documentApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
 import { downloadDeclarationExcel } from '../../api/declarationApi';
+import { sendGtipReminder } from '../../api/mailApi';
 import DeclarationSheet, { type DeclarationSheetData } from './DeclarationSheet';
 import Modal from '../../components/ui/Modal';
 
@@ -436,9 +437,26 @@ export default function BeyannameYazimPage() {
             title={`${selected.ref} · ${selected.customer}`}
             sub={`${selected.transportMode} · ${selected.lineItems.length} kalem · ${selected.rejim}`}
             actions={
-              <Pill variant={selected.operationFileStatus === 'ic-kontrol' ? 'accent' : 'warn'}>
-                {selected.durumLabel}
-              </Pill>
+              <div className="flex items-center gap-2">
+                {selected.operationFileStatus === 'gtip-eksik' && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      void sendGtipReminder(selected.id).then((result) => {
+                        toast(result.to.length > 0 ? `GTİP hatırlatması ${result.to.length} adrese gönderildi` : 'Alıcı bulunamadı');
+                      }).catch((error: unknown) => {
+                        toast(error instanceof ApiError ? error.message : 'GTİP hatırlatması gönderilemedi', { duration: 7000 });
+                      });
+                    }}
+                    writeCap="beyanname.write"
+                  >
+                    Müşteriye hatırlat
+                  </Button>
+                )}
+                <Pill variant={selected.operationFileStatus === 'ic-kontrol' ? 'accent' : 'warn'}>
+                  {selected.durumLabel}
+                </Pill>
+              </div>
             }
           />
           <Tabs

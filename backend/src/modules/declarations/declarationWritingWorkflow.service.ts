@@ -51,7 +51,13 @@ export async function transitionWritingWorkflow(
    assertParsedGtip(declaration);
    if(from!=="beyanname-yazim")throw new HttpError(409,"Yalnız beyanname yazım aşamasındaki dosya MT kontrole gönderilebilir.");
    const gate=await applyUserGtipGate(declaration,actorUserId,input.gtipDecision);
-   if(gate==="held")return toDeclarationDto(declaration);
+   if(gate==="held"){
+     const { remindCustomerGtip } = await import("../mail/processMail.service.js");
+     await remindCustomerGtip(companyId, declarationId, actorUserId, { mode: "manual", allowMatching: true }).catch((error: unknown) => {
+       console.error(JSON.stringify({ event: "gtip-reminder.failed", message: error instanceof Error ? error.message : "GTİP hatırlatması gönderilemedi" }));
+     });
+     return toDeclarationDto(declaration);
+   }
    releaseHold(declaration.operation);
    declaration.operation.returnNotice="";
    declaration.operation.fileStatus="ic-kontrol";

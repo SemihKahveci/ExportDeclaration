@@ -121,7 +121,7 @@ export default function DeclarationControlTab({
             actions={
               <Button
                 icon={Send}
-                onClick={() => toast('GTİP kontrol sonucu müşteriye bildirilecek')}
+                onClick={() => toast('GTİP eksik veya hatalı dosyada Beyanname yazımından Müşteriye hatırlat kullanılır.')}
               >
                 Müşteriye Bilgilendirme Gönder
               </Button>

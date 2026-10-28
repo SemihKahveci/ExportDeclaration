@@ -35,6 +35,10 @@ export async function transitionPreparationWorkflow(
 
  const gate=await applyUserGtipGate(declaration,actorUserId,input.gtipDecision);
  if(gate==="held"){
+   const { remindCustomerGtip } = await import("../mail/processMail.service.js");
+   await remindCustomerGtip(companyId, declarationId, actorUserId, { mode: "manual", allowMatching: true }).catch((error: unknown) => {
+     console.error(JSON.stringify({ event: "gtip-reminder.failed", message: error instanceof Error ? error.message : "GTİP hatırlatması gönderilemedi" }));
+   });
    return {
      declaration:toDeclarationDto(declaration),
      readiness:{ready,documentCount:docs.length,blockingDocumentCount:blocking.length,blockingDocuments:blocking.map(d=>({id:String(d._id),fileName:d.fileName??"",status:d.extractionStatus}))}

@@ -9,7 +9,7 @@ import { missingDocsFromRule, ruleCoversFile } from "../declarations/declaration
 import { UploadedDocumentModel } from "../documents/document.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { dueReminderSlot } from "./documentReminderSchedule.js";
-import { sendDocumentReminder } from "./processMail.service.js";
+import { runGtipIdleReminders, sendDocumentReminder } from "./processMail.service.js";
 
 const TICK_MS = 60_000;
 
@@ -124,7 +124,8 @@ export function startDocumentReminderJob(): void {
     running = true;
     try {
       const sent = await runDocumentReminders();
-      if (sent > 0) console.log(JSON.stringify({ event: "document-reminder.sent", sent }));
+      const gtip = await runGtipIdleReminders();
+      if (sent > 0 || gtip > 0) console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip }));
     } catch (error) {
       console.error(JSON.stringify({
         event: "document-reminder.failed",

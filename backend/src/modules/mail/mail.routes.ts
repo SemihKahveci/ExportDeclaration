@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 
 import { sendMail } from "./mail.service.js";
-import { sendDocumentReminder } from "./processMail.service.js";
+import { remindCustomerGtip, sendDocumentReminder } from "./processMail.service.js";
 
 export const mailRouter = Router();
 
@@ -20,6 +20,19 @@ mailRouter.post(
         actorUserId: req.auth!.userId,
         mode: "manual"
       });
+      return res.json({ ok: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+mailRouter.post(
+  "/gtip-reminder",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const declarationId = String(req.body?.declarationId ?? "");
+      const data = await remindCustomerGtip(req.auth!.operationalCompanyId, declarationId, req.auth!.userId, { mode: "manual" });
       return res.json({ ok: true, data });
     } catch (error) {
       next(error);

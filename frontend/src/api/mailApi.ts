@@ -8,3 +8,7 @@ export async function sendDocumentReminder(payload: {
 }): Promise<{ to: string[] }> {
   return apiPostJson<{ to: string[] }>("/api/mail/document-reminder", payload);
 }
+
+export async function sendGtipReminder(declarationId: string): Promise<{ to: string[] }> {
+  return apiPostJson<{ to: string[] }>("/api/mail/gtip-reminder", { declarationId });
+}

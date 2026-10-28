@@ -5,12 +5,18 @@ import { CustomerNotificationRuleModel } from "../customers/customer.models.js";
 import { listMails } from "../customers/customer.service.js";
 import { MailTemplateModel, type MailTemplateDoc } from "../mail-templates/mailTemplate.model.js";
 import { AppUserModel } from "../users/user.model.js";
+import { MaterialRecordModel } from "../material-records/materialRecord.model.js";
+import { DeclarationModel } from "../declarations/declaration.model.js";
+import { gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
+import { istanbulClock } from "./documentReminderSchedule.js";
 import { sendMail } from "./mail.service.js";
 
 export const PROCESS_FILE_CREATED = "dosya-olusturuldu";
 export const LABEL_FILE_CREATED = "Dosya Oluşturuldu";
 export const LABEL_MISSING_DOCS = "Eksik Evrak Hatırlatma";
+export const LABEL_GTIP = "GTİP Eksik/Hatalı";
+const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 type RecipientKind = "defined" | "sender" | "both";
 
@@ -152,6 +158,89 @@ export async function sendDocumentReminder(
     fallbackBody: "Sayın {musteri},\n\n{referans} dosyasında bekleyen evraklar: {eksik_evraklar}.\n\nİyi çalışmalar."
   });
   return { to: sent > 0 ? recipients : [] };
+}
+
+export async function remindCustomerGtip(
+  companyId: mongoose.Types.ObjectId,
+  declarationId: string,
+  actorUserId: mongoose.Types.ObjectId | null | undefined,
+  input: { mode: "automatic" | "manual"; allowMatching?: boolean }
+): Promise<{ to: string[] }> {
+  if (!mongoose.isValidObjectId(declarationId)) throw new HttpError(400, "Geçersiz beyanname id.");
+  const declaration = await DeclarationModel.findOne({ _id: declarationId, companyId });
+  if (!declaration?.operation?.customerId) throw new HttpError(404, "Beyanname bulunamadı.");
+  const lines = ((declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? []);
+  const records = await MaterialRecordModel.find({ companyId, customerId: declaration.operation.customerId })
+    .select({ materialNo: 1, gtipNo: 1, status: 1 })
+    .lean<GtipMaterialRow[]>();
+  const clean = gtipMatchIsClean(lines, records);
+  if (clean && !input.allowMatching) {
+    if (input.mode === "manual") throw new HttpError(409, "GTİP eksik veya hatalı değil.");
+    return { to: [] };
+  }
+  const recipients = await resolveProcessRecipients({
+    companyId,
+    customerId: declaration.operation.customerId,
+    processLabel: LABEL_GTIP,
+    senderEmail: await senderEmail(actorUserId),
+    mode: input.mode
+  });
+  const sent = await deliverProcessMail({
+    companyId,
+    processStep: "gtip-kontrol",
+    recipients,
+    manual: input.mode === "manual",
+    values: {
+      "{musteri}": declaration.operation.customerName?.trim() || "Müşteri",
+      "{referans}": declaration.operation.ref,
+      "{beyanname_no}": declaration.operation.declarationNo || declaration.operation.ref,
+      "{eksik_evraklar}": "",
+      "{gtip_sonuc}": clean ? "Müşteriden GTİP teyidi istendi." : "GTİP eksik veya hatalı.",
+      "{tescil_no}": "",
+      "{kapanis_durumu}": "",
+      "{tarih}": new Date().toLocaleDateString("tr-TR"),
+      "{sorumlu}": declaration.operation.assigneeName ?? ""
+    },
+    fallbackSubject: "GTİP eksik/hatalı · {referans}",
+    fallbackBody: "Sayın {musteri},\n\n{referans} dosyasında GTİP sonucu: {gtip_sonuc}.\n\nİyi çalışmalar."
+  });
+  return { to: sent > 0 ? recipients : [] };
+}
+
+export async function runGtipIdleReminders(now = new Date()): Promise<number> {
+  if (!env.mailEnabled) return 0;
+  const idleBefore = new Date(now.getTime() - TWO_HOURS_MS);
+  const files = await DeclarationModel.find({
+    "operation.isArchived": { $ne: true },
+    "operation.fileStatus": { $nin: ["kapandi"] },
+    updatedAt: { $lte: idleBefore }
+  }).select({ _id: 1, companyId: 1, updatedAt: 1 }).lean();
+  const dateKey = istanbulClock(now).dateKey;
+  let sent = 0;
+  for (const file of files) {
+    const slotKey = `gtip:${dateKey}`;
+    const claimed = await DocumentReminderDispatchModel.updateOne(
+      { declarationId: file._id, ruleId: "gtip-kontrol", slotKey },
+      { $setOnInsert: { companyId: file.companyId, declarationId: file._id, ruleId: "gtip-kontrol", slotKey, sentAt: now } },
+      { upsert: true }
+    );
+    if (claimed.upsertedCount !== 1) continue;
+    try {
+      const result = await remindCustomerGtip(file.companyId, String(file._id), null, { mode: "automatic" });
+      if (result.to.length === 0) {
+        await DocumentReminderDispatchModel.deleteOne({ declarationId: file._id, ruleId: "gtip-kontrol", slotKey });
+        continue;
+      }
+      sent += 1;
+    } catch (error) {
+      await DocumentReminderDispatchModel.deleteOne({ declarationId: file._id, ruleId: "gtip-kontrol", slotKey });
+      console.error(JSON.stringify({
+        event: "gtip-reminder.failed",
+        message: error instanceof Error ? error.message : "GTİP hatırlatması gönderilemedi"
+      }));
+    }
+  }
+  return sent;
 }
 
 export async function notifyFileCreated(input: {
