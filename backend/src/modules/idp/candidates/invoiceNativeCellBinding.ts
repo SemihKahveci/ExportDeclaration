@@ -196,7 +196,11 @@ function headerAnchors(words: CanonicalWord[]): Array<{ role: GoodsRole; x: numb
   for (const word of words) {
     const token = tokenOf(word);
     let role = headerRole(word.text);
-    if ((token === "TUTAR" || token === "TUTARI") && (nearToken(words, word, "ISKONTO") || nearToken(words, word, "KDV"))) continue;
+    const besideGoodsAmount = (token === "TUTAR" || token === "TUTARI")
+      && (nearToken(words, word, "HIZMET") || nearToken(words, word, "MALZEME"));
+    // KDV Tutarı sits close to Hizmet Tutarı on a dense header. The goods amount
+    // stays; a discount or tax amount without that label does not.
+    if ((token === "TUTAR" || token === "TUTARI") && !besideGoodsAmount && (nearToken(words, word, "ISKONTO") || nearToken(words, word, "KDV"))) continue;
     if (token === "ADET" && nearToken(words, word, "KAP")) role = "packaging";
     if ((token === "TUTAR" || token === "TUTARI") && (nearToken(words, word, "HIZMET") || nearToken(words, word, "MALZEME"))) role = "lineTotal";
     if (token === "FIYAT" && nearToken(words, word, "BIRIM")) role = "unitPrice";
@@ -213,7 +217,17 @@ function headerAnchors(words: CanonicalWord[]): Array<{ role: GoodsRole; x: numb
     // Two "Açıklaması" labels are one text block. The right-hand one is the fence before Miktar.
     else if (role === "description") unique.push([...group].sort((left, right) => right.x - left.x)[0]!);
     // The goods amount sits beside the price. A second total further right must not erase that column.
-    else if (role === "lineTotal") unique.push([...group].sort((left, right) => left.x - right.x)[0]!);
+    else if (role === "lineTotal") {
+      const markers = words
+        .filter((item) => tokenOf(item) === "HIZMET" || tokenOf(item) === "MALZEME")
+        .map((item) => xOf(item));
+      const distance = (anchor: { x: number }) => markers.length === 0
+        ? anchor.x
+        : Math.min(...markers.map((marker) => Math.abs(marker - anchor.x)));
+      const beside = markers.length === 0 ? group : group.filter((anchor) => distance(anchor) <= 0.06);
+      const pool = beside.length > 0 ? beside : group;
+      unique.push([...pool].sort((left, right) => distance(left) - distance(right) || left.x - right.x)[0]!);
+    }
   }
   const preference: GoodsRole[] = ["unitPrice", "lineTotal", "quantity", "productCode", "hsCode", "description", "unit", "packaging", "origin"];
   const kept: Array<{ role: GoodsRole; x: number; x0: number; x1: number }> = [];
@@ -672,6 +686,65 @@ function pageBreakCandidate(
 }
 
 /**
+ * A printed goods row the model never emitted still belongs in the table when
+ * its own quantity, price and total multiply. A fragment without that total
+ * stays with the page-break rule. Rows already represented by the same code
+ * and quantity are left alone.
+ */
+function completeRowInsertions(
+  segmentId: string,
+  tables: Map<number, PageTable | undefined>,
+  nativeRows: NativeRow[],
+  paired: Map<number, { row: NativeRow }>,
+  fields: FieldCandidateEnvelope["fields"]
+): InsertedGoodsRow[] {
+  const visionIndexes = rowIndexes(fields);
+  if (visionIndexes.length === 0 || !visionIndexes.every((value, index) => value === index)) return [];
+  const claimed = new Set([...paired.values()].map((pair) => pair.row));
+  const ready = nativeRows.flatMap((row) => {
+    if (claimed.has(row)) return [];
+    const table = tables.get(row.pageNumber);
+    if (!table) return [];
+    const quantity = singleColumnReading(row, table, "quantity");
+    const price = singleColumnReading(row, table, "unitPrice");
+    const total = singleColumnReading(row, table, "lineTotal");
+    const code = printedRowCode(row, table);
+    if (quantity == null || price == null || total == null || !code) return [];
+    if (!commercialAgrees(quantity * price, total)) return [];
+    const represented = visionIndexes.some((index) => {
+      const visionCode = String(firstCandidate(fields, `goodsLines.${index}.productCode`)?.value ?? "");
+      const visionQuantity = firstCandidate(fields, `goodsLines.${index}.quantity`)?.value;
+      return sameIdentity(code, visionCode)
+        && typeof visionQuantity === "number"
+        && valuesMatch("quantity", quantity, visionQuantity);
+    });
+    return represented ? [] : [{ row, table, quantity, price, total, code }];
+  });
+  if (ready.length === 0 || nativeRows.length !== visionIndexes.length + ready.length) return [];
+  return ready.map(({ row, table, quantity, price, total, code }) => {
+    const insertAt = nativeRows.indexOf(row);
+    const rowFields: FieldCandidateEnvelope["fields"] = {};
+    const put = (role: string, value: unknown, words: CanonicalWord[]) => {
+      const field = `goodsLines.${insertAt}.${role}`;
+      rowFields[field] = [pageBreakCandidate(segmentId, field, value, words, row.pageNumber, false)];
+    };
+    const codeColumn = table.columns.find((column) => column.role === "productCode");
+    const codeWords = codeColumn ? wordsInColumn(row.words, codeColumn).filter((word) => compact(word.text) === compact(code)) : [];
+    put("productCode", code, codeWords.length > 0 ? codeWords : row.words.slice(0, 1));
+    const quantityColumn = table.columns.find((column) => column.role === "quantity");
+    const priceColumn = table.columns.find((column) => column.role === "unitPrice");
+    const totalColumn = table.columns.find((column) => column.role === "lineTotal");
+    if (quantityColumn) put("quantity", roundValue("quantity", quantity), wordsInColumn(row.words, quantityColumn));
+    if (priceColumn) put("unitPrice", roundValue("unitPrice", price), wordsInColumn(row.words, priceColumn));
+    if (totalColumn) put("lineTotal", roundValue("lineTotal", total), wordsInColumn(row.words, totalColumn));
+    const descriptionColumn = table.columns.find((column) => column.role === "description");
+    const prose = descriptionWords(row.words, descriptionColumn);
+    if (prose.length > 0) put("description", prose.map((word) => word.text.trim()).join(" "), prose);
+    return { insertAt, fields: rowFields };
+  });
+}
+
+/**
  * A row cut by the page edge still belongs in the goods list. The head keeps
  * the printed code, quantity and price. A tail on the previous page fills the
  * total, origin and HS only when that tail is the one product of those numbers.
@@ -820,6 +893,10 @@ export function bindNativeGoodsCells(
     const value = firstCandidate(candidates.fields, `goodsLines.${index}.unitPrice`)?.value;
     return typeof value === "number" ? value : undefined;
   };
+  const totalOf = (index: number): number | undefined => {
+    const value = firstCandidate(candidates.fields, `goodsLines.${index}.lineTotal`)?.value;
+    return typeof value === "number" ? value : undefined;
+  };
   const nativeQuantityOf = (row: NativeRow): number | undefined => {
     const table = tables.get(row.pageNumber);
     const column = table?.columns.find((item) => item.role === "quantity");
@@ -948,6 +1025,29 @@ export function bindNativeGoodsCells(
     });
   }
 
+  // One printed code, one model code. The printed quantity, price and total
+  // already multiply. A model quantity from another fragment loses when the
+  // price or the total already matches that printed row.
+  visionRows.forEach((row) => {
+    if (paired.has(row.index)) return;
+    const nativeMatches = nativeRows.filter((native) => sameIdentity(native.code, row.code));
+    const visionCopies = visionRows.filter((other) => sameIdentity(other.code, row.code)).length;
+    if (visionCopies !== 1 || nativeMatches.length !== 1) return;
+    const nativeRow = nativeMatches[0]!;
+    const table = tables.get(nativeRow.pageNumber);
+    const nativeQuantity = nativeQuantityOf(nativeRow);
+    const nativePrice = nativePriceOf(nativeRow);
+    const nativeTotal = table ? singleColumnReading(nativeRow, table, "lineTotal") : undefined;
+    if (nativeQuantity == null || nativePrice == null || nativeTotal == null) return;
+    if (!commercialAgrees(nativeQuantity * nativePrice, nativeTotal)) return;
+    const visionPrice = priceOf(row.index);
+    const visionTotal = totalOf(row.index);
+    const priceAgrees = visionPrice != null && valuesMatch("unitPrice", nativePrice, visionPrice);
+    const totalAgrees = visionTotal != null && valuesMatch("lineTotal", nativeTotal, visionTotal);
+    if (!priceAgrees && !totalAgrees) return;
+    paired.set(row.index, { row: nativeRow, orderPaired: false });
+  });
+
   // A misread code still belongs to the one printed row with that quantity and price.
   visionRows.forEach((row) => {
     if (paired.has(row.index) || /^\d{4,8}$/.test(row.code)) return;
@@ -1032,8 +1132,13 @@ export function bindNativeGoodsCells(
         const printedSig = significantTokens(printed);
         const sameProduct = currentSig.some((token) => printedSig.includes(token));
         const printedRicher = sameProduct && printedSig.length >= currentSig.length && printedSig.some((token) => !currentSig.includes(token));
-        if (!countryInCurrent && !countryOnlyText(currentText)) continue;
-        if (printedRicher || (chosen.length > 0 && countryOnlyText(currentText))) {
+        // The row is already paired. A description that shares no printed word is
+        // another product's text. Keep a description that already matches.
+        if (printedSig.length >= 2 && !sameProduct) {
+          words = chosen;
+        } else if (!countryInCurrent && !countryOnlyText(currentText)) {
+          continue;
+        } else if (printedRicher || (chosen.length > 0 && countryOnlyText(currentText))) {
           words = chosen;
         } else if (countryInCurrent || countryOnlyText(currentText)) {
           const stripped = stripCountryWords(currentText);
@@ -1109,7 +1214,12 @@ export function bindNativeGoodsCells(
       }
       const peers = candidates.fields[field] ?? [];
       const peerDisagrees = peers.some((peer) => !valuesMatch(role, parsed.value, peer.value));
-      if (role !== "productCode" && current && valuesMatch(role, parsed.value, current.value) && !peerDisagrees) continue;
+      // A nearby vision number is not the printed one. 69,4060 must stay 69.406,
+      // not the rounded 69.4 that still falls inside the match tolerance.
+      const samePrintedNumber = typeof parsed.value === "number" && typeof current?.value === "number"
+        ? Math.abs(parsed.value - current.value) <= 1e-9
+        : current != null && valuesMatch(role, parsed.value, current.value);
+      if (role !== "productCode" && current && samePrintedNumber && !peerDisagrees) continue;
       replacements[field] = [{
         candidateId: `${segmentId}:native-cell:line-${index + 1}:${role}`,
         field,
@@ -1264,7 +1374,10 @@ export function bindNativeGoodsCells(
     replacements: { version: "1", fields: replacements },
     conflicts: { version: "1", fields: conflicts },
     droppedRows,
-    insertedRows: pageBreakInsertions(canonical, segmentId, tables, nativeRows, paired, candidates.fields),
+    insertedRows: [
+      ...completeRowInsertions(segmentId, tables, nativeRows, paired, candidates.fields),
+      ...pageBreakInsertions(canonical, segmentId, tables, nativeRows, paired, candidates.fields)
+    ],
     skipped
   };
 }

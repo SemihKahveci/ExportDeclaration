@@ -1291,4 +1291,203 @@ const unprintedTotal = applyNativeGoodsCellBinding(goods({
 })));
 assert.equal(String(unprintedTotal.fields["goodsLines.0.lineTotal"]?.[0]?.candidateId).includes(":cell-review:"), true);
 
+const roundedPrice = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.ATS01N209QN"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 20),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 69.4),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 1388.12)
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  ...vedHeaders,
+  placed("AG.SCH.ATS01N209QN", 0.08, 0.22, 0.4),
+  placed("20", 0.38, 0.42, 0.4),
+  placed("69,4060", 0.5, 0.58, 0.4),
+  placed("1.388,12", 0.62, 0.72, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.ATS01N209QN"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 20),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 69.4),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 1388.12)
+})));
+assert.equal(roundedPrice.fields["goodsLines.0.unitPrice"]?.[0]?.value, 69.406);
+assert.equal(roundedPrice.fields["goodsLines.0.lineTotal"]?.[0]?.value, 1388.12);
+
+const shiftedDescription = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75240"),
+  "goodsLines.0.description": candidate("goodsLines.0.description", "33662 MX ACTIRMA BOBINI NS800-3200"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 9),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 13.07)
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  ...vedHeaders,
+  placed("AG.SCH.A9F75240", 0.08, 0.16, 0.4),
+  placed("IC60N", 0.2, 0.24, 0.4),
+  placed("OTOMATIK", 0.24, 0.28, 0.4),
+  placed("SIGORTA", 0.28, 0.32, 0.4),
+  placed("9", 0.38, 0.42, 0.4),
+  placed("13,07", 0.5, 0.56, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75240"),
+  "goodsLines.0.description": candidate("goodsLines.0.description", "33662 MX ACTIRMA BOBINI NS800-3200"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 9),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 13.07)
+})));
+assert.equal(shiftedDescription.fields["goodsLines.0.description"]?.[0]?.value, "OTOMATIK SIGORTA");
+assert.equal(shiftedDescription.fields["goodsLines.0.unitPrice"]?.[0]?.value, 13.07);
+
+const matchingDescription = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75240"),
+  "goodsLines.0.description": candidate("goodsLines.0.description", "IC60N OTOMATIK SIGORTA"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 9),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 13.07)
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  ...vedHeaders,
+  placed("AG.SCH.A9F75240", 0.08, 0.16, 0.4),
+  placed("IC60N", 0.2, 0.24, 0.4),
+  placed("OTOMATIK", 0.24, 0.28, 0.4),
+  placed("SIGORTA", 0.28, 0.32, 0.4),
+  placed("9", 0.38, 0.42, 0.4),
+  placed("13,07", 0.5, 0.56, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75240"),
+  "goodsLines.0.description": candidate("goodsLines.0.description", "IC60N OTOMATIK SIGORTA"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 9),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 13.07)
+})));
+assert.equal(matchingDescription.fields["goodsLines.0.description"]?.[0]?.value, "IC60N OTOMATIK SIGORTA");
+
+const imageOnly = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75240"),
+  "goodsLines.0.description": candidate("goodsLines.0.description", "33662 MX ACTIRMA BOBINI NS800-3200"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 9),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 13.07)
+}), bindNativeGoodsCells(document([page(1, "SCANNED", [
+  ...vedHeaders,
+  placed("AG.SCH.A9F75240", 0.08, 0.16, 0.4),
+  placed("OTOMATIK", 0.24, 0.28, 0.4),
+  placed("SIGORTA", 0.28, 0.32, 0.4),
+  placed("9", 0.38, 0.42, 0.4),
+  placed("13,07", 0.5, 0.56, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75240"),
+  "goodsLines.0.description": candidate("goodsLines.0.description", "33662 MX ACTIRMA BOBINI NS800-3200"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 9),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 13.07)
+})));
+assert.equal(imageOnly.fields["goodsLines.0.description"]?.[0]?.value, "33662 MX ACTIRMA BOBINI NS800-3200");
+
+const simpleHeaders = [
+  word("Kod", 0.05, 0.2),
+  word("Miktar", 0.32, 0.2),
+  word("Fiyat", 0.5, 0.2),
+  word("Tutar", 0.7, 0.2)
+];
+const keptAndMissing = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.167594"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 150000),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 18.92),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 2270.4),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.OTHER1"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 5),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 10),
+  "goodsLines.1.lineTotal": candidate("goodsLines.1.lineTotal", 50)
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  ...simpleHeaders,
+  word("AG.EAT.167594", 0.05, 0.4),
+  word("120", 0.32, 0.4),
+  word("18,9200", 0.5, 0.4),
+  word("2.270,40", 0.7, 0.4),
+  word("AG.SCH.C2545E250", 0.05, 0.55),
+  word("17", 0.32, 0.55),
+  word("208,8600", 0.5, 0.55),
+  word("3.550,62", 0.7, 0.55),
+  word("AG.SCH.OTHER1", 0.05, 0.7),
+  word("5", 0.32, 0.7),
+  word("10,0000", 0.5, 0.7),
+  word("50,00", 0.7, 0.7)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.EAT.167594"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 150000),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 18.92),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 2270.4),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.OTHER1"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 5),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 10),
+  "goodsLines.1.lineTotal": candidate("goodsLines.1.lineTotal", 50)
+})));
+assert.equal(keptAndMissing.fields["goodsLines.0.quantity"]?.[0]?.value, 120);
+assert.equal(keptAndMissing.fields["goodsLines.0.unitPrice"]?.[0]?.value, 18.92);
+assert.equal(keptAndMissing.fields["goodsLines.0.lineTotal"]?.[0]?.value, 2270.4);
+assert.equal(keptAndMissing.fields["goodsLines.1.productCode"]?.[0]?.value, "AG.SCH.C2545E250");
+assert.equal(keptAndMissing.fields["goodsLines.1.quantity"]?.[0]?.value, 17);
+assert.equal(keptAndMissing.fields["goodsLines.1.unitPrice"]?.[0]?.value, 208.86);
+assert.equal(keptAndMissing.fields["goodsLines.1.lineTotal"]?.[0]?.value, 3550.62);
+assert.equal(keptAndMissing.fields["goodsLines.2.productCode"]?.[0]?.value, "AG.SCH.OTHER1");
+assert.equal(keptAndMissing.fields["goodsLines.2.quantity"]?.[0]?.value, 5);
+
+const repeatedCode = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9V41463"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 105),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 44.74),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 4697.7),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.OTHER1"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 5),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 10),
+  "goodsLines.1.lineTotal": candidate("goodsLines.1.lineTotal", 50)
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  ...simpleHeaders,
+  word("AG.SCH.A9V41463", 0.05, 0.4),
+  word("11", 0.32, 0.4),
+  word("49,4900", 0.5, 0.4),
+  word("544,39", 0.7, 0.4),
+  word("AG.SCH.A9V41463", 0.05, 0.55),
+  word("105", 0.32, 0.55),
+  word("44,7400", 0.5, 0.55),
+  word("4.697,70", 0.7, 0.55),
+  word("AG.SCH.OTHER1", 0.05, 0.7),
+  word("5", 0.32, 0.7),
+  word("10,0000", 0.5, 0.7),
+  word("50,00", 0.7, 0.7)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9V41463"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 105),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 44.74),
+  "goodsLines.0.lineTotal": candidate("goodsLines.0.lineTotal", 4697.7),
+  "goodsLines.1.productCode": candidate("goodsLines.1.productCode", "AG.SCH.OTHER1"),
+  "goodsLines.1.quantity": candidate("goodsLines.1.quantity", 5),
+  "goodsLines.1.unitPrice": candidate("goodsLines.1.unitPrice", 10),
+  "goodsLines.1.lineTotal": candidate("goodsLines.1.lineTotal", 50)
+})));
+assert.equal(repeatedCode.fields["goodsLines.0.quantity"]?.[0]?.value, 11);
+assert.equal(repeatedCode.fields["goodsLines.0.unitPrice"]?.[0]?.value, 49.49);
+assert.equal(repeatedCode.fields["goodsLines.0.lineTotal"]?.[0]?.value, 544.39);
+assert.equal(repeatedCode.fields["goodsLines.1.quantity"]?.[0]?.value, 105);
+assert.equal(repeatedCode.fields["goodsLines.1.unitPrice"]?.[0]?.value, 44.74);
+assert.equal(repeatedCode.fields["goodsLines.1.lineTotal"]?.[0]?.value, 4697.7);
+assert.equal(repeatedCode.fields["goodsLines.2.productCode"]?.[0]?.value, "AG.SCH.OTHER1");
+
+const hizmetAmount = applyNativeGoodsCellBinding(goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75203"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 2),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 16.59)
+}), bindNativeGoodsCells(document([page(1, "DIGITAL", [
+  word("Kod", 0.08, 0.2),
+  word("Miktar", 0.24, 0.2),
+  word("Fiyat", 0.32, 0.2),
+  word("KDV", 0.48, 0.2),
+  word("Tutari", 0.5, 0.21),
+  word("Hizmet", 0.55, 0.2),
+  word("Tutari", 0.555, 0.21),
+  word("AG.SCH.A9F75203", 0.05, 0.4),
+  word("2", 0.24, 0.4),
+  word("16,5900", 0.32, 0.4),
+  word("0,00", 0.5, 0.4),
+  word("33,18", 0.54, 0.4)
+])]), "seg", goods({
+  "goodsLines.0.productCode": candidate("goodsLines.0.productCode", "AG.SCH.A9F75203"),
+  "goodsLines.0.quantity": candidate("goodsLines.0.quantity", 2),
+  "goodsLines.0.unitPrice": candidate("goodsLines.0.unitPrice", 16.59)
+})));
+assert.equal(hizmetAmount.fields["goodsLines.0.quantity"]?.[0]?.value, 2);
+assert.equal(hizmetAmount.fields["goodsLines.0.unitPrice"]?.[0]?.value, 16.59);
+assert.equal(hizmetAmount.fields["goodsLines.0.lineTotal"]?.[0]?.value, 33.18);
+
 console.log("foundation8-25.9 native cell binding contract ok");

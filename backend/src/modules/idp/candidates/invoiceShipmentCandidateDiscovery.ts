@@ -219,7 +219,7 @@ function addSameLineLabeledNumber(
       const match = label.exec(normalizedLine);
       label.lastIndex = 0;
       if (!match) continue;
-      const value = parseNumber(match[1] ?? "");
+      const value = parseNumber(match.slice(1).find((part) => part) ?? "");
       if (value === undefined) continue;
 
       const evidenceText = match[0];
@@ -621,7 +621,7 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     canonical,
     segmentId,
     GROSS_FIELD,
-    /(?:TOPLAM\s+)?(?:BRUT\s+(?:AGIRLIK|KG)|(?:GROSS|GR\.?)\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?|GROSS\s+KG)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
+    /(?:TOPLAM\s+)?BRUT(?:\s+[A-Z]+){0,2}[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*KG|(?:TOPLAM\s+)?(?:BRUT\s+(?:AGIRLIK|KG)|(?:GROSS|GR\.?)\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?|GROSS\s+KG)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
     true,
   );
   
@@ -630,7 +630,7 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     canonical,
     segmentId,
     NET_FIELD,
-    /(?:TOPLAM\s+)?(?:NET\s+(?:AGIRLIK|KG)|NET\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
+    /(?:TOPLAM\s+)?NET(?:\s+[A-Z]+){0,2}[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*KG|(?:TOPLAM\s+)?(?:NET\s+(?:AGIRLIK|KG)|NET\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
     true,
   );
   

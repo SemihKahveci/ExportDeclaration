@@ -277,7 +277,7 @@ export async function fetchEvrakPreview(declarationId: string, documentId: strin
         OTHER: "Diğer"
       } as Record<string, string>)[doc.type] ?? doc.type,
       kap: packageCount == null ? "—" : String(packageCount),
-      kilo: grossKg == null ? "—" : `${grossKg.toLocaleString("tr-TR")} KG`,
+      kilo: grossKg == null ? "—" : `${grossKg.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} KG`,
       gtip: firstHs,
       parseSource: "Kaynak: Foundation 6 tarafından promote edilmiş persisted normalizedData",
       status,

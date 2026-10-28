@@ -125,23 +125,36 @@ export async function executeInvoiceVisionByPage(params: {
     return Number.isFinite(value) && value >= 0 ? value : undefined;
   };
 
+  const foldWeightText = (text: string): string => text
+    .replace(/İ/g, "I")
+    .replace(/ı/g, "I")
+    .replace(/Ş/g, "S").replace(/ş/g, "S")
+    .replace(/Ğ/g, "G").replace(/ğ/g, "G")
+    .replace(/Ü/g, "U").replace(/ü/g, "U")
+    .replace(/Ö/g, "O").replace(/ö/g, "O")
+    .replace(/Ç/g, "C").replace(/ç/g, "C");
+
   const labelledShipmentWeightFallback = (text: string | undefined, role: "grossKg" | "netKg"): { value: number; quote: string } | undefined => {
     if (!text?.trim()) return undefined;
-    const label = role === "grossKg" ? "(?:brüt|brut|gross)" : "(?:net)";
+    const folded = foldWeightText(text);
+    const label = role === "grossKg" ? "(?:brut|gross)" : "(?:net)";
     // Require a weight-shaped label/value expression. This deliberately does
     // not match commercial phrases such as "Toplam Brüt Tutar" because an
     // unrelated word may not occur between the role label and numeric token.
     const patterns = [
-      new RegExp(`\\b${label}\\s+(?:weight|ağırlık|agirlik)\\s*[:=\\-]?\\s*([0-9][0-9.,]*)\\s*(?:kg|kgs|kilogram|kilograms)?\\b`, "i"),
+      // The word between the role and the amount may be misspelled (AĞILLIK).
+      // KG after the amount keeps "Brüt Tutar" from becoming a weight.
+      new RegExp(`\\b${label}\\b[^\\d]{0,24}([0-9][0-9.,]*)\\s*(?:kg|kgs|kilogram|kilograms)\\b`, "i"),
+      new RegExp(`\\b${label}\\s+(?:weight|agirlik)\\s*[:=\\-]?\\s*([0-9][0-9.,]*)\\s*(?:kg|kgs|kilogram|kilograms)?\\b`, "i"),
       new RegExp(`\\b${label}\\s+(?:kg|kgs|kilogram|kilograms)\\s*[:=\\-]?\\s*([0-9][0-9.,]*)\\b`, "i"),
       new RegExp(`\\b${label}\\s*[:=\\-]?\\s*([0-9][0-9.,]*)\\s*(?:kg|kgs|kilogram|kilograms)\\b`, "i")
     ];
     for (const pattern of patterns) {
-      const match = pattern.exec(text);
-      if (!match?.[1]) continue;
+      const match = pattern.exec(folded);
+      if (!match?.[1] || match.index === undefined) continue;
       const value = parseLabelledWeightNumber(match[1]);
       if (value === undefined) continue;
-      return { value, quote: match[0].replace(/\s+/g, " ").trim() };
+      return { value, quote: text.slice(match.index, match.index + match[0].length).replace(/\s+/g, " ").trim() };
     }
     return undefined;
   };
@@ -683,6 +696,32 @@ export async function executeInvoiceVisionByPage(params: {
         shipmentWeightRecoveryError = error instanceof Error ? error.message : String(error);
       }
     }
+
+    const weightPage = params.canonicalDocument.pages.find((page) => page.pageNumber === pageNumber);
+    const weightTexts = canonicalPageWeightEvidenceTexts(weightPage).map((entry) => entry.text);
+    const printedWeight = (role: "grossKg" | "netKg") => {
+      for (const text of weightTexts) {
+        const match = labelledShipmentWeightFallback(text, role);
+        if (match) return match;
+      }
+      return undefined;
+    };
+    const printedGross = printedWeight("grossKg");
+    const printedNet = printedWeight("netKg");
+    const keepPrintedWeight = <T extends { field: string; value: unknown }>(fields: T[]): T[] => fields.flatMap((field) => {
+      if (field.field !== "grossKg" && field.field !== "netKg") return [field];
+      const printed = field.field === "grossKg" ? printedGross : printedNet;
+      const otherPrinted = field.field === "grossKg" ? printedNet : printedGross;
+      if (!printed) return otherPrinted ? [] : [field];
+      if (typeof field.value === "number" && Math.abs(field.value - printed.value) > 0.02) {
+        return [{ ...field, value: printed.value }];
+      }
+      return [field];
+    });
+    response = { ...response, fields: keepPrintedWeight(response.fields) };
+    if (scalarResponse) scalarResponse = { ...scalarResponse, fields: keepPrintedWeight(scalarResponse.fields) };
+    if (numericRecoveryResponse) numericRecoveryResponse = { ...numericRecoveryResponse, fields: keepPrintedWeight(numericRecoveryResponse.fields) };
+    if (shipmentWeightRecoveryResponse) shipmentWeightRecoveryResponse = { ...shipmentWeightRecoveryResponse, fields: keepPrintedWeight(shipmentWeightRecoveryResponse.fields) };
 
     const projected = projectVisionResponseToFieldCandidates({
       response,

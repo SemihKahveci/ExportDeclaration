@@ -122,12 +122,16 @@ function transportLabel(mode?: string): string {
   return mode ?? "Karayolu";
 }
 
+function formatKg(value: number): string {
+  return value.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function toFormFields(norm: NormalizedDeclaration): BeyannameFormFields {
   const h = norm.header;
   const pkg = norm.packageInfo;
   const firstLine = norm.goodsLines[0];
   const kap = pkg.totalPackage != null ? `${pkg.totalPackage} KAP` : "—";
-  const kg = pkg.grossKg != null ? `${pkg.grossKg.toLocaleString("tr-TR")} KG` : "—";
+  const kg = pkg.grossKg != null ? `${formatKg(pkg.grossKg)} KG` : "—";
   return {
     beyan: (norm.evrimHeader?.rejim as string) ?? "10 — İhracat",
     gumrukIdaresi: (norm.evrimHeader?.gumrukIdaresi as string) ?? "—",
@@ -168,7 +172,7 @@ function toWritingFields(norm: NormalizedDeclaration, sourceTrace?: BackendDecla
     entries.push({
       key: "kilo",
       label: "Brüt Kilo",
-      value: `${norm.packageInfo.grossKg} KG`,
+      value: `${formatKg(norm.packageInfo.grossKg)} KG`,
       source: traceSource(sourceTrace, "packageInfo.grossKg"),
       conflict: hasConflict(sourceTrace, "packageInfo.grossKg")
     });
@@ -251,8 +255,8 @@ export function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDe
 
     "Kap Adedi": number(pkg.totalPackage),
     "Kap Cinsi": pkg.packageType ?? "",
-    "Brüt Kilo": number(pkg.grossKg),
-    "Net Kilo": number(pkg.netKg),
+    "Brüt Kilo": pkg.grossKg == null ? "" : formatKg(pkg.grossKg),
+    "Net Kilo": pkg.netKg == null ? "" : formatKg(pkg.netKg),
 
     "Önceki Belge No": norm.documents?.previousDocumentNo ?? "",
     "Dolaşım Belgesi No": norm.documents?.circulationDocumentNo ?? "",
