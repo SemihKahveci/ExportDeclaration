@@ -94,5 +94,18 @@ export async function transitionWritingWorkflow(
  });
  declaration.markModified("operation");
  await declaration.save();
+ if(action==="SUBMIT_TO_MT" && declaration.operation.fileStatus==="ic-kontrol"){
+   const { notifyStageEntered } = await import("../mail/stageMail.service.js");
+   await notifyStageEntered({
+     companyId,
+     customerId: declaration.operation.customerId ?? "",
+     operationType: declaration.operation.operationType,
+     reference: declaration.operation.ref,
+     stage: "beyanname-kontrol",
+     receivedAt: new Date()
+   }).catch((error: unknown) => {
+     console.error(JSON.stringify({ event: "stage-mail.failed", stage: "beyanname-kontrol", message: error instanceof Error ? error.message : "Kontrol maili gönderilemedi" }));
+   });
+ }
  return toDeclarationDto(declaration);
 }

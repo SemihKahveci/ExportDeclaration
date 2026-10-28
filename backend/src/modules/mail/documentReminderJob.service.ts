@@ -10,6 +10,7 @@ import { UploadedDocumentModel } from "../documents/document.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { dueReminderSlot } from "./documentReminderSchedule.js";
 import { runGtipIdleReminders, sendDocumentReminder } from "./processMail.service.js";
+import { runStageDigests } from "./stageMail.service.js";
 
 const TICK_MS = 60_000;
 
@@ -125,7 +126,8 @@ export function startDocumentReminderJob(): void {
     try {
       const sent = await runDocumentReminders();
       const gtip = await runGtipIdleReminders();
-      if (sent > 0 || gtip > 0) console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip }));
+      const stages = await runStageDigests();
+      if (sent > 0 || gtip > 0 || stages > 0) console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip, stages }));
     } catch (error) {
       console.error(JSON.stringify({
         event: "document-reminder.failed",
