@@ -17,6 +17,10 @@ interface Breadcrumb {
   screen: string;
 }
 
+const UNLISTED_SCREENS: Record<string, Breadcrumb> = {
+  '/evrak-hazirlik': { group: 'Operasyon', screen: 'Evrak Hazırlık' },
+};
+
 function getBreadcrumb(pathname: string): Breadcrumb {
   for (const group of NAV_GROUPS) {
     for (const item of group.items) {
@@ -25,6 +29,10 @@ function getBreadcrumb(pathname: string): Breadcrumb {
       }
     }
   }
+  const unlisted = Object.entries(UNLISTED_SCREENS).find(
+    ([path]) => pathname === path || pathname.startsWith(path + '/')
+  );
+  if (unlisted) return unlisted[1];
   return { group: '', screen: 'Ana Sayfa' };
 }
 
