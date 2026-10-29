@@ -93,7 +93,7 @@ function SourceCell({ source }: { source: MaterialRecord['source'] }) {
 
 // ─── Summary card ─────────────────────────────────────────────────────────────
 
-type StatusFilter = 'all' | 'verified' | 'pending';
+type StatusFilter = 'all' | 'verified' | 'pending' | 'rejected';
 
 interface SummaryCardProps {
   count: number;
@@ -196,12 +196,14 @@ export default function GtipMalzemePage() {
   const total = records.length;
   const verified = records.filter((r) => r.status === 'verified').length;
   const pending = records.filter((r) => r.status === 'pending').length;
+  const rejected = records.filter((r) => r.status === 'rejected').length;
 
   // filtered view
   const visible = useMemo(() => {
     return records.filter((r) => {
       if (statusFilter === 'verified' && r.status !== 'verified') return false;
       if (statusFilter === 'pending' && r.status !== 'pending') return false;
+      if (statusFilter === 'rejected' && r.status !== 'rejected') return false;
       if (transactionType !== 'tumu') {
         const tt = transactionType as TransactionType;
         const allFour: TransactionType[] = ['ithalat', 'ihracat', 'transit', 'antrepo'];
@@ -378,6 +380,13 @@ export default function GtipMalzemePage() {
             dotColor="var(--warn)"
             active={statusFilter === 'pending'}
             onClick={() => setStatusFilter('pending')}
+          />
+          <SummaryCard
+            count={rejected}
+            label="Reddedilen"
+            dotColor="var(--hat-red)"
+            active={statusFilter === 'rejected'}
+            onClick={() => setStatusFilter('rejected')}
           />
         </div>
 
