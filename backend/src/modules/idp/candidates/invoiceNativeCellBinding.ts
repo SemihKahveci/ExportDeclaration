@@ -191,6 +191,12 @@ function isRowCode(text: string): boolean {
   return looksLikeGoodsCode(token) || (token.length >= 4 && /\d/.test(token) && /[A-Z]/.test(token));
 }
 
+// A material code may be digits only. 1–4 digits stay a line number or a year,
+// and 12 digits stay a GTIP. This never replaces a lettered code on the same row.
+function numericMaterialCode(text: string): boolean {
+  return /^\d{5,11}$/.test(compact(text));
+}
+
 function headerAnchors(words: CanonicalWord[]): Array<{ role: GoodsRole; x: number; x0: number; x1: number }> | undefined {
   const anchors: Array<{ role: GoodsRole; x: number; x0: number; x1: number }> = [];
   for (const word of words) {
@@ -362,8 +368,10 @@ function pageWords(page: CanonicalPage): CanonicalWord[] | undefined {
 }
 
 function codeToken(words: CanonicalWord[]): string {
-  const tokens = words.map((word) => compact(word.text)).filter((token) => looksLikeGoodsCode(token) || (token.length >= 4 && /\d/.test(token) && /[A-Z]/.test(token)));
-  return tokens.sort((left, right) => right.length - left.length)[0] ?? "";
+  const tokens = words.map((word) => compact(word.text));
+  const lettered = tokens.filter((token) => looksLikeGoodsCode(token) || (token.length >= 4 && /\d/.test(token) && /[A-Z]/.test(token)));
+  const pool = lettered.length > 0 ? lettered : tokens.filter((token) => /^\d{5,11}$/.test(token));
+  return pool.sort((left, right) => right.length - left.length)[0] ?? "";
 }
 
 function extendHeaderBand(band: CanonicalWord[], native: CanonicalWord[]): CanonicalWord[] {
@@ -394,7 +402,12 @@ function buildPageTable(page: CanonicalPage, sharedColumns?: Column[]): PageTabl
   const codeColumn = columns.find((column) => column.role === "productCode") ?? columns.find((column) => column.role === "hsCode");
   if (!codeColumn) return undefined;
   const body = native.filter((word) => yOf(word) > headerBottom + 0.004 && !(extended ?? []).includes(word));
-  const codeWords = wordsInColumn(body, codeColumn).filter((word) => isRowCode(word.text));
+  const columnWords = wordsInColumn(body, codeColumn);
+  const letteredCodes = columnWords.filter((word) => isRowCode(word.text));
+  const codeWords = [
+    ...letteredCodes,
+    ...columnWords.filter((word) => numericMaterialCode(word.text) && !letteredCodes.some((other) => Math.abs(yOf(other) - yOf(word)) <= 0.03))
+  ];
   const rowStarts = codeWords.filter((word) => {
     const token = compact(word.text);
     return !codeWords.some((other) => {
@@ -1349,7 +1362,11 @@ export function bindNativeGoodsCells(
       const nativeQuantity = nativeQuantityOf(native);
       return visionQuantity != null && nativeQuantity != null && valuesMatch("quantity", nativeQuantity, visionQuantity);
     });
-    const shifted = matching.length > 0 && visionQuantity != null && sameQuantity.length === 0;
+    // An unreadable quantity cell is not proof the code belongs to another row.
+    const shifted = matching.length > 0 && visionQuantity != null && sameQuantity.length === 0 && matching.some((native) => {
+      const nativeQuantity = nativeQuantityOf(native);
+      return nativeQuantity != null && !valuesMatch("quantity", nativeQuantity, visionQuantity);
+    });
     if (matching.length > 0 && !shifted) continue;
     conflicts[field] = [reviewCandidate(segmentId, field, nativeRows[0]?.pageNumber ?? 1, [])];
     const originField = `goodsLines.${row.index}.origin`;
