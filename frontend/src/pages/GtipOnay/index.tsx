@@ -6,6 +6,7 @@ import {
   LayoutGrid,
   Plus,
   Download,
+  FileDown,
   Pencil,
   Check,
   X,
@@ -13,10 +14,9 @@ import {
   Loader2,
   Trash2,
 } from 'lucide-react';
-import type { MaterialCustomer, MaterialRecord, TransactionType } from '../../types';
+import type { MaterialCustomer, MaterialFieldKey, MaterialRecord, TransactionType } from '../../types';
 import { gtipService, hasDuplicateMaterialNo } from '../../services/gtip';
 import { ApiError } from '../../api/apiClient';
-import { formatMaterialImportToast } from '../../api/materialRecordApi';
 import { useToast } from '../../components/ui/Toast';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Card } from '../../components/ui/Card';
@@ -27,6 +27,10 @@ import TransactionTypeSelector, { type ActiveTransactionType } from './Transacti
 import TransactionTypeBadge from './TransactionTypeBadge';
 import NewRecordDrawer from './NewRecordDrawer';
 import ImportModal from './ImportModal';
+import ImportConflictDialog from '../gtip/ImportConflictDialog';
+import RejectMaterialDialog from '../gtip/RejectMaterialDialog';
+import { editableMaterial, materialStatusLabel, presentedMaterial, rejectionExportDetail, rejectionSummary } from '../gtip/materialRecordView';
+import { useMaterialExcelImport } from '../gtip/useMaterialExcelImport';
 
 // ─── Scope tag ────────────────────────────────────────────────────────────────
 
@@ -149,6 +153,9 @@ export default function GtipOnayPage() {
   const [editingRecord, setEditingRecord] = useState<MaterialRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [rejectIds, setRejectIds] = useState<string[]>([]);
+  const [rejecting, setRejecting] = useState(false);
 
   // load customers once
   useEffect(() => {
@@ -252,20 +259,10 @@ export default function GtipOnayPage() {
     }
   }
 
-  async function handleRejectSelected() {
-    const ids = selectedIds.filter((id) => {
-      const rec = records.find((item) => item.id === id);
-      return rec?.status === 'pending';
-    });
+  function handleRejectSelected() {
+    const ids = selectedIds.filter((id) => records.find((item) => item.id === id)?.status === 'pending');
     if (ids.length === 0) return;
-    try {
-      const updated = await Promise.all(ids.map((id) => gtipService.rejectRecord(id)));
-      setRecords((prev) => prev.map((rec) => updated.find((item) => item.id === rec.id) ?? rec));
-      setSelectedIds([]);
-      toast(`${ids.length} kayıt reddedildi`);
-    } catch {
-      toast('Seçilen kayıtlar reddedilemedi');
-    }
+    setRejectIds(ids);
   }
 
   async function refreshCustomers() {
@@ -284,14 +281,24 @@ export default function GtipOnayPage() {
     }
   }
 
-  async function handleReject(id: string) {
-    const rec = records.find((r) => r.id === id);
+  function handleReject(id: string) {
+    setRejectIds([id]);
+  }
+
+  async function confirmReject(fields: MaterialFieldKey[], note: string) {
+    if (rejectIds.length === 0 || rejecting) return;
+    setRejecting(true);
     try {
-      const updated = await gtipService.rejectRecord(id);
-      setRecords((prev) => prev.map((r) => (r.id === id ? updated : r)));
-      toast(`${rec?.materialNo ?? 'Kayıt'} reddedildi`);
+      const updated = await Promise.all(rejectIds.map((id) => gtipService.rejectRecord(id, { fields, note })));
+      setRecords((prev) => prev.map((rec) => updated.find((item) => item.id === rec.id) ?? rec));
+      setSelectedIds((prev) => prev.filter((id) => !rejectIds.includes(id)));
+      const count = rejectIds.length;
+      setRejectIds([]);
+      toast(count > 1 ? `${count} kayıt reddedildi` : 'Kayıt reddedildi');
     } catch {
       toast('Reddetme başarısız · lütfen tekrar dene');
+    } finally {
+      setRejecting(false);
     }
   }
 
@@ -363,7 +370,7 @@ export default function GtipOnayPage() {
   }
 
   function openEditRecord(rec: MaterialRecord) {
-    setEditingRecord(rec);
+    setEditingRecord(editableMaterial(rec));
     setNewRecordOpen(true);
   }
 
@@ -372,17 +379,54 @@ export default function GtipOnayPage() {
     setEditingRecord(null);
   }
 
+  const excelImport = useMaterialExcelImport({
+    customerId: selectedCustomerId,
+    toast,
+    onCreated: (created) => {
+      setRecords((prev) => [...created, ...prev]);
+      void refreshCustomers();
+    },
+    onUpdated: (updated) => {
+      setRecords((prev) => prev.map((row) => updated.find((item) => item.id === row.id) ?? row));
+      void refreshCustomers();
+    },
+  });
+
   async function handleImport(file: File) {
     if (!selectedCustomerId) return;
     try {
-      const result = await gtipService.importMaterialRecordsExcel(selectedCustomerId, file);
-      setRecords((prev) => [...result.records, ...prev]);
-      await refreshCustomers();
-      toast(formatMaterialImportToast(result));
+      await excelImport.importFile(file);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'İçe aktarım başarısız · lütfen tekrar dene';
       toast(msg);
       throw err;
+    }
+  }
+
+  async function handleExport() {
+    if (!selectedCustomerId || exporting) return;
+    if (visible.length === 0) {
+      toast('Dışa aktarılacak kayıt yok');
+      return;
+    }
+    setExporting(true);
+    try {
+      const rejectedOnly = statusFilter === 'rejected';
+      await gtipService.downloadMaterialRecordsExcel(visible.map((row) => {
+        const shown = presentedMaterial(row);
+        return {
+          materialNo: shown.materialNo,
+          description: shown.description,
+          gtipNo: shown.gtipNo,
+          status: materialStatusLabel(row.status),
+          ...(rejectedOnly ? { rejectionDetail: rejectionExportDetail(row) } : {}),
+        };
+      }));
+      toast(`${visible.length} kayıt indirildi`);
+    } catch {
+      toast('Kayıtlar indirilemedi');
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -424,6 +468,9 @@ export default function GtipOnayPage() {
           </div>
           <div className="flex items-center gap-2.5 shrink-0">
             <TransactionTypeSelector value={transactionType} onChange={setTransactionType} />
+            <Button icon={FileDown} onClick={() => void handleExport()} disabled={exporting || !selectedCustomerId}>
+              {exporting ? 'İndiriliyor…' : 'Dışa Aktar'}
+            </Button>
             <Button icon={Download} onClick={() => setImportOpen(true)} writeCap="gtip_onay.approve">
               İçe Aktar
             </Button>
@@ -545,7 +592,10 @@ export default function GtipOnayPage() {
                     </td>
                   </tr>
                 ) : (
-                  visible.map((rec) => (
+                  visible.map((rec) => {
+                    const shown = presentedMaterial(rec);
+                    const faulty = rejectionSummary(rec);
+                    return (
                     <Tr key={rec.id}>
                       <Td>
                         {(rec.status === 'pending' || rec.status === 'rejected') ? (
@@ -562,24 +612,37 @@ export default function GtipOnayPage() {
                       </Td>
                       <Td>
                         <span className="font-mono text-[12.5px] font-semibold text-text-strong">
-                          {rec.materialNo}
+                          {shown.materialNo}
                         </span>
+                        {shown.materialNo !== rec.materialNo && (
+                          <span className="block text-[11px] text-muted mt-0.5">Mevcut: {rec.materialNo}</span>
+                        )}
                       </Td>
                       <Td>
                         <span className="font-semibold text-text-strong text-[13px]">
-                          {rec.description}
+                          {shown.description}
                         </span>
+                        {shown.description !== rec.description && (
+                          <span className="block text-[11px] text-muted mt-0.5">Mevcut: {rec.description}</span>
+                        )}
                       </Td>
                       <Td>
                         <span className="font-mono text-[12.5px] font-semibold text-text-strong">
-                          {rec.gtipNo}
+                          {shown.gtipNo}
                         </span>
+                        {shown.gtipNo !== rec.gtipNo && (
+                          <span className="block text-[11px] text-muted mt-0.5">Mevcut: {rec.gtipNo}</span>
+                        )}
                       </Td>
                       <Td>
                         <TransactionTypeBadge types={rec.transactionTypes} />
                       </Td>
                       <Td>
                         <StatusCell status={rec.status} />
+                        {faulty && <div className="mt-1 text-[11px] leading-snug text-[var(--hat-red)]">Hatalı: {faulty}</div>}
+                        {rec.status === 'rejected' && rec.rejection?.note && (
+                          <div className="mt-0.5 text-[11px] text-muted max-w-[220px]">{rec.rejection.note}</div>
+                        )}
                       </Td>
                       <Td>
                         <SourceCell source={rec.source} />
@@ -646,7 +709,8 @@ export default function GtipOnayPage() {
                         </div>
                       </Td>
                     </Tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </Table>
@@ -669,6 +733,20 @@ export default function GtipOnayPage() {
         onClose={() => setImportOpen(false)}
         onTemplateDownload={handleTemplateDownload}
         onImport={handleImport}
+      />
+      <ImportConflictDialog
+        conflicts={excelImport.conflicts}
+        busy={excelImport.importBusy}
+        onConfirm={() => void excelImport.confirmConflicts()}
+        onDecline={() => void excelImport.declineConflicts()}
+        onClose={excelImport.closeConflicts}
+      />
+      <RejectMaterialDialog
+        open={rejectIds.length > 0}
+        count={rejectIds.length}
+        busy={rejecting}
+        onClose={() => { if (!rejecting) setRejectIds([]); }}
+        onConfirm={(fields, note) => void confirmReject(fields, note)}
       />
     </div>
   );

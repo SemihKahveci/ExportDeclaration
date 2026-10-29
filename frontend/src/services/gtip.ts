@@ -1,5 +1,5 @@
 import type {
-  GtipEntry, MaterialCustomer, MaterialRecord,
+  GtipEntry, MaterialCustomer, MaterialFieldKey, MaterialRecord,
   GtipDeclaration, GtipQueryResult, GtipPageStats,
   CustomerListItem,
 } from '../types';
@@ -263,8 +263,11 @@ export const gtipService = {
   ): Promise<MaterialRecord> => {
     return patchMaterialRecord(id, patch);
   },
-  rejectRecord: async (id: string): Promise<MaterialRecord> => {
-    return patchMaterialRecord(id, { status: 'rejected' });
+  rejectRecord: async (
+    id: string,
+    rejection: { fields: MaterialFieldKey[]; note?: string }
+  ): Promise<MaterialRecord> => {
+    return patchMaterialRecord(id, { status: 'rejected', rejection });
   },
   deleteRecord: async (id: string): Promise<void> => {
     await deleteMaterialRecord(id);
@@ -273,7 +276,7 @@ export const gtipService = {
     return downloadMaterialRecordTemplate();
   },
   downloadMaterialRecordsExcel: async (
-    rows: Array<{ materialNo: string; description: string; gtipNo: string }>
+    rows: Array<{ materialNo: string; description: string; gtipNo: string; status: string; rejectionDetail?: string }>
   ): Promise<void> => {
     return downloadMaterialRecordsExcel(rows);
   },

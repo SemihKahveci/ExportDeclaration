@@ -7,7 +7,7 @@ import {
   apiPostJson,
   apiPostMultipart
 } from "./apiClient";
-import type { MaterialRecord } from "@/types";
+import type { MaterialFieldKey, MaterialRecord } from "@/types";
 
 export type CreateMaterialRecordPayload = Omit<MaterialRecord, "id" | "customerId" | "updatedAt">;
 export type BulkMaterialRecordItem = CreateMaterialRecordPayload;
@@ -17,10 +17,24 @@ export interface MaterialRecordImportRowError {
   message: string;
 }
 
+export interface MaterialImportConflict {
+  row: number;
+  existingId: string;
+  materialNo: string;
+  description: string;
+  gtipNo: string;
+  currentMaterialNo: string;
+  currentDescription: string;
+  currentGtipNo: string;
+  differingFields: MaterialFieldKey[];
+}
+
 export interface MaterialRecordImportResult {
   records: MaterialRecord[];
   count: number;
   errors: MaterialRecordImportRowError[];
+  conflicts: MaterialImportConflict[];
+  skippedIdentical: number;
 }
 
 export async function listMaterialRecords(customerId: string): Promise<MaterialRecord[]> {
@@ -49,7 +63,9 @@ export async function bulkCreateMaterialRecords(
 
 export async function patchMaterialRecord(
   id: string,
-  patch: Partial<Pick<MaterialRecord, "status" | "materialNo" | "description" | "gtipNo" | "transactionTypes">>
+  patch: Partial<Pick<MaterialRecord, "status" | "materialNo" | "description" | "gtipNo" | "transactionTypes">> & {
+    rejection?: { fields: MaterialFieldKey[]; note?: string };
+  }
 ): Promise<MaterialRecord> {
   return apiPatchJson<MaterialRecord>(`/api/material-records/${encodeURIComponent(id)}`, patch);
 }
@@ -59,7 +75,7 @@ export async function deleteMaterialRecord(id: string): Promise<void> {
 }
 
 export async function downloadMaterialRecordsExcel(
-  rows: Array<{ materialNo: string; description: string; gtipNo: string }>
+  rows: Array<{ materialNo: string; description: string; gtipNo: string; status: string; rejectionDetail?: string }>
 ): Promise<void> {
   const blob = await apiPostBlob("/api/material-records/export", { rows });
   const url = URL.createObjectURL(blob);
@@ -81,11 +97,33 @@ export async function downloadMaterialRecordTemplate(): Promise<void> {
 }
 
 export function formatMaterialImportToast(result: MaterialRecordImportResult): string {
-  const added = `Dosya yüklendi · ${result.count} malzeme eklendi`;
+  const parts: string[] = [];
+  if (result.count > 0) parts.push(`${result.count} yeni kayıt GTİP Onay kuyruğuna alındı`);
   const errors = result.errors ?? [];
-  if (errors.length === 0) return added;
-  const reasons = errors.map((e) => `Satır ${e.row} — ${e.message}`).join("; ");
-  return `${added}\n${errors.length} satır hatalı, eklenmedi: ${reasons}`;
+  if (errors.length > 0) {
+    const reasons = errors.map((e) => `Satır ${e.row} — ${e.message}`).join("; ");
+    parts.push(`${errors.length} satır hatalı: ${reasons}`);
+  }
+  return parts.join("\n");
+}
+
+export async function stageMaterialImportUpdates(
+  customerId: string,
+  updates: Array<{ id: string; materialNo: string; description: string; gtipNo: string }>
+): Promise<MaterialRecord[]> {
+  return apiPostJson<MaterialRecord[]>("/api/material-records/import-updates", { customerId, updates });
+}
+
+export async function downloadMaterialImportWarning(
+  rows: MaterialImportConflict[]
+): Promise<void> {
+  const blob = await apiPostBlob("/api/material-records/import-warning", { rows });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "GTIP_Uyari.xlsx";
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export async function importMaterialRecordsExcel(

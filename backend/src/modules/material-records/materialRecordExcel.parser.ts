@@ -141,15 +141,59 @@ export function parseMaterialRecordExcel(buffer: Buffer): MaterialExcelParseResu
 }
 
 export function buildMaterialRecordExport(
-  rows: Array<{ materialNo: string; description: string; gtipNo: string }>
+  rows: Array<{ materialNo: string; description: string; gtipNo: string; status?: string; rejectionDetail?: string }>
 ): Buffer {
+  const withRejection = rows.some((row) => row.rejectionDetail !== undefined);
+  const header = ["Malzeme No", "Malzeme Tanımı", "GTIP", "Durum", ...(withRejection ? ["Hatalı Alanlar"] : [])];
   const sheet = XLSX.utils.aoa_to_sheet([
-    ["Malzeme No", "Malzeme Tanımı", "GTIP"],
-    ...rows.map((row) => [row.materialNo, row.description, row.gtipNo])
+    header,
+    ...rows.map((row) => [
+      row.materialNo,
+      row.description,
+      row.gtipNo,
+      row.status ?? "",
+      ...(withRejection ? [row.rejectionDetail ?? ""] : [])
+    ])
   ]);
-  sheet["!cols"] = [{ wch: 18 }, { wch: 36 }, { wch: 22 }];
+  sheet["!cols"] = [{ wch: 18 }, { wch: 36 }, { wch: 22 }, { wch: 18 }, ...(withRejection ? [{ wch: 42 }] : [])];
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Sheet1");
+  return Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
+}
+
+export function buildMaterialImportWarning(
+  rows: Array<{
+    row: number;
+    materialNo: string;
+    description: string;
+    gtipNo: string;
+    differingFields: string[];
+    currentMaterialNo: string;
+    currentDescription: string;
+    currentGtipNo: string;
+  }>
+): Buffer {
+  const labels: Record<string, string> = {
+    materialNo: "Malzeme No",
+    description: "Malzeme Tanımı",
+    gtipNo: "GTİP"
+  };
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["Satır", "Malzeme No", "Malzeme Tanımı", "GTIP", "Farklı Alanlar", "Mevcut Malzeme No", "Mevcut Malzeme Tanımı", "Mevcut GTIP"],
+    ...rows.map((row) => [
+      row.row,
+      row.materialNo,
+      row.description,
+      row.gtipNo,
+      row.differingFields.map((field) => labels[field] ?? field).join(", "),
+      row.currentMaterialNo,
+      row.currentDescription,
+      row.currentGtipNo
+    ])
+  ]);
+  sheet["!cols"] = [{ wch: 8 }, { wch: 18 }, { wch: 36 }, { wch: 22 }, { wch: 28 }, { wch: 20 }, { wch: 36 }, { wch: 22 }];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Uyarilar");
   return Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }));
 }
 

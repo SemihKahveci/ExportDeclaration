@@ -149,6 +149,8 @@ export type TransactionType = 'ithalat' | 'ihracat' | 'transit' | 'antrepo';
 
 export type RecordStatus = 'verified' | 'pending' | 'rejected';
 
+export type MaterialFieldKey = 'materialNo' | 'description' | 'gtipNo';
+
 export type RecordSource = 'manuel' | 'fatura';
 
 export interface MaterialCustomer {
@@ -167,6 +169,8 @@ export interface MaterialRecord {
   transactionTypes: TransactionType[];
   status: RecordStatus;
   source: RecordSource;
+  pendingUpdate?: { materialNo: string; description: string; gtipNo: string } | null;
+  rejection?: { fields: MaterialFieldKey[]; note: string } | null;
   updatedAt: string;
   customerId: string;
 }

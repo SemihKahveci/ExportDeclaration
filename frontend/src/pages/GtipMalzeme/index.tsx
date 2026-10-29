@@ -14,7 +14,6 @@ import {
 import type { MaterialCustomer, MaterialRecord, TransactionType } from '../../types';
 import { gtipService, hasDuplicateMaterialNo } from '../../services/gtip';
 import { ApiError } from '../../api/apiClient';
-import { formatMaterialImportToast } from '../../api/materialRecordApi';
 import { useToast } from '../../components/ui/Toast';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import { Card } from '../../components/ui/Card';
@@ -25,6 +24,9 @@ import TransactionTypeSelector, { type ActiveTransactionType } from './Transacti
 import TransactionTypeBadge from './TransactionTypeBadge';
 import NewRecordDrawer from './NewRecordDrawer';
 import ImportModal from './ImportModal';
+import ImportConflictDialog from '../gtip/ImportConflictDialog';
+import { editableMaterial, materialStatusLabel, presentedMaterial, rejectionExportDetail, rejectionSummary } from '../gtip/materialRecordView';
+import { useMaterialExcelImport } from '../gtip/useMaterialExcelImport';
 
 // ─── Scope tag ────────────────────────────────────────────────────────────────
 
@@ -247,13 +249,23 @@ export default function GtipMalzemePage() {
     }
   }
 
+  const excelImport = useMaterialExcelImport({
+    customerId: selectedCustomerId,
+    toast,
+    onCreated: (created) => {
+      setRecords((prev) => [...created, ...prev]);
+      void refreshCustomers();
+    },
+    onUpdated: (updated) => {
+      setRecords((prev) => prev.map((row) => updated.find((item) => item.id === row.id) ?? row));
+      void refreshCustomers();
+    },
+  });
+
   async function handleImport(file: File) {
     if (!selectedCustomerId) return;
     try {
-      const result = await gtipService.importMaterialRecordsExcel(selectedCustomerId, file);
-      setRecords((prev) => [...result.records, ...prev]);
-      await refreshCustomers();
-      toast(formatMaterialImportToast(result));
+      await excelImport.importFile(file);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'İçe aktarım başarısız · lütfen tekrar dene';
       toast(msg);
@@ -288,20 +300,25 @@ export default function GtipMalzemePage() {
 
   async function handleExport() {
     if (!selectedCustomerId || exporting) return;
-    const filtered = search.trim() !== '' || statusFilter !== 'all' || transactionType !== 'tumu';
-    const rows = filtered ? visible : records;
+    const rows = visible;
     if (rows.length === 0) {
       toast('Dışa aktarılacak kayıt yok');
       return;
     }
     setExporting(true);
     try {
-      await gtipService.downloadMaterialRecordsExcel(rows.map((row) => ({
-        materialNo: row.materialNo,
-        description: row.description,
-        gtipNo: row.gtipNo,
-      })));
-      toast(filtered ? `${rows.length} filtrelenmiş kayıt indirildi` : `${rows.length} kayıt indirildi`);
+      const rejectedOnly = statusFilter === 'rejected';
+      await gtipService.downloadMaterialRecordsExcel(rows.map((row) => {
+        const shown = presentedMaterial(row);
+        return {
+          materialNo: shown.materialNo,
+          description: shown.description,
+          gtipNo: shown.gtipNo,
+          status: materialStatusLabel(row.status),
+          ...(rejectedOnly ? { rejectionDetail: rejectionExportDetail(row) } : {}),
+        };
+      }));
+      toast(`${rows.length} kayıt indirildi`);
     } catch {
       toast('Kayıtlar indirilemedi');
     } finally {
@@ -448,28 +465,44 @@ export default function GtipMalzemePage() {
                     </td>
                   </tr>
                 ) : (
-                  visible.map((rec) => (
+                  visible.map((rec) => {
+                    const shown = presentedMaterial(rec);
+                    const faulty = rejectionSummary(rec);
+                    return (
                     <Tr key={rec.id}>
                       <Td>
                         <span className="font-mono text-[12.5px] font-semibold text-text-strong">
-                          {rec.materialNo}
+                          {shown.materialNo}
                         </span>
+                        {shown.materialNo !== rec.materialNo && (
+                          <span className="block text-[11px] text-muted mt-0.5">Mevcut: {rec.materialNo}</span>
+                        )}
                       </Td>
                       <Td>
                         <span className="font-semibold text-text-strong text-[13px]">
-                          {rec.description}
+                          {shown.description}
                         </span>
+                        {shown.description !== rec.description && (
+                          <span className="block text-[11px] text-muted mt-0.5">Mevcut: {rec.description}</span>
+                        )}
                       </Td>
                       <Td>
                         <span className="font-mono text-[12.5px] font-semibold text-text-strong">
-                          {rec.gtipNo}
+                          {shown.gtipNo}
                         </span>
+                        {shown.gtipNo !== rec.gtipNo && (
+                          <span className="block text-[11px] text-muted mt-0.5">Mevcut: {rec.gtipNo}</span>
+                        )}
                       </Td>
                       <Td>
                         <TransactionTypeBadge types={rec.transactionTypes} />
                       </Td>
                       <Td>
                         <StatusCell status={rec.status} />
+                        {faulty && <div className="mt-1 text-[11px] leading-snug text-[var(--hat-red)]">Hatalı: {faulty}</div>}
+                        {rec.status === 'rejected' && rec.rejection?.note && (
+                          <div className="mt-0.5 text-[11px] text-muted max-w-[220px]">{rec.rejection.note}</div>
+                        )}
                       </Td>
                       <Td>
                         <SourceCell source={rec.source} />
@@ -480,7 +513,7 @@ export default function GtipMalzemePage() {
                       <Td className="w-px">
                         <div className="flex items-center justify-end">
                           <button
-                            onClick={() => { setEditingRecord(rec); setNewRecordOpen(true); }}
+                            onClick={() => { setEditingRecord(editableMaterial(rec)); setNewRecordOpen(true); }}
                             disabled={!canEdit}
                             title={!canEdit ? 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)' : 'Düzenle'}
                             className={[
@@ -493,7 +526,8 @@ export default function GtipMalzemePage() {
                         </div>
                       </Td>
                     </Tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </Table>
@@ -516,6 +550,13 @@ export default function GtipMalzemePage() {
         onClose={() => setImportOpen(false)}
         onTemplateDownload={handleTemplateDownload}
         onImport={handleImport}
+      />
+      <ImportConflictDialog
+        conflicts={excelImport.conflicts}
+        busy={excelImport.importBusy}
+        onConfirm={() => void excelImport.confirmConflicts()}
+        onDecline={() => void excelImport.declineConflicts()}
+        onClose={excelImport.closeConflicts}
       />
     </div>
   );

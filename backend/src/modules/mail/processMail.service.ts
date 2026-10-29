@@ -121,7 +121,7 @@ export async function declarationMailVariables(
   const operation = declaration.operation;
   const lines = (declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
   const records = operation?.customerId
-    ? await MaterialRecordModel.find({ companyId, customerId: operation.customerId }).select({ materialNo: 1, gtipNo: 1, status: 1 }).lean<GtipMaterialRow[]>()
+    ? await MaterialRecordModel.find({ companyId, customerId: operation.customerId }).select({ materialNo: 1, gtipNo: 1, status: 1, pendingUpdate: 1 }).lean<GtipMaterialRow[]>()
     : [];
   let missing = missingOverride;
   if (!missing) {
@@ -244,7 +244,7 @@ export async function remindCustomerGtip(
   if (!declaration?.operation?.customerId) throw new HttpError(404, "Beyanname bulunamadı.");
   const lines = ((declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? []);
   const records = await MaterialRecordModel.find({ companyId, customerId: declaration.operation.customerId })
-    .select({ materialNo: 1, gtipNo: 1, status: 1 })
+    .select({ materialNo: 1, gtipNo: 1, status: 1, pendingUpdate: 1 })
     .lean<GtipMaterialRow[]>();
   const clean = gtipMatchIsClean(lines, records);
   if (clean && !input.allowMatching) {

@@ -25,6 +25,7 @@ export type GtipMaterialRow = {
   materialNo?: string;
   gtipNo?: string;
   status?: string;
+  pendingUpdate?: { gtipNo?: string } | null;
 };
 
 type GateDeclaration = mongoose.Document & {
@@ -52,15 +53,20 @@ function meaningfulLines(lines: GtipGoodsLine[]): GtipGoodsLine[] {
   ));
 }
 
+function approvedLiveValue(record: GtipMaterialRow): boolean {
+  if (record.pendingUpdate) return record.status === "pending" || record.status === "rejected";
+  return record.status === "verified";
+}
+
 function lineMatchesRecord(line: GtipGoodsLine, records: GtipMaterialRow[]): boolean {
   const hs = normalizeGtipCode(line.hsCode);
   if (hs.length < 4) return false;
-  const verified = records.filter((record) => record.status === "verified");
+  const verified = records.filter(approvedLiveValue);
   const material = folded(line.productCode);
   if (material) {
     const byMaterial = records.filter((record) => folded(record.materialNo) === material);
     if (byMaterial.length > 0) {
-      return byMaterial.some((record) => record.status === "verified" && normalizeGtipCode(record.gtipNo) === hs);
+      return byMaterial.some((record) => approvedLiveValue(record) && normalizeGtipCode(record.gtipNo) === hs);
     }
   }
   return verified.some((record) => normalizeGtipCode(record.gtipNo) === hs);
@@ -120,7 +126,7 @@ export async function applyUserGtipGate(
   if (!operation) throw new HttpError(409, "Beyanname operasyon bilgisi bulunmuyor.");
   const customerId = operation.customerId ?? "";
   const records = await MaterialRecordModel.find({ companyId: declaration.companyId, customerId })
-    .select({ materialNo: 1, gtipNo: 1, status: 1 })
+    .select({ materialNo: 1, gtipNo: 1, status: 1, pendingUpdate: 1 })
     .lean<GtipMaterialRow[]>();
   const lines = (declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
   if (!gtipMatchIsClean(lines, records)) {
