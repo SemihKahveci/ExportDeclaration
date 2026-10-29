@@ -37,6 +37,14 @@ function actionError(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function returnStageLabel(record: BeyannameRecord): string {
+  const returned = [...record.approvalHistory].reverse().find((entry) => entry.action === 'RETURN_TO_MT');
+  if (record.approvalStatus === 'RETURNED' && returned && (returned.note ?? '') === record.returnNotice) {
+    return returned.fromStatus === 'SECOND_PENDING' ? '2. Onay' : '1. Onay';
+  }
+  return 'MT Kontrol';
+}
+
 export default function BeyannameYazimPage() {
   const { toast } = useToast();
   const { confirmIfHeld, dialog: holdDialog } = useHoldStepConfirm();
@@ -429,7 +437,13 @@ export default function BeyannameYazimPage() {
 
       {/* Main content card — fills remaining height, inner content scrolls */}
       {selected?.returnNotice && (
-        <Note variant="warn">{selected.returnNotice}</Note>
+        <div className="mb-3 shrink-0">
+          <Note variant="warn">
+            <div className="font-bold text-text-strong">Beyanname Onay Geri Bildirim</div>
+            <div className="text-[12px] font-semibold mt-0.5">{returnStageLabel(selected)}</div>
+            <div className="mt-1">{selected.returnNotice}</div>
+          </Note>
+        </div>
       )}
       {selected && (
         <Card className="flex flex-col min-h-0 flex-1">
