@@ -72,7 +72,7 @@ export default function NewRecordDrawer({
       description: isEdit ? description.trim() : (description.trim() || '(tanımsız malzeme)'),
       gtipNo: isEdit ? gtipNo.trim() : (gtipNo.trim() || '0000.00.00.00.00'),
       transactionTypes: types,
-      status: initialRecord?.status ?? 'pending',
+      status: initialRecord?.status === 'rejected' ? 'pending' : (initialRecord?.status ?? 'pending'),
       source,
       updatedAt: today(),
     };
@@ -103,6 +103,11 @@ export default function NewRecordDrawer({
       }
     >
       <div className="space-y-4">
+        {initialRecord?.status === 'rejected' && (
+          <Note variant="warn">
+            Bu kayıt reddedildi. Düzenleyip güncellediğinizde tekrar <strong>Onay Bekleyen</strong> kuyruğuna alınır.
+          </Note>
+        )}
         <Field label="Malzeme Numarası" htmlFor="nr-mlz">
           <Input
             id="nr-mlz"

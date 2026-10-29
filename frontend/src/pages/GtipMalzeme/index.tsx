@@ -53,14 +53,26 @@ function ScopeTag({ transactionType }: { transactionType: ActiveTransactionType 
 // ─── Status cell ──────────────────────────────────────────────────────────────
 
 function StatusCell({ status }: { status: MaterialRecord['status'] }) {
-  const ok = status === 'verified';
+  if (status === 'verified') {
+    return (
+      <span className="inline-flex items-center gap-2 font-semibold text-[12.5px] text-ok">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--ok)' }} />
+        Doğrulanmış
+      </span>
+    );
+  }
+  if (status === 'rejected') {
+    return (
+      <span className="inline-flex items-center gap-2 font-semibold text-[12.5px] text-[var(--hat-red)]">
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--hat-red)' }} />
+        Reddedildi
+      </span>
+    );
+  }
   return (
-    <span className={`inline-flex items-center gap-2 font-semibold text-[12.5px] ${ok ? 'text-ok' : 'text-warn'}`}>
-      <span
-        className="w-2 h-2 rounded-full shrink-0"
-        style={{ background: ok ? 'var(--ok)' : 'var(--warn)' }}
-      />
-      {ok ? 'Doğrulanmış' : 'Onay Bekleyen'}
+    <span className="inline-flex items-center gap-2 font-semibold text-[12.5px] text-warn">
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: 'var(--warn)' }} />
+      Onay Bekleyen
     </span>
   );
 }
@@ -252,6 +264,7 @@ export default function GtipMalzemePage() {
       toast(`Bu müşteri için malzeme numarası zaten kayıtlı: ${record.materialNo}`);
       throw new Error('duplicate-material-no');
     }
+    const wasRejected = records.some((row) => row.id === id && row.status === 'rejected');
     try {
       const updated = await gtipService.updateRecord(id, {
         materialNo: record.materialNo,
@@ -263,7 +276,7 @@ export default function GtipMalzemePage() {
       setRecords((prev) => prev.map((row) => (row.id === id ? updated : row)));
       setEditingRecord(null);
       setNewRecordOpen(false);
-      toast('Kayıt güncellendi');
+      toast(wasRejected ? 'Kayıt güncellendi · tekrar Onay Bekleyen kuyruğuna alındı' : 'Kayıt güncellendi');
     } catch (err) {
       if (err instanceof Error && err.message === 'duplicate-material-no') throw err;
       toast(err instanceof ApiError ? err.message : 'Kayıt güncellenemedi');
