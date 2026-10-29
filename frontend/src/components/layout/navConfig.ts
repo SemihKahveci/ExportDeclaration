@@ -17,7 +17,6 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ArrowLeftRight,
-  Files,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { DeploymentMode } from '../../types';
@@ -43,7 +42,6 @@ export interface NavGroup {
 
 const ICON_MAP: Record<string, LucideIcon> = {
   '/dosya-takip':                    FolderOpen,
-  '/evrak-hazirlik':                 Files,
   '/beyanname':                      ClipboardList,
   '/beyanname/onay':                 CheckCheck,
   '/tescil':                         Stamp,
@@ -77,12 +75,6 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Operasyon',
     items: [
       permItem('/dosya-takip'),
-      {
-        label: 'Evrak Hazırlık',
-        path: '/evrak-hazirlik',
-        icon: ICON_MAP['/evrak-hazirlik'],
-        requiredCaps: ['beyanname.view', 'beyanname.write'],
-      },
       permItem('/beyanname'),
       permItem('/beyanname/onay'),
       permItem('/tescil'),
