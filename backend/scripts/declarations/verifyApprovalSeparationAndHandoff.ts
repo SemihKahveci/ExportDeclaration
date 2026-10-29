@@ -45,7 +45,9 @@ async function main(){
   assert.equal(r.r.status,200);assert.equal(r.b.data.approvalWorkflow.status,"APPROVED");assert.equal(r.b.data.operation.fileStatus,"tescil");
 
   r=await call(ret._id as mongoose.Types.ObjectId,{action:"RETURN_TO_MT"});
-  assert.equal(r.r.status,200);assert.equal(r.b.data.approvalWorkflow.status,"RETURNED");assert.equal(r.b.data.operation.fileStatus,"beyanname-yazim");assert.ok(r.b.data.operation.returnNotice);
+  assert.equal(r.r.status,400);
+  r=await call(ret._id as mongoose.Types.ObjectId,{action:"RETURN_TO_MT",note:"Kalem GTİP düzeltilecek"});
+  assert.equal(r.r.status,200);assert.equal(r.b.data.approvalWorkflow.status,"RETURNED");assert.equal(r.b.data.operation.fileStatus,"beyanname-yazim");assert.equal(r.b.data.operation.returnNotice,"Kalem GTİP düzeltilecek");
 
   const persisted=await DeclarationModel.findById(two._id).lean();assert(persisted);
   assert.equal(persisted.approvalWorkflow?.history.length,2);

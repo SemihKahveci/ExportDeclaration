@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, Download, Loader2, AlertTriangle, Truck, Ship, Plane, Search, X } from 'lucide-react';
+import { ChevronLeft, CheckCheck, Download, Loader2, AlertTriangle, RotateCcw, Send, Truck, Ship, Plane, Search, X } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameRecord, TransportMode } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
 import { downloadDeclarationExcel } from '../../api/declarationApi';
@@ -8,6 +8,7 @@ import { Card, CardHead } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
+import Modal from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
 import ApprovalTab from './ApprovalTab';
 import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
@@ -44,6 +45,9 @@ export default function BeyannameOnayPage() {
   // List filters
   const [search, setSearch] = useState('');
   const [downloading, setDownloading] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnNote, setReturnNote] = useState('');
+  const [returning, setReturning] = useState(false);
 
   async function downloadWorkbook(id: string) {
     setDownloading(true);
@@ -134,22 +138,22 @@ export default function BeyannameOnayPage() {
   }
 
   async function handleGeriGonder() {
-    if (!selected) return;
+    if (!selected || returning) return;
+    const note = returnNote.trim();
+    if (!note) return;
+    setReturning(true);
     try {
-      await beyannameService.transitionApproval(selected.id,{action:'RETURN_TO_MT'});
+      await beyannameService.transitionApproval(selected.id, { action: 'RETURN_TO_MT', note });
       await reloadApprovalData();
+      setReturnOpen(false);
+      setReturnNote('');
       toast('Beyanname yazıma geri gönderildi');
       setViewMode('list');
     } catch {
       toast('Beyanname yazıma geri gönderilemedi');
+    } finally {
+      setReturning(false);
     }
-  }
-
-  async function handleNotEkle(note: string) {
-    if (!selected) return;
-    await beyannameService.transitionApproval(selected.id,{action:'SAVE_NOTE',note});
-    await reloadApprovalData();
-    toast('Not kaydedildi');
   }
 
   if (loading) {
@@ -347,12 +351,27 @@ export default function BeyannameOnayPage() {
         {selected && (
           <div className="mt-6 flex items-center gap-2">
             <Button
-              variant="primary"
+              variant="default"
               icon={Download}
               disabled={downloading}
               onClick={() => void downloadWorkbook(selected.id)}
             >
               Beyanname İndir
+            </Button>
+            <Button
+              icon={RotateCcw}
+              onClick={() => { setReturnNote(''); setReturnOpen(true); }}
+              writeCap="beyanname_onay.approve"
+            >
+              Yazıma Geri Gönder
+            </Button>
+            <Button
+              variant="primary"
+              icon={approvalStep === 'first' && requiresSecondApproval ? Send : CheckCheck}
+              onClick={() => void (approvalStep === 'first' && requiresSecondApproval ? handleSendToSecondApproval() : handleApproveAndSendToTescil())}
+              writeCap="beyanname_onay.approve"
+            >
+              {approvalStep === 'first' && requiresSecondApproval ? '2. Onaya Gönder' : 'Onayla ve Tescile Gönder'}
             </Button>
             <Pill variant={approvalStep === 'second' ? 'warn' : 'ok'}>
               {approvalStep === 'second' ? '2. Onay Bekliyor' : '1. Onay Bekliyor'}
@@ -406,18 +425,37 @@ export default function BeyannameOnayPage() {
           <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
             <ApprovalTab
               declarationId={selected.id}
-              approvalNote={selected?.approvalNote ?? ''}
               requiresSecondApproval={requiresSecondApproval}
               approvalStep={approvalStep}
               approvalHistory={selected?.approvalHistory ?? []}
-              onSendToSecondApproval={handleSendToSecondApproval}
-              onApproveAndSendToTescil={handleApproveAndSendToTescil}
-              onGeriGonder={handleGeriGonder}
-              onNotEkle={handleNotEkle}
             />
           </div>
         </Card>
       )}
+      <Modal
+        open={returnOpen}
+        onClose={() => !returning && setReturnOpen(false)}
+        title="Yazıma geri gönder"
+        footer={
+          <>
+            <Button onClick={() => setReturnOpen(false)} disabled={returning}>Vazgeç</Button>
+            <Button variant="primary" disabled={returning || !returnNote.trim()} onClick={() => void handleGeriGonder()}>
+              {returning ? 'Gönderiliyor…' : 'Yazıma Geri Gönder'}
+            </Button>
+          </>
+        }
+      >
+        <label className="flex flex-col gap-1.5 text-[12.5px]">
+          <span className="font-semibold text-text-strong">Not</span>
+          <textarea
+            value={returnNote}
+            onChange={(event) => setReturnNote(event.target.value)}
+            rows={4}
+            className="rounded border border-line bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent"
+            placeholder="Yazıma neden geri gönderildiğini yazın"
+          />
+        </label>
+      </Modal>
       {holdDialog}
     </div>
   );

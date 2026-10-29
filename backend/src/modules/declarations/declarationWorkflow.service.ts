@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import { DeclarationModel, type ApprovalWorkflowStatus } from "./declaration.model.js";
 import { toDeclarationDto } from "./declaration.mapper.js";
-import { releaseHold, RETURN_TO_WRITING_NOTICE } from "./operationStatus.js";
+import { releaseHold } from "./operationStatus.js";
 
 export type ApprovalAction =
   | "SET_SECOND_APPROVAL_REQUIRED"
@@ -61,7 +61,11 @@ export async function transitionApprovalWorkflow(
       to="APPROVED";
     } else throw new HttpError(409,"Bu aşamada onay verilemez.");
   } else if(action==="RETURN_TO_MT"){
-    if(from!=="FIRST_PENDING" && from!=="SECOND_PENDING") throw new HttpError(409,"Yalnız onay bekleyen beyanname MT kontrole geri gönderilebilir.");
+    if(from!=="FIRST_PENDING" && from!=="SECOND_PENDING") throw new HttpError(409,"Yalnız onay bekleyen beyanname yazıma geri gönderilebilir.");
+    const reason=(input.note??"").trim();
+    if(!reason) throw new HttpError(400,"Yazıma geri göndermek için not zorunludur.");
+    historyNote=reason;
+    wf.note=reason;
     to="RETURNED";
   }
 
@@ -82,8 +86,8 @@ export async function transitionApprovalWorkflow(
     if(declaration.operation){
       releaseHold(declaration.operation);
       declaration.operation.fileStatus="beyanname-yazim";
-      declaration.operation.returnNotice=RETURN_TO_WRITING_NOTICE;
-      declaration.operation.lastActivity=RETURN_TO_WRITING_NOTICE;
+      declaration.operation.returnNotice=historyNote;
+      declaration.operation.lastActivity="Beyanname yazıma geri gönderildi";
       declaration.markModified("operation");
     }
   }

@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, CheckCheck, CheckCircle2, Database, FileSearch, Loader2,
-  MessageSquare, RefreshCw, RotateCcw, Send, UserRound,
+  AlertTriangle, Database, FileSearch, Loader2, RefreshCw, UserRound,
 } from 'lucide-react';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import Modal from '../../components/ui/Modal';
-import { Field, Textarea } from '../../components/ui/Fields';
 import { getDeclaration } from '../../api/declarationApi';
 import { toLineItems, toWritingFieldValues } from '../../api/adapters/declarationAdapter';
 import { mergeNormalizedFromApi } from '../../api/types/document.types';
@@ -41,27 +38,19 @@ function ApprovalStepBadge({ approvalStep, requiresSecondApproval }: { approvalS
 
 interface ApprovalTabProps {
   declarationId: string;
-  approvalNote: string;
   requiresSecondApproval: boolean;
   approvalStep: 'first' | 'second';
   approvalHistory: Array<{ action:string; fromStatus:string; toStatus:string; actorUserId:string; note?:string; at:string }>;
-  onSendToSecondApproval: () => void;
-  onApproveAndSendToTescil: () => void;
-  onGeriGonder: () => void;
-  onNotEkle: (note: string) => void;
 }
 
 export default function ApprovalTab({
-  declarationId, approvalNote, requiresSecondApproval, approvalStep, approvalHistory,
-  onSendToSecondApproval, onApproveAndSendToTescil, onGeriGonder, onNotEkle,
+  declarationId, requiresSecondApproval, approvalStep, approvalHistory,
 }: ApprovalTabProps) {
   const [entries,setEntries]=useState<ControlProvenanceEntry[]>([]);
   const [sheet,setSheet]=useState<DeclarationSheetData|null>(null);
   const [activePath,setActivePath]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
-  const [noteOpen,setNoteOpen]=useState(false);
-  const [noteText,setNoteText]=useState(approvalNote);
   const [evidenceOpen,setEvidenceOpen]=useState(false);
 
   const load=async()=>{
@@ -84,7 +73,6 @@ export default function ApprovalTab({
     finally{setLoading(false);}
   };
   useEffect(()=>{void load();},[declarationId]);
-  useEffect(()=>setNoteText(approvalNote),[approvalNote]);
 
   const active=entries.find(x=>x.path===activePath)??null;
   const counts=useMemo(()=>({
@@ -92,11 +80,6 @@ export default function ApprovalTab({
     master:entries.filter(x=>x.authority==='MASTER_DATA').length,
     human:entries.filter(x=>x.authority==='PERSISTENT_HUMAN').length,
   }),[entries]);
-  const needsSecond=approvalStep==='first'&&requiresSecondApproval;
-  const primaryLabel=needsSecond?'2. Onaya Gönder':'Onayla ve Tescile Gönder';
-  const primaryIcon=needsSecond?Send:CheckCheck;
-  const primaryClick=needsSecond?onSendToSecondApproval:onApproveAndSendToTescil;
-
   return <>
     <div className="flex gap-4 h-full min-h-[560px]">
       <div className="flex-1 min-w-0 border border-line rounded-xl overflow-hidden flex flex-col">
@@ -146,16 +129,9 @@ export default function ApprovalTab({
               </div>)}
             </div>
           </div>}
-          <div className="flex gap-2"><Button icon={RotateCcw} onClick={onGeriGonder}>Yazıma Geri Gönder</Button><Button icon={MessageSquare} onClick={()=>setNoteOpen(true)}>Not</Button></div>
-          <Button variant="primary" icon={primaryIcon} onClick={primaryClick}>{primaryLabel}</Button>
         </div></CardBody></Card>
       </div>
     </div>
-
-    <Modal open={noteOpen} title="Onay Notu" onClose={()=>setNoteOpen(false)}>
-      <div className="flex flex-col gap-4"><Field label="Not"><Textarea value={noteText} onChange={e=>setNoteText(e.target.value)} rows={5}/></Field>
-      <div className="flex justify-end"><Button variant="primary" icon={CheckCircle2} onClick={()=>{onNotEkle(noteText);setNoteOpen(false);}}>Notu Kaydet</Button></div></div>
-    </Modal>
 
     {active?.evidence&&<DocumentEvidenceViewer open={evidenceOpen} declarationId={declarationId}
       uploadedFileId={active.evidence.uploadedFileId}
