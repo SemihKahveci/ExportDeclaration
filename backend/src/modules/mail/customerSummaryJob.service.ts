@@ -267,8 +267,14 @@ async function sendCutoffs(
   const docAudience = automatic(docRule) ? audience(ownMails, LABEL_MISSING_DOCS) : new Set<string>();
   const gtipAudience = automatic(gtipRule) ? audience(ownMails, LABEL_GTIP) : new Set<string>();
   const ownRecords = records.filter((row) => row.customerId === customerId);
+  const priorCutoff = await DocumentReminderDispatchModel.find({
+    declarationId: { $in: files.map((file) => file._id) },
+    ruleId: { $regex: "^cutoff" }
+  }).select({ declarationId: 1 }).lean<Array<{ declarationId: mongoose.Types.ObjectId }>>();
+  const warned = new Set(priorCutoff.map((row) => String(row.declarationId)));
   let sent = 0;
   for (const file of files) {
+    if (warned.has(String(file._id))) continue;
     const cutoffAt = file.operation?.cutoffAt ? new Date(file.operation.cutoffAt) : null;
     if (!cutoffAt || Number.isNaN(cutoffAt.getTime()) || cutoffAt.getTime() <= now.getTime()) continue;
     if (cutoffAt.getTime() - now.getTime() > leadMs) continue;
@@ -276,48 +282,51 @@ async function sendCutoffs(
     const lines = file.normalizedData?.goodsLines ?? [];
     const gtipCount = gtipFaultCount(lines, ownRecords);
     const gtipSummary = gtipFaultSummary(lines, ownRecords);
-    const notice = cutoffNotice(cutoffAt, now);
-    for (const email of new Set([...docAudience, ...gtipAudience])) {
-      const row = visibleRow(file, docAudience.has(email), gtipAudience.has(email), missing, gtipCount, gtipSummary);
-      if (!row) continue;
-      const ruleId = `cutoff:${email}`;
-      if (!await claim(companyId, file._id, ruleId, "once", now)) continue;
-      try {
-        const count = await deliverProcessMail({
-          companyId,
-          processStep: CUTOFF_STEP,
-          recipients: [email],
-          values: {
-            "{musteri}": file.operation?.customerName?.trim() || "Müşteri",
-            "{referans}": row.ref,
-            "{beyanname_no}": row.declarationNo === "—" ? "" : row.declarationNo,
-            "{tarih}": istanbulStamp(now, true),
-            "{cutoff}": notice,
-            "{ozet_tablo}": summaryTableText([row]),
-            "{eksik_evraklar}": "",
-            "{gtip_sonuc}": "",
-            "{tescil_no}": "",
-            "{kapanis_durumu}": "",
-            "{sorumlu}": ""
-          },
-          rawHtml: { "{ozet_tablo}": summaryTableHtml([row]) },
-          allowFallback: true,
-          fallbackSubject: "Cut-off uyarısı · {referans}",
-          fallbackBody: "Sayın {musteri},\n\n{referans} dosyasında cut-off yaklaşıyor.\n\n{cutoff}\n\n{ozet_tablo}\n\nİyi çalışmalar."
-        });
-        if (count === 0) {
-          await release(file._id, ruleId, "once");
-          continue;
-        }
-        sent += 1;
-      } catch (error) {
+    const pendingDocs = missing.length > 0;
+    const pendingGtip = gtipCount > 0;
+    const recipients = [
+      ...(pendingDocs ? docAudience : []),
+      ...(pendingGtip ? gtipAudience : [])
+    ];
+    const row = visibleRow(file, pendingDocs, pendingGtip, missing, gtipCount, gtipSummary);
+    if (!row || recipients.length === 0) continue;
+    const ruleId = "cutoff";
+    if (!await claim(companyId, file._id, ruleId, "once", now)) continue;
+    try {
+      const count = await deliverProcessMail({
+        companyId,
+        processStep: CUTOFF_STEP,
+        recipients,
+        values: {
+          "{musteri}": file.operation?.customerName?.trim() || "Müşteri",
+          "{referans}": row.ref,
+          "{beyanname_no}": row.declarationNo === "—" ? "" : row.declarationNo,
+          "{tarih}": istanbulStamp(now, true),
+          "{cutoff}": cutoffNotice(cutoffAt, now),
+          "{ozet_tablo}": summaryTableText([row]),
+          "{eksik_evraklar}": "",
+          "{gtip_sonuc}": "",
+          "{tescil_no}": "",
+          "{kapanis_durumu}": "",
+          "{sorumlu}": ""
+        },
+        rawHtml: { "{ozet_tablo}": summaryTableHtml([row]) },
+        allowFallback: true,
+        fallbackSubject: "Cut-off uyarısı · {referans}",
+        fallbackBody: "Sayın {musteri},\n\n{referans} dosyasında cut-off yaklaşıyor.\n\n{cutoff}\n\n{ozet_tablo}\n\nİyi çalışmalar."
+      });
+      if (count === 0) {
         await release(file._id, ruleId, "once");
-        console.error(JSON.stringify({
-          event: "cutoff-mail.failed",
-          ref: file.operation?.ref,
-          message: error instanceof Error ? error.message : "Cut-off maili gönderilemedi"
-        }));
+        continue;
       }
+      sent += 1;
+    } catch (error) {
+      await release(file._id, ruleId, "once");
+      console.error(JSON.stringify({
+        event: "cutoff-mail.failed",
+        ref: file.operation?.ref,
+        message: error instanceof Error ? error.message : "Cut-off maili gönderilemedi"
+      }));
     }
   }
   return sent;
