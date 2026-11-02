@@ -49,8 +49,7 @@ function automatic(rule: { status?: string; workingMode?: string } | undefined):
 function audience(mails: Array<{ email: string; notificationProcesses: string[]; status: string; matchStatus: string }>, label: string): Set<string> {
   const active = mails.filter((mail) => mail.status !== "passive" && mail.matchStatus !== "passive" && mail.email.trim());
   const tagged = active.filter((mail) => mail.notificationProcesses.includes(label));
-  const chosen = tagged.length > 0 ? tagged : active;
-  return new Set(chosen.map((mail) => mail.email.trim().toLowerCase()));
+  return new Set(tagged.map((mail) => mail.email.trim().toLowerCase()));
 }
 
 async function claim(companyId: mongoose.Types.ObjectId, declarationId: mongoose.Types.ObjectId, ruleId: string, slotKey: string, now: Date): Promise<boolean> {
