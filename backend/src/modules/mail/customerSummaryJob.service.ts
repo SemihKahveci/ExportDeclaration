@@ -172,11 +172,7 @@ async function sendSummary(
   firstAt: Map<string, Date>,
   now: Date
 ): Promise<number> {
-  const sentRows = await DocumentReminderDispatchModel.find({
-    declarationId: companyId,
-    ruleId: new RegExp(`^summary:${customerId}:`)
-  }).select({ slotKey: 1 }).lean();
-  const slot = summaryDueSlot(plan, now, new Set(sentRows.map((row) => row.slotKey)));
+  const slot = summaryDueSlot(plan, now, new Set());
   if (!slot) return 0;
   const ownMails = mails.filter((mail) => mail.customerId === customerId).map((mail) => ({
     ...mail,
