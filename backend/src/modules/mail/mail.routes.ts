@@ -1,9 +1,28 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 
+import { asyncHandler } from "../../common/utils/asyncHandler.js";
 import { sendMail } from "./mail.service.js";
+import { getCompanySummaryPlan, previewSummaryPlan, saveCompanySummaryPlan } from "./mailSendPlan.service.js";
 import { remindCustomerGtip, sendDocumentReminder } from "./processMail.service.js";
 
 export const mailRouter = Router();
+
+mailRouter.get("/send-plan", asyncHandler(async (req, res) => {
+  res.json({ ok: true, data: await getCompanySummaryPlan(req.auth!.operationalCompanyId) });
+}));
+
+mailRouter.put("/send-plan", asyncHandler(async (req, res) => {
+  res.json({ ok: true, data: await saveCompanySummaryPlan(req.auth!.operationalCompanyId, req.body ?? {}) });
+}));
+
+mailRouter.post("/send-plan/preview", asyncHandler(async (req, res) => {
+  const data = previewSummaryPlan(req.body ?? {});
+  if (data.issues.length > 0) {
+    res.status(400).json({ ok: false, error: data.issues[0], issues: data.issues });
+    return;
+  }
+  res.json({ ok: true, data });
+}));
 
 mailRouter.post(
   "/document-reminder",

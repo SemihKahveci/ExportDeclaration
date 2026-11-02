@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { getCustomerSummaryPlan, saveCustomerSummaryPlan } from "../mail/mailSendPlan.service.js";
 import * as svc from "./customer.service.js";
 
 function cid(req: Request) {
@@ -142,4 +143,12 @@ export async function patchDeclFieldRule(req: Request, res: Response): Promise<v
 export async function deleteDeclFieldRule(req: Request, res: Response): Promise<void> {
   await svc.deleteDeclarationFieldRule(cid(req), req.params.id!);
   res.json({ ok: true, data: { deleted: true } });
+}
+
+export async function getSummaryPlan(req: Request, res: Response): Promise<void> {
+  res.json({ ok: true, data: await getCustomerSummaryPlan(cid(req), req.params.customerId!) });
+}
+
+export async function putSummaryPlan(req: Request, res: Response): Promise<void> {
+  res.json({ ok: true, data: await saveCustomerSummaryPlan(cid(req), req.params.customerId!, req.body ?? {}) });
 }

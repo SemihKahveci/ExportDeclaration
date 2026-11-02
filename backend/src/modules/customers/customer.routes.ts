@@ -29,6 +29,8 @@ customerRouter.post("/:customerId/document-rules", asyncHandler(ctrl.postDocRule
 customerRouter.patch("/document-rules/:id", asyncHandler(ctrl.patchDocRule));
 customerRouter.delete("/document-rules/:id", asyncHandler(ctrl.deleteDocRule));
 
+customerRouter.get("/:customerId/summary-plan", asyncHandler(ctrl.getSummaryPlan));
+customerRouter.put("/:customerId/summary-plan", asyncHandler(ctrl.putSummaryPlan));
 customerRouter.get("/:customerId/notification-rules", asyncHandler(ctrl.getNotifyRules));
 customerRouter.post("/:customerId/notification-rules", asyncHandler(ctrl.postNotifyRule));
 customerRouter.patch("/notification-rules/:id", asyncHandler(ctrl.patchNotifyRule));

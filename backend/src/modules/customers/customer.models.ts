@@ -7,6 +7,16 @@ export interface CustomerDoc extends mongoose.Document {
   country: string;
   assignedMtUserId?: string;
   assignedMtManagerUserId?: string;
+  summaryPlanMode: "general" | "custom";
+  summaryPlan: {
+    dayMode: "every" | "weekdays" | "weekend" | "custom";
+    customDays: number[];
+    firstMinutes: number;
+    repeat: "once" | "every-2h";
+    lastMinutes: number | null;
+    cutoffEnabled: boolean;
+    cutoffLeadHours: number;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,7 +28,9 @@ const CustomerSchema = new Schema(
     initials: { type: String, required: true, trim: true },
     country: { type: String, default: "Türkiye", trim: true },
     assignedMtUserId: { type: String, default: undefined },
-    assignedMtManagerUserId: { type: String, default: undefined }
+    assignedMtManagerUserId: { type: String, default: undefined },
+    summaryPlanMode: { type: String, enum: ["general", "custom"], default: "general" },
+    summaryPlan: { type: Schema.Types.Mixed, default: null }
   },
   { timestamps: true }
 );
