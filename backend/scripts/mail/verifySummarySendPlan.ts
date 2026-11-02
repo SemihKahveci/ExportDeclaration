@@ -79,13 +79,21 @@ const newer = summaryMailRow({
   declarationNo: "26-1",
   createdAt: new Date("2026-10-20T09:00:00.000Z"),
   missing: [],
-  gtipCount: 2
+  gtipCount: 2,
+  gtipSummary: "M1 · Kumaş · 1111"
 });
 assert.ok(older && newer);
 assert.equal(older.declarationNo, "—");
 assert.equal(older.status, "Eksik Evrak");
 assert.equal(newer.status, "GTİP Hatalı");
-assert.equal(newer.waiting, "2 kalemde GTİP");
+assert.equal(newer.waiting, "M1 · Kumaş · 1111");
+assert.equal(summaryMailRow({
+  ref: "D",
+  createdAt: new Date("2026-10-20T09:00:00.000Z"),
+  missing: ["ATR"],
+  gtipCount: 2,
+  gtipSummary: "M1 · Kumaş · 1111"
+})?.waiting, "ATR · M1 · Kumaş · 1111");
 const text = summaryTableText([newer, older]);
 assert.ok(text.indexOf("A |") < text.indexOf("B |"));
 const html = summaryTableHtml([older]);

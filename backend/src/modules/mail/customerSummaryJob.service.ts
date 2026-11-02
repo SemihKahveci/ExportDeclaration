@@ -6,7 +6,7 @@ import {
   CustomerNotificationRuleModel
 } from "../customers/customer.models.js";
 import { DeclarationModel } from "../declarations/declaration.model.js";
-import { gtipFaultCount, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
+import { gtipFaultCount, gtipFaultSummary, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
 import { missingDocumentsByDeclaration } from "../declarations/declaration.service.js";
 import { MaterialRecordModel } from "../material-records/materialRecord.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
@@ -148,15 +148,15 @@ function visibleRow(
   seesGtip: boolean,
   missing: string[],
   gtipCount: number,
-  holdDocs: boolean,
-  holdGtip: boolean
+  gtipSummary: string
 ): SummaryMailRow | null {
   return summaryMailRow({
     ref: file.operation?.ref ?? "",
     declarationNo: file.operation?.declarationNo,
     createdAt: file.createdAt ?? new Date(0),
-    missing: seesDocs && !holdDocs ? missing : [],
-    gtipCount: seesGtip && !holdGtip ? gtipCount : 0
+    missing: seesDocs ? missing : [],
+    gtipCount: seesGtip ? gtipCount : 0,
+    gtipSummary: seesGtip ? gtipSummary : ""
   });
 }
 
@@ -188,10 +188,9 @@ async function sendSummary(
     const missing = missingByFile.get(String(file._id)) ?? [];
     const lines = file.normalizedData?.goodsLines ?? [];
     const gtipCount = gtipFaultCount(lines, ownRecords);
-    const holdDocs = summaryHoldActive(firstAt.get(`${file._id}:eksik-evrak`), now);
-    const holdGtip = summaryHoldActive(firstAt.get(`${file._id}:gtip-kontrol`), now);
+    const gtipSummary = gtipFaultSummary(lines, ownRecords);
     for (const email of new Set([...docAudience, ...gtipAudience])) {
-      const row = visibleRow(file, docAudience.has(email), gtipAudience.has(email), missing, gtipCount, holdDocs, holdGtip);
+      const row = visibleRow(file, docAudience.has(email), gtipAudience.has(email), missing, gtipCount, gtipSummary);
       if (!row) continue;
       const bucket = buckets.get(email) ?? [];
       bucket.push(row);
@@ -271,10 +270,12 @@ async function sendCutoffs(
     if (!cutoffAt || Number.isNaN(cutoffAt.getTime()) || cutoffAt.getTime() <= now.getTime()) continue;
     if (cutoffAt.getTime() - now.getTime() > leadMs) continue;
     const missing = missingByFile.get(String(file._id)) ?? [];
-    const gtipCount = gtipFaultCount(file.normalizedData?.goodsLines ?? [], ownRecords);
+    const lines = file.normalizedData?.goodsLines ?? [];
+    const gtipCount = gtipFaultCount(lines, ownRecords);
+    const gtipSummary = gtipFaultSummary(lines, ownRecords);
     const notice = cutoffNotice(cutoffAt, now);
     for (const email of new Set([...docAudience, ...gtipAudience])) {
-      const row = visibleRow(file, docAudience.has(email), gtipAudience.has(email), missing, gtipCount, false, false);
+      const row = visibleRow(file, docAudience.has(email), gtipAudience.has(email), missing, gtipCount, gtipSummary);
       if (!row) continue;
       const ruleId = `cutoff:${email}`;
       if (!await claim(companyId, file._id, ruleId, "once", now)) continue;

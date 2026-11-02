@@ -41,18 +41,17 @@ export function summaryMailRow(input: {
   createdAt: Date;
   missing: string[];
   gtipCount: number;
+  gtipSummary?: string | null;
 }): SummaryMailRow | null {
   const missing = input.missing.map((item) => item.trim()).filter(Boolean);
   const gtipCount = input.gtipCount > 0 ? input.gtipCount : 0;
-  if (missing.length === 0 && gtipCount === 0) return null;
+  const gtipSummary = input.gtipSummary?.trim() || (gtipCount > 0 ? `${gtipCount} kalemde GTİP` : "");
+  if (missing.length === 0 && !gtipSummary) return null;
   const status = [
     missing.length > 0 ? "Eksik Evrak" : "",
-    gtipCount > 0 ? "GTİP Hatalı" : ""
+    gtipSummary ? "GTİP Hatalı" : ""
   ].filter(Boolean).join(", ");
-  const waiting = [
-    missing.join(", "),
-    gtipCount > 0 ? `${gtipCount} kalemde GTİP` : ""
-  ].filter(Boolean).join(" · ");
+  const waiting = [missing.join(", "), gtipSummary].filter(Boolean).join(" · ");
   return {
     kind: "waiting",
     ref: input.ref.trim() || "—",
