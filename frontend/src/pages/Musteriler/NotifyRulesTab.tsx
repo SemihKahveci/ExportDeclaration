@@ -3,7 +3,16 @@ import type { NotificationRule, NotifyWorkingMode } from '../../types';
 import { Card, CardHead } from '../../components/ui/Card';
 import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
+import { useEffect, useState } from 'react';
 import { useCan } from '../../permissions/useCan';
+import { ApiError } from '../../api/apiClient';
+import { useToast } from '../../components/ui/Toast';
+import {
+  getCustomerSummaryPlan,
+  saveCustomerSummaryPlan,
+  type SummaryPlanInput,
+} from '../../api/mailPlanApi';
+import { PlanSaveRow, SendPlanCard, SendPlanFields, planInputFrom } from '../../components/mail/SendPlanCard';
 
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
@@ -57,12 +66,83 @@ function SummaryTile({ count, label }: SummaryTileProps) {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface NotifyRulesTabProps {
+  customerId: string;
   rules: NotificationRule[];
   onNew: () => void;
   onEdit: (idx: number) => void;
 }
 
-export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabProps) {
+function CustomerPlan({ customerId }: { customerId: string }) {
+  const { toast } = useToast();
+  const [mode, setMode] = useState<'general' | 'custom'>('general');
+  const [plan, setPlan] = useState<SummaryPlanInput | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    getCustomerSummaryPlan(customerId).then((data) => {
+      if (cancel) return;
+      setMode(data.mode);
+      setPlan(planInputFrom(data.mode === 'custom' ? data.plan : data.effective));
+    }).catch(() => {
+      if (!cancel) setPlan(planInputFrom(null));
+    });
+    return () => { cancel = true; };
+  }, [customerId]);
+
+  if (!plan) return null;
+
+  async function save() {
+    if (!plan) return;
+    setSaving(true);
+    try {
+      const saved = await saveCustomerSummaryPlan(customerId, mode === 'custom'
+        ? { mode, plan }
+        : { mode: 'general' });
+      setMode(saved.mode);
+      setPlan(planInputFrom(saved.mode === 'custom' ? saved.plan : saved.effective));
+      toast('Gönderim planı kaydedildi');
+    } catch (error) {
+      toast(error instanceof ApiError ? error.message : 'Plan kaydedilemedi');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <SendPlanCard
+      title="Gönderim Planı"
+      sub="Hatırlatmanın açık ya da kapalı olması aşağıdaki çalışma şeklinden okunur."
+    >
+      <div className="space-y-4">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode('general')}
+            className={`px-3 py-1.5 rounded-[7px] border text-[12.5px] font-semibold ${mode === 'general' ? 'border-accent bg-accent-tint text-accent' : 'border-line text-muted'}`}
+          >
+            Genel planı kullan
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('custom')}
+            className={`px-3 py-1.5 rounded-[7px] border text-[12.5px] font-semibold ${mode === 'custom' ? 'border-accent bg-accent-tint text-accent' : 'border-line text-muted'}`}
+          >
+            Bu müşteriye özel plan
+          </button>
+        </div>
+        {mode === 'custom' ? (
+          <SendPlanFields value={plan} onChange={setPlan} />
+        ) : (
+          <p className="text-[12.5px] text-muted">Bu müşteri Mailler ekranındaki genel planı kullanır.</p>
+        )}
+        <PlanSaveRow saving={saving} onSave={() => { void save(); }} writeCap="musteriler.edit" />
+      </div>
+    </SendPlanCard>
+  );
+}
+
+export default function NotifyRulesTab({ customerId, rules, onNew, onEdit }: NotifyRulesTabProps) {
   const { can } = useCan();
   const canEdit = can('musteriler.edit');
   const counts = {
@@ -73,6 +153,7 @@ export default function NotifyRulesTab({ rules, onNew, onEdit }: NotifyRulesTabP
 
   return (
     <div className="space-y-4">
+      <CustomerPlan customerId={customerId} />
       <div className="grid grid-cols-3 gap-3">
         <SummaryTile count={counts.auto}       label="Otomatik"  />
         <SummaryTile count={counts.controlled} label="Kontrollü" />

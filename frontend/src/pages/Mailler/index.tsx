@@ -10,6 +10,9 @@ import { Table, Th, Td, Tr } from '../../components/ui/Table';
 import Drawer from '../../components/ui/Drawer';
 import { Field, Input, Select, Textarea } from '../../components/ui/Fields';
 import { useToast } from '../../components/ui/Toast';
+import { ApiError } from '../../api/apiClient';
+import { getCompanySummaryPlan, saveCompanySummaryPlan, type SummaryPlanInput } from '../../api/mailPlanApi';
+import { PlanSaveRow, SendPlanCard, SendPlanFields, planInputFrom } from '../../components/mail/SendPlanCard';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -289,6 +292,48 @@ function TemplateDrawer({ mode, template, onSave, onDelete, onClose }: TemplateD
 
 type DrawerMode = 'new' | 'edit' | 'delete' | null;
 
+function CompanyPlanCard() {
+  const { toast } = useToast();
+  const [plan, setPlan] = useState<SummaryPlanInput | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getCompanySummaryPlan()
+      .then((data) => setPlan(planInputFrom(data.plan)))
+      .catch(() => setPlan(planInputFrom(null)));
+  }, []);
+
+  if (!plan) return null;
+
+  async function save() {
+    if (!plan) return;
+    setSaving(true);
+    try {
+      const saved = await saveCompanySummaryPlan(plan);
+      setPlan(planInputFrom(saved.plan));
+      toast('Gönderim planı kaydedildi');
+    } catch (error) {
+      toast(error instanceof ApiError ? error.message : 'Plan kaydedilemedi');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mb-6">
+      <SendPlanCard
+        title="Gönderim Planı"
+        sub="Bütün müşteriler için özet hatırlatma ve cut-off. Kartında özel planı olan müşteri bunu kullanmaz."
+      >
+        <div className="space-y-4">
+          <SendPlanFields value={plan} onChange={setPlan} />
+          <PlanSaveRow saving={saving} onSave={() => { void save(); }} writeCap="mailler.manage" />
+        </div>
+      </SendPlanCard>
+    </div>
+  );
+}
+
 export default function MaillerPage() {
   const { toast } = useToast();
 
@@ -399,6 +444,8 @@ export default function MaillerPage() {
           Yeni Mail Şablonu
         </Button>
       </div>
+
+      <CompanyPlanCard />
 
       {/* Stat cards */}
       <div className="grid grid-cols-4 gap-3 mb-6">

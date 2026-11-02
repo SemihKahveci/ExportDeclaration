@@ -15,6 +15,8 @@ export const MAIL_PROCESS_OPTIONS = [
   { value: 'tescil',            label: 'Tescil'                   },
   { value: 'kapanis',           label: 'Kapanış'                  },
   { value: 'mutabakat',         label: 'Mutabakat'                },
+  { value: 'ozet-hatirlatma',   label: 'Özet Hatırlatma'          },
+  { value: 'cutoff-uyarisi',    label: 'Cut-off Uyarısı'          },
 ] as const;
 
 export const MAIL_FREQUENCY_OPTIONS = [
@@ -35,6 +37,8 @@ export const MAIL_VARIABLES = [
   '{tescil_no}',
   '{beyanname_no}',
   '{tarih}',
+  '{ozet_tablo}',
+  '{cutoff}',
 ] as const;
 
 export const MAIL_VARIABLE_HELP: Record<(typeof MAIL_VARIABLES)[number], string> = {
@@ -44,7 +48,9 @@ export const MAIL_VARIABLE_HELP: Record<(typeof MAIL_VARIABLES)[number], string>
   '{gtip_sonuc}': 'Veritabanında olmayan veya hatalı eşleşen malzeme no, tanım ve GTİP.',
   '{tescil_no}': 'Tescil başladığında Evrim’den gelen numara.',
   '{beyanname_no}': 'Beyanname numarası.',
-  '{tarih}': 'Mailin gönderildiği tarih.',
+  '{tarih}': 'Mailin gönderildiği tarih. Özet ve cut-off şablonlarında saat de yazılır.',
+  '{ozet_tablo}': 'Bekleyen dosyaların tablosu. Özet ve cut-off gövdesinde bu değişkenin olduğu yere gelir.',
+  '{cutoff}': 'Cut-off saati ve kalan süre.',
 };
 
 function isMongoId(id: string): boolean {

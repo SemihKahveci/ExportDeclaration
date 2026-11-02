@@ -111,14 +111,6 @@ function normalizeWorkingMode(mode: NotifyWorkingMode): string {
 }
 
 const TRANSACTION_TYPES = ['İhracat', 'İthalat', 'Transit', 'Antrepo'];
-const REMINDER_TYPES = ['Otomatik', 'Kontrollü', 'Manuel'] as const;
-const FREQUENCY_OPTIONS = [
-  'Her 2 saatte bir',
-  'Günde 1 kez',
-  'Günde 2 kez',
-  "Cut-off'a göre dinamik",
-  'Manuel takip',
-];
 
 function CheckGrid({
   items,
@@ -247,8 +239,6 @@ export default function CustomerDrawer({
   const [rTip, setRTip]             = useState(SELECT_PLACEHOLDER);
   const [rTas, setRTas]             = useState(SELECT_PLACEHOLDER);
   const [rDocs, setRDocs]           = useState<string[]>([]);
-  const [rReminder, setRReminder]   = useState<string>(SELECT_PLACEHOLDER);
-  const [rFreq, setRFreq]           = useState(SELECT_PLACEHOLDER);
   const [rStatus, setRStatus]       = useState<string>(SELECT_PLACEHOLDER);
 
   const [nProcess, setNProcess]     = useState(SELECT_PLACEHOLDER);
@@ -298,15 +288,11 @@ export default function CustomerDrawer({
       setRTip(initialRule.transactionType);
       setRTas(initialRule.transportMode);
       setRDocs(initialRule.requiredDocs);
-      setRReminder(initialRule.reminderType);
-      setRFreq(initialRule.frequency);
       setRStatus(initialRule.status);
     } else if (mode === 'rule') {
       setRTip(SELECT_PLACEHOLDER);
       setRTas(ALL_TRANSPORT);
       setRDocs([]);
-      setRReminder(SELECT_PLACEHOLDER);
-      setRFreq(SELECT_PLACEHOLDER);
       setRStatus(SELECT_PLACEHOLDER);
     }
     if (mode === 'notify' && initialNotify) {
@@ -356,8 +342,6 @@ export default function CustomerDrawer({
       return (
         rTip !== SELECT_PLACEHOLDER &&
         rDocs.length > 0 &&
-        rReminder !== SELECT_PLACEHOLDER &&
-        rFreq !== SELECT_PLACEHOLDER &&
         rStatus !== SELECT_PLACEHOLDER
       );
     }
@@ -373,7 +357,7 @@ export default function CustomerDrawer({
   }, [
     mode, companyName, aAddrLines, aCity, aCountry, aTaxNo,
     dDomain, mEmail, mDomain, mOwner, mProcesses,
-    rTip, rTas, rDocs, rReminder, rFreq, rStatus,
+    rTip, rTas, rDocs, rStatus,
     nProcess, nMode, nRecipient, nStatus,
   ]);
 
@@ -427,8 +411,8 @@ export default function CustomerDrawer({
           transportMode: serializeTransportModes(parseTransportModes(rTas)),
           scenario: '',
           requiredDocs: rDocs,
-          reminderType: rReminder as DocumentRule['reminderType'],
-          frequency: rFreq,
+          reminderType: initialRule?.reminderType ?? 'Otomatik',
+          frequency: initialRule?.frequency ?? '',
           status: rStatus as DocumentRule['status'],
         },
       });
@@ -629,28 +613,6 @@ export default function CustomerDrawer({
               <CheckGrid items={DOCUMENT_LIST} selected={rDocs} onChange={setRDocs} cols={2} />
             </div>
           </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Hatırlatma Tipi" htmlFor="r-reminder" required>
-              <Select
-                id="r-reminder"
-                value={rReminder}
-                onChange={(e) => setRReminder(e.target.value)}
-              >
-                <PlaceholderOption />
-                {REMINDER_TYPES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Sıklık" htmlFor="r-freq" required>
-              <Select id="r-freq" value={rFreq} onChange={(e) => setRFreq(e.target.value)}>
-                <PlaceholderOption />
-                {FREQUENCY_OPTIONS.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </Select>
-            </Field>
-          </div>
           <Field label="Durum" htmlFor="r-status" required>
             <Select id="r-status" value={rStatus} onChange={(e) => setRStatus(e.target.value)}>
               <PlaceholderOption />

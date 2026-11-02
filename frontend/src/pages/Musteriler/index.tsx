@@ -452,6 +452,7 @@ export default function MusterilerPage() {
                 )}
                 {activeTab === 'notify' && (
                   <NotifyRulesTab
+                    customerId={selectedId}
                     rules={notifyRules}
                     onNew={() => openDrawer('notify')}
                     onEdit={(i) => openDrawer('notify', i)}

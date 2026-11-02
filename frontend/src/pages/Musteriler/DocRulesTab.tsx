@@ -8,24 +8,6 @@ import Button from '../../components/ui/Button';
 import { useCan } from '../../permissions/useCan';
 import { parseTransportModes, transportMatchesFilter } from './documentRuleTransport';
 
-// ─── Mode badge ───────────────────────────────────────────────────────────────
-
-const MODE_STYLES: Record<string, string> = {
-  Otomatik:   'bg-ok-tint text-ok',
-  Kontrollü:  'bg-[#e8f0f8] text-[var(--hat-blue)]',
-  Manuel:     'bg-warn-tint text-warn',
-};
-
-function ModeBadge({ mode }: { mode: string }) {
-  const cls = MODE_STYLES[mode] ?? 'bg-surface-2 text-muted';
-  return (
-    <span className={`inline-flex items-center gap-1.5 text-[12px] font-bold px-[10px] py-[4px] rounded-full ${cls}`}>
-      <span className="w-1.5 h-1.5 rounded-full bg-current shrink-0" />
-      {mode}
-    </span>
-  );
-}
-
 function TransportLines({ value }: { value: string }) {
   const modes = parseTransportModes(value);
   return (
@@ -121,8 +103,6 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
             <Th>İşlem Tipi</Th>
             <Th>Taşıma</Th>
             <Th>Gerekli Evraklar</Th>
-            <Th>Hatırlatma</Th>
-            <Th>Sıklık</Th>
             <Th>Durum</Th>
             <Th />
           </tr>
@@ -130,7 +110,7 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
         <tbody>
           {visible.length === 0 ? (
             <tr>
-              <td colSpan={7} className="py-10 text-center text-muted text-[13px]">
+              <td colSpan={5} className="py-10 text-center text-muted text-[13px]">
                 Bu kriterlere uyan evrak kuralı bulunamadı.
               </td>
             </tr>
@@ -150,8 +130,6 @@ export default function DocRulesTab({ rules, onNew, onEdit }: DocRulesTabProps) 
                       ))}
                     </div>
                   </Td>
-                  <Td><ModeBadge mode={r.reminderType} /></Td>
-                  <Td><span className="text-muted text-[12px]">{r.frequency}</span></Td>
                   <Td><StatusBadge status={r.status} /></Td>
                   <Td className="w-px">
                     <button
