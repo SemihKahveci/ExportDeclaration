@@ -9,14 +9,12 @@ import { MaterialRecordModel } from "../material-records/materialRecord.model.js
 import { DeclarationModel } from "../declarations/declaration.model.js";
 import { gtipFaultSummary, gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
-import { istanbulClock } from "./documentReminderSchedule.js";
 import { sendMail } from "./mail.service.js";
 
 export const PROCESS_FILE_CREATED = "dosya-olusturuldu";
 export const LABEL_FILE_CREATED = "Dosya Oluşturuldu";
 export const LABEL_MISSING_DOCS = "Eksik Evrak Hatırlatma";
 export const LABEL_GTIP = "GTİP Eksik/Hatalı";
-const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
 type RecipientKind = "defined" | "sender" | "both";
 
@@ -275,16 +273,33 @@ export async function remindCustomerGtip(
 
 export async function runGtipIdleReminders(now = new Date()): Promise<number> {
   if (!env.mailEnabled) return 0;
-  const idleBefore = new Date(now.getTime() - TWO_HOURS_MS);
   const files = await DeclarationModel.find({
     "operation.isArchived": { $ne: true },
-    "operation.fileStatus": { $nin: ["kapandi"] },
-    updatedAt: { $lte: idleBefore }
-  }).select({ _id: 1, companyId: 1, updatedAt: 1 }).lean();
-  const dateKey = istanbulClock(now).dateKey;
+    "operation.fileStatus": { $nin: ["kapandi"] }
+  }).select({ _id: 1, companyId: 1, "operation.customerId": 1, normalizedData: 1 }).lean();
+  const sentRows = files.length === 0
+    ? []
+    : await DocumentReminderDispatchModel.find({
+      declarationId: { $in: files.map((file) => file._id) },
+      ruleId: "gtip-kontrol"
+    }).select({ declarationId: 1 }).lean();
+  const already = new Set(sentRows.map((row) => String(row.declarationId)));
+  const customerIds = [...new Set(files.map((file) => file.operation?.customerId).filter((id): id is string => Boolean(id)))];
+  const companyIds = [...new Set(files.map((file) => file.companyId))];
+  const records = customerIds.length === 0
+    ? []
+    : await MaterialRecordModel.find({ companyId: { $in: companyIds }, customerId: { $in: customerIds } })
+      .select({ companyId: 1, customerId: 1, materialNo: 1, gtipNo: 1, status: 1, pendingUpdate: 1 })
+      .lean<Array<GtipMaterialRow & { companyId: mongoose.Types.ObjectId; customerId: string }>>();
   let sent = 0;
   for (const file of files) {
-    const slotKey = `gtip:${dateKey}`;
+    if (already.has(String(file._id))) continue;
+    const customerId = file.operation?.customerId;
+    if (!customerId) continue;
+    const lines = (file.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
+    const ownRecords = records.filter((row) => String(row.companyId) === String(file.companyId) && row.customerId === customerId);
+    if (gtipMatchIsClean(lines, ownRecords)) continue;
+    const slotKey = "first";
     const claimed = await DocumentReminderDispatchModel.updateOne(
       { declarationId: file._id, ruleId: "gtip-kontrol", slotKey },
       { $setOnInsert: { companyId: file.companyId, declarationId: file._id, ruleId: "gtip-kontrol", slotKey, sentAt: now } },

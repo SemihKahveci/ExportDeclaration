@@ -8,11 +8,15 @@ import { DeclarationModel } from "../declarations/declaration.model.js";
 import { missingDocsFromRule, ruleCoversFile } from "../declarations/declaration.service.js";
 import { UploadedDocumentModel } from "../documents/document.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
-import { dueReminderSlot } from "./documentReminderSchedule.js";
 import { runGtipIdleReminders, sendDocumentReminder } from "./processMail.service.js";
 import { runStageDigests } from "./stageMail.service.js";
 
 const TICK_MS = 60_000;
+const FIRST_SLOT = "first";
+
+export function priorDocumentReminder(ruleIds: readonly string[]): boolean {
+  return ruleIds.some((id) => id === "eksik-evrak" || /^[a-f\d]{24}$/i.test(id));
+}
 
 export async function runDocumentReminders(now = new Date()): Promise<number> {
   if (!env.mailEnabled) return 0;
@@ -39,8 +43,7 @@ export async function runDocumentReminders(now = new Date()): Promise<number> {
       CustomerDocumentRuleModel.find({
         companyId,
         customerId: { $in: customerIds },
-        status: "Aktif",
-        reminderType: "Otomatik"
+        status: "Aktif"
       }).lean<CustomerDocumentRuleDoc[]>(),
       UploadedDocumentModel.find({ companyId, declarationId: { $in: group.map((file) => file._id) } }).select({ declarationId: 1, type: 1 }).lean(),
       DocumentReminderDispatchModel.find({ companyId, declarationId: { $in: group.map((file) => file._id) } }).select({ declarationId: 1, ruleId: 1, slotKey: 1 }).lean()
@@ -53,64 +56,53 @@ export async function runDocumentReminders(now = new Date()): Promise<number> {
       types.add(String(doc.type));
       typesByFile.set(id, types);
     }
-    const sentByFile = new Map<string, Set<string>>();
+    const ruleIdsByFile = new Map<string, string[]>();
     for (const row of dispatches) {
-      const id = `${row.declarationId}:${row.ruleId}`;
-      const slots = sentByFile.get(id) ?? new Set<string>();
-      slots.add(row.slotKey);
-      sentByFile.set(id, slots);
+      const id = String(row.declarationId);
+      const ids = ruleIdsByFile.get(id) ?? [];
+      ids.push(row.ruleId);
+      ruleIdsByFile.set(id, ids);
     }
     for (const file of group) {
       const operation = file.operation;
       const customerId = operation?.customerId;
       if (!operation || !customerId) continue;
-      const receivedAt = operation.receivedAt ? new Date(operation.receivedAt) : null;
-      if (!receivedAt || Number.isNaN(receivedAt.getTime())) continue;
+      if (priorDocumentReminder(ruleIdsByFile.get(String(file._id)) ?? [])) continue;
       const uploaded = typesByFile.get(String(file._id)) ?? new Set<string>();
+      const missing = [...new Set(rules.flatMap((rule) => {
+        if (rule.customerId !== customerId) return [];
+        if (!ruleCoversFile(rule, operation.operationType, operation.transportMode)) return [];
+        return missingDocsFromRule(rule.requiredDocs, uploaded);
+      }))];
+      if (missing.length === 0) continue;
 
-      for (const rule of rules) {
-        if (rule.customerId !== customerId) continue;
-        if (!ruleCoversFile(rule, operation.operationType, operation.transportMode)) continue;
-        const missing = missingDocsFromRule(rule.requiredDocs, uploaded);
-        if (missing.length === 0) continue;
-        const ruleId = String(rule._id);
-        const slot = dueReminderSlot({
-          frequency: rule.frequency ?? "",
-          receivedAt,
-          cutoffAt: operation.cutoffAt ? new Date(operation.cutoffAt) : null,
-          now,
-          sent: sentByFile.get(`${file._id}:${ruleId}`) ?? new Set()
+      const claimed = await DocumentReminderDispatchModel.updateOne(
+        { declarationId: file._id, ruleId: "eksik-evrak", slotKey: FIRST_SLOT },
+        { $setOnInsert: { companyId, declarationId: file._id, ruleId: "eksik-evrak", slotKey: FIRST_SLOT, sentAt: now } },
+        { upsert: true }
+      );
+      if (claimed.upsertedCount !== 1) continue;
+
+      try {
+        const result = await sendDocumentReminder(companyId, {
+          customerId,
+          customerName: operation.customerName,
+          reference: operation.ref,
+          missingDocuments: missing,
+          mode: "automatic"
         });
-        if (!slot) continue;
-
-        const claimed = await DocumentReminderDispatchModel.updateOne(
-          { declarationId: file._id, ruleId, slotKey: slot },
-          { $setOnInsert: { companyId, declarationId: file._id, ruleId, slotKey: slot, sentAt: now } },
-          { upsert: true }
-        );
-        if (claimed.upsertedCount !== 1) continue;
-
-        try {
-          const result = await sendDocumentReminder(companyId, {
-            customerId,
-            customerName: operation.customerName,
-            reference: operation.ref,
-            missingDocuments: missing,
-            mode: "automatic"
-          });
-          if (result.to.length === 0) {
-            await DocumentReminderDispatchModel.deleteOne({ declarationId: file._id, ruleId, slotKey: slot });
-            continue;
-          }
-          sent += 1;
-        } catch (error) {
-          await DocumentReminderDispatchModel.deleteOne({ declarationId: file._id, ruleId, slotKey: slot });
-          console.error(JSON.stringify({
-            event: "document-reminder.failed",
-            ref: operation.ref,
-            message: error instanceof Error ? error.message : "Hatırlatma gönderilemedi"
-          }));
+        if (result.to.length === 0) {
+          await DocumentReminderDispatchModel.deleteOne({ declarationId: file._id, ruleId: "eksik-evrak", slotKey: FIRST_SLOT });
+          continue;
         }
+        sent += 1;
+      } catch (error) {
+        await DocumentReminderDispatchModel.deleteOne({ declarationId: file._id, ruleId: "eksik-evrak", slotKey: FIRST_SLOT });
+        console.error(JSON.stringify({
+          event: "document-reminder.failed",
+          ref: operation.ref,
+          message: error instanceof Error ? error.message : "Hatırlatma gönderilemedi"
+        }));
       }
     }
   }

@@ -7,6 +7,7 @@ import {
   everyTwoHoursSlot,
   twiceReminderSlot
 } from "../../src/modules/mail/documentReminderSchedule.js";
+import { priorDocumentReminder } from "../../src/modules/mail/documentReminderJob.service.js";
 import { renderMailVariables } from "../../src/modules/mail/processMail.service.js";
 
 const received = new Date("2026-10-28T08:00:00.000Z");
@@ -104,5 +105,9 @@ assert.equal(values["{eksik_evraklar}"], "Fatura, ATR");
 assert.equal(values["{tescil_no}"], "T-9");
 assert.equal(values["{kapanis_durumu}"], "");
 assert.equal(values["{sorumlu}"], "");
+
+assert.equal(priorDocumentReminder(["eksik-evrak"]), true);
+assert.equal(priorDocumentReminder(["507f1f77bcf86cd799439011"]), true);
+assert.equal(priorDocumentReminder(["dosya-olusturuldu", "gtip-kontrol"]), false);
 
 console.log("document reminder schedule ok");
