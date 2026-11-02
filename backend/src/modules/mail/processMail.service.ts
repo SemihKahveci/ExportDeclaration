@@ -144,6 +144,24 @@ export async function declarationMailVariables(
   });
 }
 
+function htmlBody(template: string, values: Record<string, string>, rawHtml: Record<string, string>): string {
+  const tokens = new Map<string, string>();
+  let source = template;
+  for (const [key, value] of Object.entries(rawHtml)) {
+    const token = `%%RAW${tokens.size}%%`;
+    tokens.set(token, value);
+    source = source.split(key).join(token);
+  }
+  let html = escapeHtml(source);
+  for (const [key, value] of Object.entries(values)) {
+    if (rawHtml[key] !== undefined) continue;
+    html = html.split(key).join(escapeHtml(value));
+  }
+  html = html.replace(/\n/g, "<br>");
+  for (const [token, value] of tokens) html = html.split(token).join(value);
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.45;color:#222222;">${html}</div>`;
+}
+
 export async function deliverProcessMail(input: {
   companyId: mongoose.Types.ObjectId;
   processStep: MailTemplateDoc["processStep"];
@@ -151,6 +169,8 @@ export async function deliverProcessMail(input: {
   values: Record<string, string>;
   fallbackSubject: string;
   fallbackBody: string;
+  rawHtml?: Record<string, string>;
+  allowFallback?: boolean;
   manual?: boolean;
 }): Promise<number> {
   if (!env.mailEnabled) {
@@ -167,18 +187,25 @@ export async function deliverProcessMail(input: {
     processStep: input.processStep,
     active: true
   }).sort({ updatedAt: -1 });
-  if (!template) {
+  if (!template && !input.allowFallback) {
     if (input.manual) throw new HttpError(404, "Bu süreç için aktif mail şablonu yok.");
     return 0;
   }
-  const subject = fillTemplate(template.subject.trim() || input.fallbackSubject, input.values);
-  const text = fillTemplate(template.body.trim() || input.fallbackBody, input.values);
+  const rawHtml = input.rawHtml ?? {};
+  let subjectTemplate = template?.subject.trim() || input.fallbackSubject;
+  let bodyTemplate = template?.body.trim() || input.fallbackBody;
+  for (const key of Object.keys(rawHtml)) {
+    if (!bodyTemplate.includes(key)) bodyTemplate = `${bodyTemplate}\n\n${key}`;
+  }
+  const subject = fillTemplate(subjectTemplate, input.values);
+  const text = fillTemplate(bodyTemplate, input.values);
+  const html = htmlBody(bodyTemplate, input.values, rawHtml);
   for (const to of recipients) {
     await sendMail({
       to,
       subject,
       text,
-      html: `<p>${escapeHtml(text).replace(/\n/g, "<br>")}</p>`
+      html
     });
   }
   return recipients.length;

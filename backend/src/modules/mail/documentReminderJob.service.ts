@@ -8,6 +8,7 @@ import { DeclarationModel } from "../declarations/declaration.model.js";
 import { missingDocsFromRule, ruleCoversFile } from "../declarations/declaration.service.js";
 import { UploadedDocumentModel } from "../documents/document.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
+import { runCutoffAlerts, runCustomerSummaries } from "./customerSummaryJob.service.js";
 import { runGtipIdleReminders, sendDocumentReminder } from "./processMail.service.js";
 import { runStageDigests } from "./stageMail.service.js";
 
@@ -119,7 +120,11 @@ export function startDocumentReminderJob(): void {
       const sent = await runDocumentReminders();
       const gtip = await runGtipIdleReminders();
       const stages = await runStageDigests();
-      if (sent > 0 || gtip > 0 || stages > 0) console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip, stages }));
+      const summaries = await runCustomerSummaries();
+      const cutoffs = await runCutoffAlerts();
+      if (sent > 0 || gtip > 0 || stages > 0 || summaries > 0 || cutoffs > 0) {
+        console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip, stages, summaries, cutoffs }));
+      }
     } catch (error) {
       console.error(JSON.stringify({
         event: "document-reminder.failed",

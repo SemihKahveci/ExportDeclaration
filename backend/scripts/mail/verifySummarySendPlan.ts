@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { cutoffNotice, istanbulStamp, summaryHoldActive, summaryMailRow, summaryTableHtml, summaryTableText } from "../../src/modules/mail/summaryMailFormat.js";
 import { readSummaryPlan, summarizePlan, summaryDueSlot } from "../../src/modules/mail/summarySendPlan.js";
 
 const weekdays = readSummaryPlan({
@@ -65,5 +66,35 @@ assert.equal(
   "summary:2026-10-28:10:00"
 );
 assert.equal(summaryDueSlot(weekdays.plan!, new Date("2026-10-28T04:30:00.000Z"), new Set()), null);
+
+const older = summaryMailRow({
+  ref: "A",
+  declarationNo: "",
+  createdAt: new Date("2026-10-01T09:00:00.000Z"),
+  missing: ["Çeki Listesi", "ATR"],
+  gtipCount: 0
+});
+const newer = summaryMailRow({
+  ref: "B",
+  declarationNo: "26-1",
+  createdAt: new Date("2026-10-20T09:00:00.000Z"),
+  missing: [],
+  gtipCount: 2
+});
+assert.ok(older && newer);
+assert.equal(older.declarationNo, "—");
+assert.equal(older.status, "Eksik Evrak");
+assert.equal(newer.status, "GTİP Hatalı");
+assert.equal(newer.waiting, "2 kalemde GTİP");
+const text = summaryTableText([newer, older]);
+assert.ok(text.indexOf("A |") < text.indexOf("B |"));
+const html = summaryTableHtml([older]);
+assert.match(html, /width="600"/);
+assert.doesNotMatch(html, /<img/i);
+assert.equal(summaryMailRow({ ref: "C", createdAt: new Date(), missing: [], gtipCount: 0 }), null);
+assert.equal(summaryHoldActive(new Date(wednesdayMorning.getTime() - 30 * 60 * 1000), wednesdayMorning), true);
+assert.equal(summaryHoldActive(new Date(wednesdayMorning.getTime() - 3 * 60 * 60 * 1000), wednesdayMorning), false);
+assert.match(istanbulStamp(wednesdayMorning, true), /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}$/);
+assert.match(cutoffNotice(new Date(wednesdayMorning.getTime() + 3 * 60 * 60 * 1000), wednesdayMorning), /3 saat kaldı/);
 
 console.log("summary send plan ok");
