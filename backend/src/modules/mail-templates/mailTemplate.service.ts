@@ -59,9 +59,68 @@ function validatePayload(body: {
   };
 }
 
+const BUILTIN_TEMPLATES: Array<{
+  processStep: MailTemplateDoc["processStep"];
+  name: string;
+  subject: string;
+  body: string;
+  variables: string[];
+}> = [
+  {
+    processStep: "ozet-hatirlatma",
+    name: "Özet Hatırlatma",
+    subject: "Özet hatırlatma · {tarih}",
+    body: "Sayın {musteri},\n\nSizden beklenen dosyalar:\n\n{ozet_tablo}\n\nİyi çalışmalar.",
+    variables: ["{musteri}", "{tarih}", "{referans}", "{ozet_tablo}"]
+  },
+  {
+    processStep: "cutoff-uyarisi",
+    name: "Cut-off Uyarısı",
+    subject: "Cut-off uyarısı · {referans}",
+    body: "Sayın {musteri},\n\n{referans} dosyasında cut-off yaklaşıyor.\n\n{cutoff}\n\n{ozet_tablo}\n\nİyi çalışmalar.",
+    variables: ["{musteri}", "{tarih}", "{referans}", "{cutoff}", "{ozet_tablo}"]
+  }
+];
+
+function duplicateKey(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: number }).code === 11000;
+}
+
+async function ensureBuiltinTemplates(companyId: mongoose.Types.ObjectId, present: Set<string>): Promise<boolean> {
+  let added = false;
+  for (const item of BUILTIN_TEMPLATES) {
+    if (present.has(item.processStep)) continue;
+    try {
+      const written = await MailTemplateModel.updateOne(
+        { companyId, processStep: item.processStep },
+        {
+          $setOnInsert: {
+            companyId,
+            name: item.name,
+            processStep: item.processStep,
+            subject: item.subject,
+            body: item.body,
+            variables: item.variables,
+            frequency: "",
+            active: true
+          }
+        },
+        { upsert: true }
+      );
+      added = added || written.upsertedCount === 1;
+    } catch (error) {
+      if (!duplicateKey(error)) throw error;
+    }
+  }
+  return added;
+}
+
 export async function listMailTemplates(companyId: mongoose.Types.ObjectId): Promise<MailTemplateDto[]> {
   const rows = await MailTemplateModel.find({ companyId }).sort({ createdAt: -1 });
-  return rows.map(toMailTemplateDto);
+  const added = await ensureBuiltinTemplates(companyId, new Set(rows.map((row) => row.processStep)));
+  if (!added) return rows.map(toMailTemplateDto);
+  const refreshed = await MailTemplateModel.find({ companyId }).sort({ createdAt: -1 });
+  return refreshed.map(toMailTemplateDto);
 }
 
 export async function createMailTemplate(
