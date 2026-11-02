@@ -189,6 +189,10 @@ async function sendSummary(
     const lines = file.normalizedData?.goodsLines ?? [];
     const gtipCount = gtipFaultCount(lines, ownRecords);
     const gtipSummary = gtipFaultSummary(lines, ownRecords);
+    const held =
+      summaryHoldActive(firstAt.get(`${file._id}:eksik-evrak`), now) ||
+      summaryHoldActive(firstAt.get(`${file._id}:gtip-kontrol`), now);
+    if (held) continue;
     for (const email of new Set([...docAudience, ...gtipAudience])) {
       const row = visibleRow(file, docAudience.has(email), gtipAudience.has(email), missing, gtipCount, gtipSummary);
       if (!row) continue;
