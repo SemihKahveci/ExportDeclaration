@@ -7,7 +7,7 @@ import { MailTemplateModel, type MailTemplateDoc } from "../mail-templates/mailT
 import { AppUserModel } from "../users/user.model.js";
 import { MaterialRecordModel } from "../material-records/materialRecord.model.js";
 import { DeclarationModel } from "../declarations/declaration.model.js";
-import { gtipFaultSummary, gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
+import { gtipFaultCount, gtipFaultSummary, gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { sendMail } from "./mail.service.js";
 
@@ -298,7 +298,7 @@ export async function runGtipIdleReminders(now = new Date()): Promise<number> {
     if (!customerId) continue;
     const lines = (file.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
     const ownRecords = records.filter((row) => String(row.companyId) === String(file.companyId) && row.customerId === customerId);
-    if (gtipMatchIsClean(lines, ownRecords)) continue;
+    if (gtipFaultCount(lines, ownRecords) === 0) continue;
     const slotKey = "first";
     const claimed = await DocumentReminderDispatchModel.updateOne(
       { declarationId: file._id, ruleId: "gtip-kontrol", slotKey },

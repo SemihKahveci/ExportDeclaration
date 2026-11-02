@@ -78,6 +78,10 @@ export function gtipMatchIsClean(lines: GtipGoodsLine[], records: GtipMaterialRo
   return present.every((line) => lineMatchesRecord(line, records));
 }
 
+export function gtipFaultCount(lines: GtipGoodsLine[], records: GtipMaterialRow[]): number {
+  return meaningfulLines(lines).filter((line) => !lineMatchesRecord(line, records)).length;
+}
+
 export function gtipFaultSummary(lines: GtipGoodsLine[], records: GtipMaterialRow[]): string {
   return meaningfulLines(lines)
     .filter((line) => !lineMatchesRecord(line, records))
