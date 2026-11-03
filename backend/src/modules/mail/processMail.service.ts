@@ -298,9 +298,17 @@ export async function remindCustomerGtip(
   return { to: sent > 0 ? recipients : [] };
 }
 
-export async function runGtipIdleReminders(now = new Date()): Promise<number> {
+export async function runGtipIdleReminders(
+  now = new Date(),
+  openFiles?: Array<{
+    _id: mongoose.Types.ObjectId;
+    companyId: mongoose.Types.ObjectId;
+    normalizedData?: unknown;
+    operation?: { customerId?: string } | null;
+  }>
+): Promise<number> {
   if (!env.mailEnabled) return 0;
-  const files = await DeclarationModel.find({
+  const files = openFiles ?? await DeclarationModel.find({
     "operation.isArchived": { $ne: true },
     "operation.fileStatus": { $nin: ["kapandi"] }
   }).select({ _id: 1, companyId: 1, "operation.customerId": 1, normalizedData: 1 }).lean();

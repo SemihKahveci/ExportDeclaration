@@ -4,11 +4,11 @@ import {
   CustomerDocumentRuleModel,
   type CustomerDocumentRuleDoc
 } from "../customers/customer.models.js";
-import { DeclarationModel } from "../declarations/declaration.model.js";
 import { missingDocsFromRule, ruleCoversFile } from "../declarations/declaration.service.js";
 import { UploadedDocumentModel } from "../documents/document.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { runCutoffAlerts, runCustomerSummaries } from "./customerSummaryJob.service.js";
+import { loadOpenMailFiles, withCustomer, type OpenMailFile } from "./openMailFiles.js";
 import { runGtipIdleReminders, sendDocumentReminder } from "./processMail.service.js";
 import { runStageDigests } from "./stageMail.service.js";
 
@@ -19,13 +19,9 @@ export function priorDocumentReminder(ruleIds: readonly string[]): boolean {
   return ruleIds.some((id) => id === "eksik-evrak" || /^[a-f\d]{24}$/i.test(id));
 }
 
-export async function runDocumentReminders(now = new Date()): Promise<number> {
+export async function runDocumentReminders(now = new Date(), openFiles?: OpenMailFile[]): Promise<number> {
   if (!env.mailEnabled) return 0;
-  const files = await DeclarationModel.find({
-    "operation.isArchived": { $ne: true },
-    "operation.fileStatus": { $nin: ["kapandi"] },
-    "operation.customerId": { $nin: [null, ""] }
-  }).select({ companyId: 1, operation: 1 }).lean();
+  const files = withCustomer(openFiles ?? await loadOpenMailFiles());
   if (files.length === 0) return 0;
 
   const byCompany = new Map<string, typeof files>();
@@ -87,8 +83,8 @@ export async function runDocumentReminders(now = new Date()): Promise<number> {
       try {
         const result = await sendDocumentReminder(companyId, {
           customerId,
-          customerName: operation.customerName,
-          reference: operation.ref,
+          customerName: operation.customerName?.trim() || "Müşteri",
+          reference: operation.ref?.trim() || String(file._id),
           missingDocuments: missing,
           mode: "automatic"
         });
@@ -117,11 +113,13 @@ export function startDocumentReminderJob(): void {
     if (running) return;
     running = true;
     try {
-      const sent = await runDocumentReminders();
-      const gtip = await runGtipIdleReminders();
-      const stages = await runStageDigests();
-      const summaries = await runCustomerSummaries();
-      const cutoffs = await runCutoffAlerts();
+      if (!env.mailEnabled) return;
+      const openFiles = await loadOpenMailFiles();
+      const sent = await runDocumentReminders(new Date(), openFiles);
+      const gtip = await runGtipIdleReminders(new Date(), openFiles);
+      const stages = await runStageDigests(new Date(), openFiles);
+      const summaries = await runCustomerSummaries(new Date(), openFiles);
+      const cutoffs = await runCutoffAlerts(new Date(), openFiles);
       if (sent > 0 || gtip > 0 || stages > 0 || summaries > 0 || cutoffs > 0) {
         console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip, stages, summaries, cutoffs }));
       }

@@ -144,13 +144,31 @@ export async function notifyStageEntered(input: {
   }
 }
 
-export async function runStageDigests(now = new Date()): Promise<number> {
+export async function runStageDigests(
+  now = new Date(),
+  openFiles?: Array<{
+    _id: mongoose.Types.ObjectId;
+    companyId: mongoose.Types.ObjectId;
+    updatedAt?: Date;
+    operation?: {
+      customerId?: string;
+      customerName?: string;
+      fileStatus?: string;
+      operationType?: string;
+      tescilNo?: string | null;
+      ref?: string;
+      receivedAt?: Date;
+    } | null;
+  }>
+): Promise<number> {
   if (!env.mailEnabled) return 0;
-  const files = await DeclarationModel.find({
+  const stageStatuses = new Set(Object.values(STAGE_STATUS));
+  const files = (openFiles ?? await DeclarationModel.find({
     "operation.isArchived": { $ne: true },
     "operation.fileStatus": { $in: Object.values(STAGE_STATUS) },
     "operation.customerId": { $nin: [null, ""] }
-  }).select({ companyId: 1, operation: 1, updatedAt: 1 }).lean();
+  }).select({ companyId: 1, operation: 1, updatedAt: 1 }).lean())
+    .filter((file) => Boolean(file.operation?.customerId?.trim()) && stageStatuses.has(String(file.operation?.fileStatus ?? "")));
   const byCompany = new Map<string, typeof files>();
   for (const file of files) {
     const key = String(file.companyId);
@@ -180,7 +198,7 @@ export async function runStageDigests(now = new Date()): Promise<number> {
         const since = file.updatedAt ? new Date(file.updatedAt) : new Date(operation.receivedAt ?? now);
         for (const person of people) {
           const bucket = buckets.get(person.userId) ?? { email: person.email, refs: [], customers: [], tescilNos: [], since };
-          bucket.refs.push(operation.ref);
+          bucket.refs.push(operation.ref?.trim() || String(file._id));
           if (operation.customerName) bucket.customers.push(operation.customerName);
           if (operation.tescilNo) bucket.tescilNos.push(operation.tescilNo);
           if (since.getTime() < bucket.since.getTime()) bucket.since = since;

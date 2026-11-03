@@ -5,12 +5,12 @@ import {
   CustomerModel,
   CustomerNotificationRuleModel
 } from "../customers/customer.models.js";
-import { DeclarationModel } from "../declarations/declaration.model.js";
 import { gtipFaultCount, gtipFaultSummary, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
 import { missingDocumentsByDeclaration } from "../declarations/declaration.service.js";
 import { MaterialRecordModel } from "../material-records/materialRecord.model.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { companyPlanOf } from "./mailSendPlan.service.js";
+import { loadOpenMailFiles, withCustomer, withCutoff, type OpenMailFile } from "./openMailFiles.js";
 import { LABEL_GTIP, LABEL_MISSING_DOCS, deliverProcessMail } from "./processMail.service.js";
 import {
   cutoffNotice,
@@ -26,18 +26,8 @@ import { summaryDueSlot, type SummarySendPlan } from "./summarySendPlan.js";
 const SUMMARY_STEP = "ozet-hatirlatma" as const;
 const CUTOFF_STEP = "cutoff-uyarisi" as const;
 
-type OpenFile = {
-  _id: mongoose.Types.ObjectId;
-  companyId: mongoose.Types.ObjectId;
-  createdAt?: Date;
+type OpenFile = OpenMailFile & {
   normalizedData?: { goodsLines?: GtipGoodsLine[] };
-  operation?: {
-    ref?: string;
-    customerId?: string;
-    customerName?: string;
-    declarationNo?: string | null;
-    cutoffAt?: Date | null;
-  } | null;
 };
 
 function automatic(rule: { status?: string; workingMode?: string } | undefined): boolean {
@@ -65,25 +55,16 @@ async function release(declarationId: mongoose.Types.ObjectId, ruleId: string, s
   await DocumentReminderDispatchModel.deleteOne({ declarationId, ruleId, slotKey });
 }
 
-export async function runCustomerSummaries(now = new Date()): Promise<number> {
+export async function runCustomerSummaries(now = new Date(), openFiles?: OpenMailFile[]): Promise<number> {
   if (!env.mailEnabled) return 0;
-  const files = await DeclarationModel.find({
-    "operation.isArchived": { $ne: true },
-    "operation.fileStatus": { $nin: ["kapandi"] },
-    "operation.customerId": { $nin: [null, ""] }
-  }).select({ companyId: 1, createdAt: 1, operation: 1, normalizedData: 1 }).lean<OpenFile[]>();
+  const files = withCustomer(openFiles ?? await loadOpenMailFiles()) as OpenFile[];
   if (files.length === 0) return 0;
   return sendGrouped(files, now, "summary");
 }
 
-export async function runCutoffAlerts(now = new Date()): Promise<number> {
+export async function runCutoffAlerts(now = new Date(), openFiles?: OpenMailFile[]): Promise<number> {
   if (!env.mailEnabled) return 0;
-  const files = await DeclarationModel.find({
-    "operation.isArchived": { $ne: true },
-    "operation.fileStatus": { $nin: ["kapandi"] },
-    "operation.customerId": { $nin: [null, ""] },
-    "operation.cutoffAt": { $ne: null }
-  }).select({ companyId: 1, createdAt: 1, operation: 1, normalizedData: 1 }).lean<OpenFile[]>();
+  const files = withCutoff(openFiles ?? await loadOpenMailFiles()) as OpenFile[];
   if (files.length === 0) return 0;
   return sendGrouped(files, now, "cutoff");
 }
