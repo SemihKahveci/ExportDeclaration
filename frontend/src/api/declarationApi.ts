@@ -6,6 +6,14 @@ export async function listDeclarations(): Promise<Declaration[]> {
   return apiGetJson<Declaration[]>("/api/declarations");
 }
 
+export async function listDeclarationParseStatuses(): Promise<Array<{ id: string; ref: string; name: string; status: string }>> {
+  return apiGetJson("/api/declarations/parse-status");
+}
+
+export async function listDeclarationDocumentSummaries(): Promise<import("@/api/types/document.types").UploadedDocument[]> {
+  return apiGetJson("/api/declarations/document-summaries");
+}
+
 export async function createDeclaration(body?: { operation?: Partial<OperationMeta> }): Promise<Declaration> {
   return apiPostJson<Declaration>("/api/declarations", body);
 }

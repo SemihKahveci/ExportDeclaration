@@ -16,6 +16,7 @@ import { transitionWritingWorkflow } from "./declarationWritingWorkflow.service.
 import { transitionRegistrationWorkflow } from "./declarationRegistrationWorkflow.service.js";
 import { transitionClosureWorkflow } from "./declarationClosureWorkflow.service.js";
 import { transitionFileHold } from "./declarationHold.service.js";
+import { listCompanyDocumentSummaries, listCompanyParseStatuses } from "../documents/document.service.js";
 import fs from "node:fs/promises";
 import {
   exportDeclarationAsEvrimExcel,
@@ -34,6 +35,16 @@ export async function postDeclaration(req: Request, res: Response): Promise<void
 export async function getDeclarations(req: Request, res: Response): Promise<void> {
   const list = await listDeclarations(req.auth!.operationalCompanyId);
   res.json({ ok: true, data: list });
+}
+
+export async function getDeclarationParseStatuses(req: Request, res: Response): Promise<void> {
+  const data = await listCompanyParseStatuses(req.auth!.operationalCompanyId);
+  res.json({ ok: true, data });
+}
+
+export async function getDeclarationDocumentSummaries(req: Request, res: Response): Promise<void> {
+  const data = await listCompanyDocumentSummaries(req.auth!.operationalCompanyId);
+  res.json({ ok: true, data });
 }
 
 export async function getDeclarationById(req: Request, res: Response): Promise<void> {

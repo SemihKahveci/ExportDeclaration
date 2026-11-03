@@ -1,9 +1,12 @@
 import {
   createDeclaration,
   getDeclaration,
+  listDeclarationDocumentSummaries,
+  listDeclarationParseStatuses,
   listDeclarations,
   patchDeclaration,
 } from "@/api/declarationApi";
+import type { UploadedDocument } from "@/api/types/document.types";
 import type { OperationMeta } from "@/api/types/declaration.types";
 import {
   toBeyannameListeItem,
@@ -68,26 +71,33 @@ export async function fetchPanelDeclarations() {
   return rows.map(toPanelDeclaration);
 }
 
+async function documentsByDeclaration(): Promise<Map<string, UploadedDocument[]> | null> {
+  if (!liveApiEnabled()) return null;
+  try {
+    const docs = await listDeclarationDocumentSummaries();
+    const map = new Map<string, UploadedDocument[]>();
+    for (const doc of docs) {
+      const key = String(doc.declarationId);
+      const group = map.get(key) ?? [];
+      group.push(doc);
+      map.set(key, group);
+    }
+    return map;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchBeyannameListeItems(): Promise<BeyannameListeItem[] | null> {
-  const rows = await fetchDeclarationsFromApi();
-  if (rows === null) return null;
-  return Promise.all(
-    rows.map(async (row) => {
-      const docs = await listDocuments(row._id).catch(() => []);
-      return toBeyannameListeItem(row, docs);
-    })
-  );
+  const [rows, docsMap] = await Promise.all([fetchDeclarationsFromApi(), documentsByDeclaration()]);
+  if (rows === null || docsMap === null) return null;
+  return rows.map((row) => toBeyannameListeItem(row, docsMap.get(row._id) ?? []));
 }
 
 export async function fetchBeyannameRecords(): Promise<BeyannameRecord[] | null> {
-  const rows = await fetchDeclarationsFromApi();
-  if (rows === null) return null;
-  return Promise.all(
-    rows.map(async (row) => {
-      const docs = await listDocuments(row._id).catch(() => []);
-      return toBeyannameRecord(row, docs);
-    })
-  );
+  const [rows, docsMap] = await Promise.all([fetchDeclarationsFromApi(), documentsByDeclaration()]);
+  if (rows === null || docsMap === null) return null;
+  return rows.map((row) => toBeyannameRecord(row, docsMap.get(row._id) ?? []));
 }
 
 export async function resolveDeclarationIdByRef(ref: string): Promise<string | null> {
@@ -179,31 +189,18 @@ export async function fetchKapanisFiles(): Promise<KapanicFile[] | null> {
 }
 
 export async function fetchEvrakFiles() {
-  const rows = await fetchDeclarationsFromApi();
-  if (rows === null) return null;
-  return Promise.all(
-    rows.map(async (row) => {
-      const docs = await listDocuments(row._id).catch(() => []);
-      return toEvrakFile(row, docs);
-    })
-  );
+  const [rows, docsMap] = await Promise.all([fetchDeclarationsFromApi(), documentsByDeclaration()]);
+  if (rows === null || docsMap === null) return null;
+  return rows.map((row) => toEvrakFile(row, docsMap.get(row._id) ?? []));
 }
 
 export async function fetchParseSnapshot(): Promise<Array<{ id: string; ref: string; name: string; status: string }> | null> {
-  const rows = await fetchDeclarationsFromApi();
-  if (rows === null) return null;
-  const snapshots = await Promise.all(
-    rows.map(async (row) => {
-      const docs = await listDocuments(row._id).catch(() => []);
-      return docs.map((doc) => ({
-        id: doc._id,
-        ref: refFromId(row),
-        name: doc.fileName ?? doc.type,
-        status: doc.extractionStatus
-      }));
-    })
-  );
-  return snapshots.flat();
+  if (!liveApiEnabled()) return null;
+  try {
+    return await listDeclarationParseStatuses();
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchEvrakDocs(declarationId: string) {

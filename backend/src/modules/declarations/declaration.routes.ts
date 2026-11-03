@@ -42,6 +42,16 @@ router.get(
   asyncHandler(ctrl.getDeclarations)
 );
 router.get(
+  "/parse-status",
+  requireAnyCapability(...DECLARATION_READ),
+  asyncHandler(ctrl.getDeclarationParseStatuses)
+);
+router.get(
+  "/document-summaries",
+  requireAnyCapability(...DECLARATION_READ),
+  asyncHandler(ctrl.getDeclarationDocumentSummaries)
+);
+router.get(
   "/:id/download-xml",
   requireAnyCapability("beyanname.view", "beyanname.write", "beyanname.approve", "beyanname.send"),
   asyncHandler(ctrl.getDownloadXml)
