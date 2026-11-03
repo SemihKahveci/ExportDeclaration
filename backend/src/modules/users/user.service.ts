@@ -1,4 +1,4 @@
-import { randomInt } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import mongoose from "mongoose";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
 import {
@@ -84,8 +84,15 @@ function toUsername(name: string): string {
   return name.replace(/\s+/g, "");
 }
 
-function generateSixDigitPassword(): string {
-  return String(randomInt(0, 1_000_000)).padStart(6, "0");
+const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+
+function generateTemporaryPassword(length = 12): string {
+  const bytes = randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i += 1) {
+    out += PASSWORD_ALPHABET[bytes[i]! % PASSWORD_ALPHABET.length];
+  }
+  return out;
 }
 
 export async function createAppUser(companyId: mongoose.Types.ObjectId, body: CreateAppUserInput): Promise<AppUserDto> {
@@ -102,7 +109,7 @@ export async function createAppUser(companyId: mongoose.Types.ObjectId, body: Cr
   if (customerMail) {
     throw new HttpError(409, "Bu e-posta bir müşteri maili olarak kayıtlı. Firma kullanıcısı olamaz.");
   }
-  const password = generateSixDigitPassword();
+  const password = generateTemporaryPassword();
 
   const created = new AppUserModel({
     companyId,
