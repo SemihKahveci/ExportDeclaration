@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 
+import { requireSuperAdmin } from "../../common/middlewares/authorization.js";
 import { asyncHandler } from "../../common/utils/asyncHandler.js";
 import { sendMail } from "./mail.service.js";
 import { getCompanySummaryPlan, previewSummaryPlan, saveCompanySummaryPlan } from "./mailSendPlan.service.js";
@@ -61,33 +62,30 @@ mailRouter.post(
 
 mailRouter.post(
   "/test",
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { to } = req.body;
+  requireSuperAdmin,
+  asyncHandler(async (req: Request, res: Response) => {
+    const to = typeof req.body?.to === "string" ? req.body.to.trim() : "";
+    if (!to) {
+      res.status(400).json({
+        success: false,
+        message: "to alanı zorunludur."
+      });
+      return;
+    }
 
-      if (!to) {
-        return res.status(400).json({
-          success: false,
-          message: "to alanı zorunludur."
-        });
-      }
-
-      await sendMail({
-        to,
-        subject: "Export Declaration - SMTP Test",
-        html: `
+    await sendMail({
+      to,
+      subject: "Export Declaration - SMTP Test",
+      html: `
           <h2>Export Declaration</h2>
           <p>SMTP mail sistemi başarıyla çalışıyor.</p>
           <p>Bu mail test amacıyla gönderilmiştir.</p>
         `
-      });
+    });
 
-      return res.json({
-        success: true,
-        message: "Mail gönderildi."
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+    res.json({
+      success: true,
+      message: "Mail gönderildi."
+    });
+  })
 );
