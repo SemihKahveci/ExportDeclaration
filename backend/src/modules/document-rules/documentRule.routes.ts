@@ -1,8 +1,14 @@
 import { Router } from "express";
+import { requireReadWriteCapabilities } from "../../common/middlewares/authorization.js";
 import { asyncHandler } from "../../common/utils/asyncHandler.js";
 import * as ctrl from "./documentRule.controller.js";
 
 export const documentRuleRouter = Router();
+
+documentRuleRouter.use(requireReadWriteCapabilities(
+  ["evraklar.view", "evraklar.manage"],
+  ["evraklar.manage"]
+));
 
 documentRuleRouter.get("/stats", asyncHandler(ctrl.getStats));
 documentRuleRouter.get("/", asyncHandler(ctrl.getRules));

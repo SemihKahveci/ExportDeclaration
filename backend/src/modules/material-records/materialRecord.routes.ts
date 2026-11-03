@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { requireReadWriteCapabilities } from "../../common/middlewares/authorization.js";
 import { asyncHandler } from "../../common/utils/asyncHandler.js";
 import * as ctrl from "./materialRecord.controller.js";
 
@@ -9,6 +10,11 @@ const upload = multer({
 });
 
 export const materialRecordRouter = Router();
+
+materialRecordRouter.use(requireReadWriteCapabilities(
+  ["gtip_malzeme.view", "gtip_malzeme.edit", "gtip_onay.view", "gtip_onay.approve", "musteri_gtip.view", "musteri_gtip.edit"],
+  ["gtip_malzeme.edit", "gtip_onay.approve", "musteri_gtip.edit"]
+));
 
 materialRecordRouter.get("/import-template", asyncHandler(ctrl.getImportTemplate));
 materialRecordRouter.get("/customer-counts", asyncHandler(ctrl.getCustomerCounts));
