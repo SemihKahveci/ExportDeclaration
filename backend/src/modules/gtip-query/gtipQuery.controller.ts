@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
+import { assertAllowedUpload } from "../../common/upload/allowedUpload.js";
 import { parseInvoicePdfForGtipQuery } from "./gtipQuery.service.js";
 import {
   getStoredGtipQuery,
@@ -11,6 +12,7 @@ export async function postParseInvoice(req: Request, res: Response): Promise<voi
   if (!req.file) {
     throw new HttpError(400, "PDF dosyası gerekli (alan adı: file).");
   }
+  assertAllowedUpload(req.file);
 
   const data = await parseInvoicePdfForGtipQuery(req.file);
   res.status(200).json({ ok: true, data });

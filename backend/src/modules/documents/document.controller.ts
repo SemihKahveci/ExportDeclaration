@@ -1,11 +1,13 @@
 import type { Request, Response } from "express";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
+import { assertAllowedUpload, contentDispositionAttachment } from "../../common/upload/allowedUpload.js";
 import { DocumentType, type DocumentTypeValue } from "../../common/enums/documentType.js";
 import { getDocumentContentDescriptor, listDocumentPageEvidence, listDocuments, renderDocumentPage, saveUploadedDocument } from "./document.service.js";
 import { enqueueDocumentProcessing, listProcessingRuns } from "../idp/queue/idpProcessing.service.js";
 
 export async function postDocument(req: Request, res: Response): Promise<void> {
   if (!req.file) throw new HttpError(400, "Dosya gerekli.");
+  assertAllowedUpload(req.file);
   const typeRaw = (req.body?.type as string | undefined) ?? req.query.type;
   if (!typeRaw || !Object.values(DocumentType).includes(typeRaw as DocumentTypeValue)) {
     throw new HttpError(400, `Geçerli type gerekli: ${Object.values(DocumentType).join(", ")}`);
@@ -52,8 +54,12 @@ export async function getProcessingRuns(req: Request, res: Response): Promise<vo
 
 export async function getDocumentContent(req: Request, res: Response): Promise<void> {
   const file = await getDocumentContentDescriptor(req.auth!.operationalCompanyId, req.params.id!, req.params.documentId!);
-  res.setHeader("Content-Type", file.mimeType);
-  res.setHeader("Content-Disposition", `inline; filename*=UTF-8\'\'${encodeURIComponent(file.fileName)}`);
+  const safeType = file.mimeType === "application/pdf" || file.mimeType.startsWith("image/")
+    ? file.mimeType
+    : "application/octet-stream";
+  res.setHeader("Content-Type", safeType);
+  res.setHeader("Content-Disposition", contentDispositionAttachment(file.fileName));
+  res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Cache-Control", "private, max-age=300");
   res.sendFile(file.absolutePath);
 }

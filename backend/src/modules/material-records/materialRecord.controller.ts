@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { HttpError } from "../../common/middlewares/errorHandler.js";
+import { assertAllowedUpload } from "../../common/upload/allowedUpload.js";
 import { buildMaterialImportWarning, buildMaterialRecordExport, buildMaterialRecordImportTemplate } from "./materialRecordExcel.parser.js";
 import {
   bulkCreateMaterialRecords,
@@ -108,6 +109,7 @@ export async function postImportExcel(req: Request, res: Response): Promise<void
       "Excel dosyası seçilmedi. Lütfen .xlsx veya .xls formatında bir dosya seçin."
     );
   }
+  assertAllowedUpload(req.file);
 
   const customerId = String(req.body?.customerId ?? "");
   const data = await importMaterialRecordsFromExcel(
