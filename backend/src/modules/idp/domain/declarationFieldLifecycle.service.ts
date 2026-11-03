@@ -37,7 +37,9 @@ export async function tryOrchestrateDeclarationAfterProcessing(params: {
     _id: { $in: runIds.map((id) => new mongoose.Types.ObjectId(id)) },
     companyId: params.companyId,
     declarationId: params.declarationId
-  }).lean();
+  })
+    .select("-canonicalDocument -artifacts")
+    .lean();
   if (runs.length !== runIds.length) return { status: "NOT_READY", reason: "PROCESSING_INCOMPLETE" };
   // A ProcessingRun may serve multiple logical segments of the SAME physical file,
   // but it must never be reused as provenance for a different UploadedFile.

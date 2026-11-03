@@ -120,5 +120,8 @@ export async function enqueueDocumentProcessing(params: {
 }
 
 export async function listProcessingRuns(companyId: mongoose.Types.ObjectId, uploadedFileId: string) {
-  return ProcessingRunModel.find({ companyId, uploadedFileId }).sort({ createdAt: -1 }).lean();
+  return ProcessingRunModel.find({ companyId, uploadedFileId })
+    .select("-canonicalDocument -artifacts")
+    .sort({ createdAt: -1 })
+    .lean();
 }
