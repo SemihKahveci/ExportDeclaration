@@ -314,26 +314,40 @@ export async function patchDeclaration(
   const existing = await DeclarationModel.findOne({ _id: id, companyId });
   if (!existing) throw new HttpError(404, "Beyanname bulunamadı.");
 
+  if (body.status !== undefined) {
+    throw new HttpError(400, "Durum bu uçtan değiştirilemez. İlgili iş akışı adımını kullanın.");
+  }
+
   if (body.normalizedData !== undefined) {
     existing.normalizedData = body.normalizedData as DeclarationDoc["normalizedData"];
   }
-  if (body.status !== undefined) {
-    if (!Object.values(DeclarationStatus).includes(body.status as (typeof DeclarationStatus)[keyof typeof DeclarationStatus])) {
-      throw new HttpError(400, "Geçersiz durum.");
-    }
-    existing.status = body.status;
-  }
   if (body.operation !== undefined) {
+    const {
+      fileStatus: _fileStatus,
+      workflowHistory: _workflowHistory,
+      holdPreviousStatus: _holdPreviousStatus,
+      holdNote: _holdNote,
+      isArchived: _isArchived,
+      ...safeOperation
+    } = body.operation;
+    if (
+      _fileStatus !== undefined ||
+      _workflowHistory !== undefined ||
+      _holdPreviousStatus !== undefined ||
+      _holdNote !== undefined ||
+      _isArchived !== undefined
+    ) {
+      throw new HttpError(400, "Dosya durumu bu uçtan değiştirilemez. İlgili iş akışı adımını kullanın.");
+    }
     const current: Partial<OperationMetaDoc> = existing.operation
       ? { ...existing.toObject().operation }
       : {};
-    existing.operation = { ...current, ...body.operation } as OperationMetaDoc;
+    existing.operation = { ...current, ...safeOperation } as OperationMetaDoc;
     existing.markModified("operation");
   }
 
   if (
     body.normalizedData === undefined &&
-    body.status === undefined &&
     body.operation === undefined
   ) {
     throw new HttpError(400, "Güncellenecek alan yok.");
