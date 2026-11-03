@@ -66,7 +66,38 @@ export async function listDocuments(companyId: mongoose.Types.ObjectId, declarat
   if (!mongoose.isValidObjectId(declarationId)) throw new HttpError(400, "Geçersiz beyanname id.");
   const dec = (await DeclarationModel.findOne({ _id: declarationId, companyId }).lean().exec()) as LeanDecId | null;
   if (!dec) throw new HttpError(404, "Beyanname bulunamadı.");
-  return UploadedFileModel.find({ companyId, declarationId: dec._id }).sort({ createdAt: 1 }).lean();
+  return UploadedFileModel.find({ companyId, declarationId: dec._id })
+    .select("-extractedData")
+    .sort({ createdAt: 1 })
+    .lean();
+}
+
+export async function listCompanyDocumentSummaries(companyId: mongoose.Types.ObjectId) {
+  return UploadedFileModel.find({ companyId })
+    .select("-extractedData -filePath -storageKey -sha256 -parseErrors")
+    .sort({ createdAt: 1 })
+    .lean();
+}
+
+export async function listCompanyParseStatuses(companyId: mongoose.Types.ObjectId): Promise<Array<{
+  id: string;
+  ref: string;
+  name: string;
+  status: string;
+}>> {
+  const [files, declarations] = await Promise.all([
+    UploadedFileModel.find({ companyId })
+      .select({ declarationId: 1, fileName: 1, type: 1, extractionStatus: 1 })
+      .lean(),
+    DeclarationModel.find({ companyId }).select({ "operation.ref": 1 }).lean()
+  ]);
+  const refById = new Map(declarations.map((row) => [String(row._id), row.operation?.ref?.trim() || String(row._id)]));
+  return files.map((file) => ({
+    id: String(file._id),
+    ref: refById.get(String(file.declarationId)) ?? String(file.declarationId),
+    name: file.fileName ?? file.type,
+    status: file.extractionStatus
+  }));
 }
 
 

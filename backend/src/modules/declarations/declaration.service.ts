@@ -288,8 +288,14 @@ function withMissingDocuments(dto: DeclarationDto, missing: string[] | undefined
   return { ...dto, operation: { ...dto.operation, missingDocuments: missing } };
 }
 
+const LIST_EXCLUDES =
+  "-sourceTrace -idpIntelligence -idpIntelligencePolicy -idpLlmAssist -idpLlmAssistPolicy -idpExceptions -generatedXmlPath";
+
 export async function listDeclarations(companyId: mongoose.Types.ObjectId): Promise<DeclarationDto[]> {
-  const rows = await DeclarationModel.find({ companyId }).sort({ updatedAt: -1 }).lean();
+  const rows = await DeclarationModel.find({ companyId })
+    .select(LIST_EXCLUDES)
+    .sort({ updatedAt: -1 })
+    .lean();
   const missing = await missingDocumentsByDeclaration(companyId, rows);
   return rows.map((row) =>
     withMissingDocuments(toDeclarationDto(row as unknown as DeclarationDoc), missing.get(String(row._id)))

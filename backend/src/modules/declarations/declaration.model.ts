@@ -364,6 +364,11 @@ const DeclarationSchema = new Schema(
   { timestamps: true }
 );
 
+DeclarationSchema.index({ companyId: 1, updatedAt: -1 });
+DeclarationSchema.index({ companyId: 1, "operation.isArchived": 1, "operation.fileStatus": 1 });
+DeclarationSchema.index({ companyId: 1, "operation.customerId": 1, "operation.fileStatus": 1 });
+DeclarationSchema.index({ companyId: 1, "operation.cutoffAt": 1 });
+
 export const DeclarationModel: mongoose.Model<DeclarationDoc> =
   (mongoose.models.Declaration as mongoose.Model<DeclarationDoc> | undefined) ??
   mongoose.model<DeclarationDoc>("Declaration", DeclarationSchema);

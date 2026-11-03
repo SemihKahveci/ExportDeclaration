@@ -50,6 +50,9 @@ const DocumentSchema = new Schema(
   { timestamps: true }
 );
 
+DocumentSchema.index({ companyId: 1, declarationId: 1, createdAt: 1 });
+DocumentSchema.index({ companyId: 1, extractionStatus: 1 });
+
 // Collection name is intentionally preserved for a migration-free foundation refactor.
 export const UploadedFileModel: mongoose.Model<DocumentDoc> =
   (mongoose.models.UploadedDocument as mongoose.Model<DocumentDoc> | undefined) ??
