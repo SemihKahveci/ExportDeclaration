@@ -34,7 +34,7 @@ export const env = {
   uploadDir: process.env.UPLOAD_DIR ?? "uploads",
   jsonBodyLimit: process.env.JSON_BODY_LIMIT ?? "2mb",
   /**
-   * Virgülle ayrılmış izinli kökler (CORS_ORIGIN). Boş dizi → `origin: true`.
+   * Virgülle ayrılmış izinli kökler (CORS_ORIGIN). Boş dizi → tarayıcı Origin reddedilir.
    * Eski anahtar CORS_ORIGINS hâlâ okunur (geriye dönük).
    */
   corsAllowedOrigins: splitCsv(process.env.CORS_ORIGIN ?? process.env.CORS_ORIGINS),
