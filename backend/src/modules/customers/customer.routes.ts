@@ -1,8 +1,40 @@
 import { Router } from "express";
+import { requireAnyCapability, requireReadWriteCapabilities } from "../../common/middlewares/authorization.js";
 import { asyncHandler } from "../../common/utils/asyncHandler.js";
 import * as ctrl from "./customer.controller.js";
 
 export const customerRouter = Router();
+
+const CUSTOMER_READ = [
+  "musteriler.view",
+  "musteriler.edit",
+  "dosya_takip.view",
+  "dosya_takip.edit",
+  "beyanname.view",
+  "beyanname.write",
+  "beyanname.approve",
+  "gtip_malzeme.view",
+  "gtip_malzeme.edit",
+  "gtip_onay.view",
+  "gtip_onay.approve",
+  "gtip_hazirlik.view",
+  "gtip_hazirlik.edit",
+  "musteri_gtip.view",
+  "musteri_gtip.edit"
+];
+
+customerRouter.get(
+  "/:customerId/summary-plan",
+  requireAnyCapability("musteriler.view", "musteriler.edit", "mailler.manage"),
+  asyncHandler(ctrl.getSummaryPlan)
+);
+customerRouter.put(
+  "/:customerId/summary-plan",
+  requireAnyCapability("musteriler.edit", "mailler.manage"),
+  asyncHandler(ctrl.putSummaryPlan)
+);
+
+customerRouter.use(requireReadWriteCapabilities(CUSTOMER_READ, ["musteriler.edit"]));
 
 customerRouter.get("/", asyncHandler(ctrl.getCustomers));
 customerRouter.post("/", asyncHandler(ctrl.postCustomer));
@@ -29,8 +61,6 @@ customerRouter.post("/:customerId/document-rules", asyncHandler(ctrl.postDocRule
 customerRouter.patch("/document-rules/:id", asyncHandler(ctrl.patchDocRule));
 customerRouter.delete("/document-rules/:id", asyncHandler(ctrl.deleteDocRule));
 
-customerRouter.get("/:customerId/summary-plan", asyncHandler(ctrl.getSummaryPlan));
-customerRouter.put("/:customerId/summary-plan", asyncHandler(ctrl.putSummaryPlan));
 customerRouter.get("/:customerId/notification-rules", asyncHandler(ctrl.getNotifyRules));
 customerRouter.post("/:customerId/notification-rules", asyncHandler(ctrl.postNotifyRule));
 customerRouter.patch("/notification-rules/:id", asyncHandler(ctrl.patchNotifyRule));
