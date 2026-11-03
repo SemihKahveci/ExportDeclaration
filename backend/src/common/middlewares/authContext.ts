@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import mongoose from "mongoose";
 import { HttpError } from "./errorHandler.js";
 import { AppUserModel, type AppUserDoc } from "../../modules/users/user.model.js";
-import { verifySessionToken } from "../../modules/auth/sessionToken.js";
+import { passwordVersion, verifySessionToken } from "../../modules/auth/sessionToken.js";
 import { env } from "../../config/env.js";
 
 export interface AuthContext {
@@ -72,6 +72,16 @@ export async function authContextMiddleware(
         new HttpError(
           401,
           "Kullanıcı aktif değil veya bulunamadı."
+        )
+      );
+      return;
+    }
+
+    if (passwordVersion(user.passwordChangedAt) !== payload.pwd) {
+      next(
+        new HttpError(
+          401,
+          "Oturum geçersiz. Şifre değiştiği için yeniden giriş yapın."
         )
       );
       return;

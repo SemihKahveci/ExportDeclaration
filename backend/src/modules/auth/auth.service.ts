@@ -85,7 +85,7 @@ export async function login(
     : null;
 
   return {
-    token: createSessionToken(String(user._id), companyId),
+    token: createSessionToken(String(user._id), companyId, user.passwordChangedAt),
     user: toAuthUserDto(user)
   };
 }

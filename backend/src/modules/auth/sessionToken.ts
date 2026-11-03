@@ -4,8 +4,15 @@ import { env } from "../../config/env.js";
 interface SessionPayload {
   sub: string;
   companyId: string | null;
+  /** passwordChangedAt unix seconds; şifre değişince eski oturum düşer */
+  pwd: number;
   iat: number;
   exp: number;
+}
+
+export function passwordVersion(changedAt: Date | null | undefined): number {
+  if (!changedAt || Number.isNaN(changedAt.getTime())) return 0;
+  return Math.floor(changedAt.getTime() / 1000);
 }
 
 function b64url(input: string | Buffer): string {
@@ -18,7 +25,8 @@ function signPart(value: string): string {
 
 export function createSessionToken(
   userId: string,
-  companyId: string | null
+  companyId: string | null,
+  changedAt?: Date | null
 ): string {
   const now = Math.floor(Date.now() / 1000);
 
@@ -29,6 +37,7 @@ export function createSessionToken(
   const payload: SessionPayload = {
     sub: userId,
     companyId,
+    pwd: passwordVersion(changedAt),
     iat: now,
     exp: now + env.authSessionHours * 60 * 60
   };
@@ -74,6 +83,10 @@ export function verifySessionToken(token: string): SessionPayload | null {
       typeof parsed.companyId !== "string"
     ) {
       return null;
+    }
+
+    if (typeof parsed.pwd !== "number" || !Number.isFinite(parsed.pwd) || parsed.pwd < 0) {
+      parsed.pwd = 0;
     }
 
     return parsed;
