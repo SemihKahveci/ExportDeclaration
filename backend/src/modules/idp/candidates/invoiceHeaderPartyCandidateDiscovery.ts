@@ -11,12 +11,29 @@ import type {
 } from "../domain/fieldCandidate.types.js";
 import { canonicalizeVisionCountry } from "../llm/qwenVisionInvoiceProvider.js";
 
-const EXTRACTOR = "invoice-header-party-generic-v6";
+const EXTRACTOR = "invoice-header-party-generic-v7";
 
-function partyCountryValue(raw: string): string | undefined {
+/** Resolve ISO-2 from a bare country or a city/country address tail. */
+export function partyCountryValue(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
-  return canonicalizeVisionCountry(trimmed) ?? undefined;
+  const direct = canonicalizeVisionCountry(trimmed);
+  if (direct) return direct;
+  // "Tallinn, Estonia" / "Istanbul / Turkey" / "Zeytinburnu-Istanbul / TURKEY"
+  const parts = trimmed
+    .split(/[,|/]| - /)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const hit = canonicalizeVisionCountry(parts[i]!);
+    if (hit) return hit;
+  }
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    const last = canonicalizeVisionCountry(words[words.length - 1]!);
+    if (last) return last;
+  }
+  return undefined;
 }
 
 type EvidenceLine = {
@@ -389,7 +406,10 @@ function explicitRoleParty(
     const value = terminal.text.trim();
     const normalized = norm(value);
     const legalOrBusinessText = /\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|INDUSTRIES|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(normalized);
-    if (/^[A-Za-zÇĞİÖŞÜçğıöşüÄÖÜäöüß .'-]{3,40}$/.test(value) && !/\d/.test(value) && value.split(/\s+/).length <= 4 && !legalOrBusinessText) {
+    // Prefer ISO resolution (supports "City / Country") over pure-country regex.
+    if (!legalOrBusinessText && partyCountryValue(value)) {
+      country = { value, line: terminal };
+    } else if (/^[A-Za-zÇĞİÖŞÜçğıöşüÄÖÜäöüß .'-]{3,40}$/.test(value) && !/\d/.test(value) && value.split(/\s+/).length <= 4 && !legalOrBusinessText) {
       country = { value, line: terminal };
     }
   }
@@ -499,11 +519,11 @@ function partyAddress(
   const value=rows.map(x=>x.text.trim()).join(", ").replace(/\s+/g," ").trim();
   return value ? {value,lines:rows} : undefined;
 }
-function buyerCountry(block: EvidenceLine[], buyer: EvidenceLine): {value:string; line:EvidenceLine}|undefined {
-  const py=centerY(buyer.bbox);
+function partyBlockCountry(block: EvidenceLine[], party: EvidenceLine): {value:string; line:EvidenceLine}|undefined {
+  const py=centerY(party.bbox);
   const candidates=block
     .filter(line => centerY(line.bbox)>py+0.002)
-    .filter(line => Math.abs(line.bbox.x0-buyer.bbox.x0)<=0.035)
+    .filter(line => Math.abs(line.bbox.x0-party.bbox.x0)<=0.035)
     .sort((a,b)=>centerY(a.bbox)-centerY(b.bbox));
 
   // Party address rows form a compact vertical run under the party name.
@@ -524,10 +544,15 @@ function buyerCountry(block: EvidenceLine[], buyer: EvidenceLine): {value:string
   const line=rows.at(-1);
   if(!line) return undefined;
   const v=line.text.trim(), n=norm(v);
+  if(/\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(n)) return undefined;
+  if (partyCountryValue(v)) return { value: v, line };
   if(!/^[A-Za-zÇĞİÖŞÜçğıöşü .'-]{3,40}$/.test(v)) return undefined;
   if(/\d/.test(v)||v.split(/\s+/).length>4) return undefined;
-  if(/\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(n)) return undefined;
   return {value:v,line};
+}
+
+function buyerCountry(block: EvidenceLine[], buyer: EvidenceLine): {value:string; line:EvidenceLine}|undefined {
+  return partyBlockCountry(block, buyer);
 }
 export function discoverInvoiceHeaderPartyFieldCandidates(
   canonical: CanonicalDocument,
@@ -598,22 +623,29 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
       x0: Math.min(...explicitSeller.address.lines.map(x=>x.bbox.x0)), y0: Math.min(...explicitSeller.address.lines.map(x=>x.bbox.y0)),
       x1: Math.max(...explicitSeller.address.lines.map(x=>x.bbox.x1)), y1: Math.max(...explicitSeller.address.lines.map(x=>x.bbox.y1))
     }};
-    add(fields, candidate("parties.seller.address", explicitSeller.address.value, "party-seller-address-explicit-role", segmentId, ev, 0.97));
+    // Keep F6 role-bound ids (`party-*-address` / `party-*-country`) so fusion can
+    // append `:f6-header-party` and win authority over conflicting Vision values.
+    add(fields, candidate("parties.seller.address", explicitSeller.address.value, "party-seller-address", segmentId, ev, 0.97));
   }
   if (explicitSeller?.country) {
     const iso = partyCountryValue(explicitSeller.country.value);
-    if (iso) add(fields, candidate("parties.seller.country", iso, "party-seller-country-explicit-role", segmentId, explicitSeller.country.line, 0.97));
+    if (iso) add(fields, candidate("parties.seller.country", iso, "party-seller-country", segmentId, explicitSeller.country.line, 0.97));
   }
 
   if (seller && sayin && !explicitSeller) {
     const block=between(lines, centerY(seller.bbox), centerY(sayin.bbox), seller.pageNumber);
-    const address=partyAddress(block,seller);
+    const country = partyBlockCountry(block, seller);
+    const address=partyAddress(block,seller,country?.line);
     if (address) {
       const ev={...address.lines[0]!, text:address.lines.map(x=>x.text).join(" | "), bbox:{
         x0:Math.min(...address.lines.map(x=>x.bbox.x0)), y0:Math.min(...address.lines.map(x=>x.bbox.y0)),
         x1:Math.max(...address.lines.map(x=>x.bbox.x1)), y1:Math.max(...address.lines.map(x=>x.bbox.y1))
       }};
       add(fields,candidate("parties.seller.address",address.value,"party-seller-address",segmentId,ev,0.94));
+    }
+    if (country) {
+      const iso = partyCountryValue(country.value);
+      if (iso) add(fields, candidate("parties.seller.country", iso, "party-seller-country", segmentId, country.line, 0.94));
     }
   }
 
@@ -623,11 +655,11 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
       x0: Math.min(...explicitBuyer.address.lines.map(x=>x.bbox.x0)), y0: Math.min(...explicitBuyer.address.lines.map(x=>x.bbox.y0)),
       x1: Math.max(...explicitBuyer.address.lines.map(x=>x.bbox.x1)), y1: Math.max(...explicitBuyer.address.lines.map(x=>x.bbox.y1))
     }};
-    add(fields, candidate("parties.buyer.address", explicitBuyer.address.value, "party-buyer-address-explicit-role", segmentId, ev, 0.97));
+    add(fields, candidate("parties.buyer.address", explicitBuyer.address.value, "party-buyer-address", segmentId, ev, 0.97));
   }
   if (explicitBuyer?.country) {
     const iso = partyCountryValue(explicitBuyer.country.value);
-    if (iso) add(fields, candidate("parties.buyer.country", iso, "party-buyer-country-explicit-role", segmentId, explicitBuyer.country.line, 0.97));
+    if (iso) add(fields, candidate("parties.buyer.country", iso, "party-buyer-country", segmentId, explicitBuyer.country.line, 0.97));
   }
 
   if (buyer && sayin && !explicitBuyer) {
