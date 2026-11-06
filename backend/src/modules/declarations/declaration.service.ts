@@ -294,7 +294,7 @@ const LIST_EXCLUDES =
 export async function listDeclarations(companyId: mongoose.Types.ObjectId): Promise<DeclarationDto[]> {
   const rows = await DeclarationModel.find({ companyId })
     .select(LIST_EXCLUDES)
-    .sort({ updatedAt: -1 })
+    .sort({ createdAt: -1 })
     .lean();
   const missing = await missingDocumentsByDeclaration(companyId, rows);
   return rows.map((row) =>
