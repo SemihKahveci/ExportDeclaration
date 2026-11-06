@@ -20,7 +20,14 @@ const RULES: Rule[] = [
   { type: ClassifiedDocumentType.ATR, weight: 9, evidence: "title:atr-movement-certificate", pattern: /\ba\.?\s*t\.?\s*r\.?\s+(?:movement\s+)?certificate\b/i },
   { type: ClassifiedDocumentType.EUR1, weight: 10, evidence: "title:eur1-certificate", pattern: /\beur[.\s-]*1\s+(?:movement\s+)?certificate\b/i },
   { type: ClassifiedDocumentType.EUR1, weight: 9, evidence: "title:movement-certificate-eur1", pattern: /\bmovement\s+certificate\s+eur[.\s-]*1\b/i },
-  { type: ClassifiedDocumentType.PACKING_LIST, weight: 10, evidence: "title:packing-list", pattern: /\bpacking\s+list\b/i },
+  // Packing titles first: "PACKING COVER LIST" is NOT matched by plain "packing list".
+  { type: ClassifiedDocumentType.PACKING_LIST, weight: 12, evidence: "title:packing-cover-list", pattern: /\bpacking\s+cover\s+list\b/i },
+  { type: ClassifiedDocumentType.PACKING_LIST, weight: 11, evidence: "title:packing-list", pattern: /\bpacking\s+list\b/i },
+  { type: ClassifiedDocumentType.PACKING_LIST, weight: 10, evidence: "title:pack-list", pattern: /\bpack\s*[-_]?\s*list\b/i },
+  // Avoid \\b before Turkish letters: JS word-boundary treats "ç" as non-word.
+  { type: ClassifiedDocumentType.PACKING_LIST, weight: 11, evidence: "title:ceki-listesi", pattern: /(?:^|[^a-z0-9])(?:çeki|ceki)\s+listesi(?:[^a-z0-9]|$)/i },
+  { type: ClassifiedDocumentType.PACKING_LIST, weight: 10, evidence: "title:paketleme-listesi", pattern: /(?:^|[^a-z0-9])paketleme\s+listesi(?:[^a-z0-9]|$)/i },
+  { type: ClassifiedDocumentType.PACKING_LIST, weight: 4, evidence: "columns:nw-gw", pattern: /\bn\.?\s*w\.?\s*\(?\s*kgs?\)?[\s\S]{0,120}g\.?\s*w\.?\s*\(?\s*kgs?\)?/i },
   { type: ClassifiedDocumentType.BILL_OF_LADING, weight: 10, evidence: "title:bill-of-lading", pattern: /\bbill\s+of\s+lading\b/i },
   { type: ClassifiedDocumentType.CMR, weight: 10, evidence: "title:cmr-consignment-note", pattern: /\bcmr\s+(?:international\s+)?consignment\s+note\b/i },
   { type: ClassifiedDocumentType.INVOICE, weight: 10, evidence: "title:commercial-invoice", pattern: /\bcommercial\s+invoice\b/i },
@@ -28,6 +35,17 @@ const RULES: Rule[] = [
   { type: ClassifiedDocumentType.INVOICE, weight: 9, evidence: "field:fatura-number", pattern: /\bfatura\s*(?:no|numarası|numarasi)\b/i },
   { type: ClassifiedDocumentType.INVOICE, weight: 7, evidence: "field:invoice-date", pattern: /\binvoice\s+date\b/i }
 ];
+
+/** Packing lists often reprint invoice no/date as reference — not document-type proof. */
+const WEAK_INVOICE_FIELD_EVIDENCE = new Set([
+  "field:invoice-number",
+  "field:fatura-number",
+  "field:invoice-date"
+]);
+
+function hasPackingTitleEvidence(items: string[]): boolean {
+  return items.some((item) => item.startsWith("title:packing") || item.startsWith("title:pack-") || item.startsWith("title:ceki") || item.startsWith("title:paketleme"));
+}
 
 const ANCHOR_TYPE: Record<string, ClassifiedDocumentTypeValue> = {
   INVOICE: ClassifiedDocumentType.INVOICE,
@@ -43,16 +61,28 @@ function pageText(page: CanonicalPage): string {
   return (page.ocrApplied ? page.ocrText : page.nativeText) || page.nativeText || page.ocrText || "";
 }
 
-function segmentText(document: CanonicalDocument, segment: DocumentSegment): string {
-  const wanted = new Set(segment.pageNumbers);
-  return document.pages
-    .filter((page) => wanted.has(page.pageNumber))
-    .sort((a, b) => a.pageNumber - b.pageNumber)
-    .map(pageText)
-    .join("\n")
+function foldClassificationText(value: string): string {
+  // Do NOT use tr-TR toLowerCase on the whole blob: English "LIST"/"INVOICE"
+  // become "lıst"/"ınvoice" and break packing/invoice title detectors.
+  // Fold Turkish I variants to ASCII i first, then lowercase.
+  return value
     .normalize("NFKC")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .replace(/İ/g, "I")
+    .replace(/ı/g, "i")
+    .toLowerCase();
+}
+
+function segmentText(document: CanonicalDocument, segment: DocumentSegment): string {
+  const wanted = new Set(segment.pageNumbers);
+  return foldClassificationText(
+    document.pages
+      .filter((page) => wanted.has(page.pageNumber))
+      .sort((a, b) => a.pageNumber - b.pageNumber)
+      .map(pageText)
+      .join("\n")
+  );
 }
 
 export function classifyDocumentSegment(
@@ -77,6 +107,30 @@ export function classifyDocumentSegment(
 
   for (const rule of RULES) {
     if (rule.pattern.test(text)) add(rule.type, rule.weight, rule.evidence);
+  }
+
+  // Packing lists often reprint invoice no/date as reference. When a packing
+  // title is present, those weak invoice field hits must not outrank packing.
+  const packingEvidence = evidence.get(ClassifiedDocumentType.PACKING_LIST) ?? [];
+  if (hasPackingTitleEvidence(packingEvidence)) {
+    const invoiceHits = evidence.get(ClassifiedDocumentType.INVOICE) ?? [];
+    const removed = invoiceHits.filter((item) => WEAK_INVOICE_FIELD_EVIDENCE.has(item));
+    if (removed.length > 0) {
+      let invoiceScore = scores.get(ClassifiedDocumentType.INVOICE) ?? 0;
+      for (const rule of RULES) {
+        if (removed.includes(rule.evidence)) invoiceScore -= rule.weight;
+      }
+      const kept = invoiceHits.filter((item) => !WEAK_INVOICE_FIELD_EVIDENCE.has(item));
+      if (invoiceScore > 0 && kept.length > 0) {
+        scores.set(ClassifiedDocumentType.INVOICE, invoiceScore);
+        evidence.set(ClassifiedDocumentType.INVOICE, kept);
+      } else {
+        scores.delete(ClassifiedDocumentType.INVOICE);
+        evidence.delete(ClassifiedDocumentType.INVOICE);
+      }
+      packingEvidence.push(`suppressed-weak-invoice-fields:${removed.join(",")}`);
+      evidence.set(ClassifiedDocumentType.PACKING_LIST, packingEvidence);
+    }
   }
 
   const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
