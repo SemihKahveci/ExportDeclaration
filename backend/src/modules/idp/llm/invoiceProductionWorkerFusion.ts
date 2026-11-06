@@ -23,6 +23,7 @@ import { discoverCorroboratedGoodsNumericFill } from "../candidates/invoiceGoods
 import { applyNativeGoodsCellBinding, bindNativeGoodsCells } from "../candidates/invoiceNativeCellBinding.js";
 import { discoverInvoiceHsFieldCandidates } from "../candidates/invoiceHsCandidateDiscovery.js";
 import { discoverInvoiceProductCodeFieldCandidates } from "../candidates/invoiceProductCodeCandidateDiscovery.js";
+import { discoverValidatedOcrGoodsAbsentFill } from "../candidates/invoiceScannedOcrGoodsAbsentFill.js";
 import { createFoundation8SpecialistProvider } from "./qwenTextInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
@@ -1077,7 +1078,14 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       result.segmentId,
       productionCandidates
     ));
-    const productCodeAnchors = mergeInvoiceCandidateSources(productionCandidates, tokenNumericFill);
+    // SCANNED/MIXED only: OCR generic rows fill Vision-empty goods cells by HS/SKU.
+    // DIGITAL pages no-op inside the helper — native cell binding / F6 stay untouched.
+    const ocrAbsentFill = absentGoodsFields(discoverValidatedOcrGoodsAbsentFill(
+      params.canonicalDocument,
+      result.segmentId,
+      mergeInvoiceCandidateSources(productionCandidates, tokenNumericFill)
+    ));
+    const productCodeAnchors = mergeInvoiceCandidateSources(productionCandidates, tokenNumericFill, ocrAbsentFill);
     const lateProductCodeFill = absentGoodsFields(discoverInvoiceProductCodeFieldCandidates(
       params.canonicalDocument,
       result.segmentId,
@@ -1093,6 +1101,7 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
     const tokenCompletedCandidates = mergeInvoiceCandidateSources(
       productionCandidates,
       tokenNumericFill,
+      ocrAbsentFill,
       lateProductCodeFill,
       lateOriginFill
     );

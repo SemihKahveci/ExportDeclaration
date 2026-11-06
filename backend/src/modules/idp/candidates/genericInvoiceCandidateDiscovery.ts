@@ -17,7 +17,7 @@ const CONTIGUOUS_HS_RE = /(?:^|\D)(\d{12})(?:\D|$)/;
 
 function compactDigits(text: string): string { return text.replace(/\D/g, ""); }
 
-function hsCodeFromText(text: string): string | undefined {
+export function hsCodeFromText(text: string): string | undefined {
   const normalized = text.trim();
   // Dates/timestamps can collapse to exactly 12 digits; they are metadata, not HS codes.
   if (DATE_TIME_RE.test(normalized)) return undefined;
@@ -127,7 +127,7 @@ function median(values: number[]): number {
  * This stays supplier/header independent: no x coordinates or fixture-specific
  * row heights are encoded here.
  */
-function rowWords(
+export function rowWords(
   page: CanonicalPage,
   anchor: CanonicalWord,
   previousAnchor?: CanonicalWord,
@@ -214,7 +214,7 @@ function normalizedToken(text: string): string {
   return text.trim().toLocaleUpperCase("tr-TR").replace(/İ/g, "I");
 }
 
-function unitFromText(text: string): string | undefined {
+export function unitFromText(text: string): string | undefined {
   const normalized = normalizedToken(text).replace(/[^A-Z]/g, "");
   return UNIT_ALIASES[normalized];
 }
@@ -387,7 +387,8 @@ function moneyEvidence(entries: NumericEvidence[]): NumericEvidence[] {
  * far right, between price columns, or in a headerless column. Arithmetic is stronger
  * evidence than assuming price/amount must be to one particular side of GTIP.
  */
-function findMathTriplet(words: CanonicalWord[], anchor: CanonicalWord): { quantity: CanonicalWord; unitPrice: CanonicalWord; amount: CanonicalWord; q: number; p: number; a: number } | undefined {
+/** Exported for SCANNED OCR absent-fill around a Vision-matched HS anchor. */
+export function findMathTriplet(words: CanonicalWord[], anchor: CanonicalWord): { quantity: CanonicalWord; unitPrice: CanonicalWord; amount: CanonicalWord; q: number; p: number; a: number } | undefined {
   const evidence = numericEvidence(words, anchor);
   const quantities = quantityEvidence(evidence);
   const decimals = moneyEvidence(evidence);
