@@ -10,6 +10,7 @@ import { DeclarationModel } from "../declarations/declaration.model.js";
 import { gtipFaultCount, gtipFaultSummary, gtipMatchIsClean, type GtipGoodsLine, type GtipMaterialRow } from "../declarations/customerGtip.service.js";
 import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { sendMail } from "./mail.service.js";
+import { assignedMtInfoEmails, mergeCustomerAndMtRecipients } from "./customerMtRecipients.js";
 
 export const PROCESS_FILE_CREATED = "dosya-olusturuldu";
 export const LABEL_FILE_CREATED = "Dosya Oluşturuldu";
@@ -166,6 +167,8 @@ export async function deliverProcessMail(input: {
   companyId: mongoose.Types.ObjectId;
   processStep: MailTemplateDoc["processStep"];
   recipients: string[];
+  /** Müşteri mailinde bilgi hanesi (CC): genelde atanmış MT + MT Yönetici. */
+  cc?: string[];
   values: Record<string, string>;
   fallbackSubject: string;
   fallbackBody: string;
@@ -177,7 +180,9 @@ export async function deliverProcessMail(input: {
     if (input.manual) throw new HttpError(409, "Mail gönderimi kapalı.");
     return 0;
   }
-  const recipients = [...new Set(input.recipients.map((item) => item.trim().toLowerCase()).filter(Boolean))];
+  const merged = mergeCustomerAndMtRecipients(input.recipients, input.cc ?? []);
+  const recipients = merged.to;
+  const cc = merged.cc;
   if (recipients.length === 0) {
     if (input.manual) throw new HttpError(400, "Bu süreç için alıcı bulunamadı.");
     return 0;
@@ -200,15 +205,26 @@ export async function deliverProcessMail(input: {
   const subject = fillTemplate(subjectTemplate, input.values);
   const text = fillTemplate(bodyTemplate, input.values);
   const html = htmlBody(bodyTemplate, input.values, rawHtml);
-  for (const to of recipients) {
-    await sendMail({
-      to,
-      subject,
-      text,
-      html
-    });
-  }
+  // Tek gönderim: müşteri TO + MT/MT Yönetici CC (bilgi); çoklu TO'da MT'ye N kopya gitmesin.
+  await sendMail({
+    to: recipients,
+    ...(cc.length > 0 ? { cc } : {}),
+    subject,
+    text,
+    html
+  });
   return recipients.length;
+}
+
+async function withMtInfoCc(
+  companyId: mongoose.Types.ObjectId,
+  customerId: string | null | undefined,
+  recipients: string[]
+): Promise<{ recipients: string[]; cc: string[] }> {
+  if (!customerId?.trim()) return { recipients, cc: [] };
+  const info = await assignedMtInfoEmails(companyId, customerId);
+  const merged = mergeCustomerAndMtRecipients(recipients, info);
+  return { recipients: merged.to, cc: merged.cc };
 }
 
 export async function sendDocumentReminder(
@@ -223,13 +239,14 @@ export async function sendDocumentReminder(
   }
 ): Promise<{ to: string[] }> {
   const mode = input.mode ?? "manual";
-  const recipients = await resolveProcessRecipients({
+  const resolved = await resolveProcessRecipients({
     companyId,
     customerId: input.customerId,
     processLabel: LABEL_MISSING_DOCS,
     senderEmail: await senderEmail(input.actorUserId),
     mode
   });
+  const { recipients, cc } = await withMtInfoCc(companyId, input.customerId, resolved);
   const declaration = await DeclarationModel.findOne({
     companyId,
     "operation.customerId": input.customerId,
@@ -250,6 +267,7 @@ export async function sendDocumentReminder(
     companyId,
     processStep: "eksik-evrak",
     recipients,
+    cc,
     manual: mode === "manual",
     values,
     fallbackSubject: "Eksik evrak hatırlatması · {referans}",
@@ -276,13 +294,14 @@ export async function remindCustomerGtip(
     if (input.mode === "manual") throw new HttpError(409, "GTİP eksik veya hatalı değil.");
     return { to: [] };
   }
-  const recipients = await resolveProcessRecipients({
+  const resolved = await resolveProcessRecipients({
     companyId,
     customerId: declaration.operation.customerId,
     processLabel: LABEL_GTIP,
     senderEmail: await senderEmail(actorUserId),
     mode: input.mode
   });
+  const { recipients, cc } = await withMtInfoCc(companyId, declaration.operation.customerId, resolved);
   const faultSummary = gtipFaultSummary(lines, records);
   const values = await declarationMailVariables(companyId, declaration);
   values["{gtip_sonuc}"] = faultSummary || (input.allowMatching ? "Müşteriden GTİP teyidi istendi." : "");
@@ -290,6 +309,7 @@ export async function remindCustomerGtip(
     companyId,
     processStep: "gtip-kontrol",
     recipients,
+    cc,
     manual: input.mode === "manual",
     values,
     fallbackSubject: "GTİP eksik/hatalı · {referans}",
@@ -385,13 +405,14 @@ export async function notifyFileCreated(input: {
   if (claimed.upsertedCount !== 1) return;
 
   try {
-    const recipients = await resolveProcessRecipients({
+    const resolved = await resolveProcessRecipients({
       companyId: input.companyId,
       customerId: input.customerId,
       processLabel: LABEL_FILE_CREATED,
       senderEmail: await senderEmail(input.createdBy),
       mode: "automatic"
     });
+    const { recipients, cc } = await withMtInfoCc(input.companyId, input.customerId, resolved);
     const created = await DeclarationModel.findById(input.declarationId);
     const values = created
       ? await declarationMailVariables(input.companyId, created)
@@ -400,6 +421,8 @@ export async function notifyFileCreated(input: {
       companyId: input.companyId,
       processStep: PROCESS_FILE_CREATED,
       recipients,
+      cc,
+      allowFallback: true,
       values,
       fallbackSubject: "Dosya oluşturuldu · {referans}",
       fallbackBody: "Sayın {musteri},\n\n{referans} referanslı dosya yeni talep olarak oluşturuldu.\n\nİyi çalışmalar."

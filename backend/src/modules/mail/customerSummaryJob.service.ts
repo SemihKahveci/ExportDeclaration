@@ -12,6 +12,7 @@ import { DocumentReminderDispatchModel } from "./documentReminder.model.js";
 import { companyPlanOf } from "./mailSendPlan.service.js";
 import { loadOpenMailFiles, withCustomer, withCutoff, type OpenMailFile } from "./openMailFiles.js";
 import { LABEL_GTIP, LABEL_MISSING_DOCS, deliverProcessMail } from "./processMail.service.js";
+import { assignedMtInfoEmails } from "./customerMtRecipients.js";
 import {
   cutoffNotice,
   istanbulStamp,
@@ -181,6 +182,7 @@ async function sendSummary(
       buckets.set(email, bucket);
     }
   }
+  const mtCc = await assignedMtInfoEmails(companyId, customerId);
   let sent = 0;
   for (const [email, rows] of buckets) {
     if (rows.length === 0) continue;
@@ -191,6 +193,7 @@ async function sendSummary(
         companyId,
         processStep: SUMMARY_STEP,
         recipients: [email],
+        cc: mtCc,
         values: {
           "{musteri}": files[0]?.operation?.customerName?.trim() || "Müşteri",
           "{referans}": rows.map((row) => row.ref).join(", "),
@@ -253,6 +256,7 @@ async function sendCutoffs(
     ruleId: { $regex: "^cutoff" }
   }).select({ declarationId: 1 }).lean<Array<{ declarationId: mongoose.Types.ObjectId }>>();
   const warned = new Set(priorCutoff.map((row) => String(row.declarationId)));
+  const mtCc = await assignedMtInfoEmails(companyId, customerId);
   let sent = 0;
   for (const file of files) {
     if (warned.has(String(file._id))) continue;
@@ -278,6 +282,7 @@ async function sendCutoffs(
         companyId,
         processStep: CUTOFF_STEP,
         recipients,
+        cc: mtCc,
         values: {
           "{musteri}": file.operation?.customerName?.trim() || "Müşteri",
           "{referans}": row.ref,

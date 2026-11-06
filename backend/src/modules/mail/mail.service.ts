@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 
 export interface SendMailInput {
   to: string | string[];
+  cc?: string | string[];
   subject: string;
   text?: string;
   html?: string;
@@ -35,12 +36,17 @@ export async function sendMail(input: SendMailInput): Promise<void> {
 
   const transporter = createTransporter();
 
+  const cc = input.cc
+    ? [...new Set((Array.isArray(input.cc) ? input.cc : [input.cc]).map((item) => item.trim().toLowerCase()).filter(Boolean))]
+    : [];
+
   await transporter.sendMail({
     from: {
       name: env.mailFromName,
       address: env.mailFrom
     },
     to: input.to,
+    ...(cc.length > 0 ? { cc } : {}),
     subject: input.subject,
     text: input.text,
     html: input.html
