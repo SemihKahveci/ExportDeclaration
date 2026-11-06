@@ -22,6 +22,7 @@ import { discoverInvoiceOriginFieldCandidates } from "../candidates/invoiceOrigi
 import { discoverCorroboratedGoodsNumericFill } from "../candidates/invoiceGoodsTokenFill.js";
 import { applyNativeGoodsCellBinding, bindNativeGoodsCells } from "../candidates/invoiceNativeCellBinding.js";
 import { discoverInvoiceHsFieldCandidates } from "../candidates/invoiceHsCandidateDiscovery.js";
+import { discoverInvoiceProductCodeFieldCandidates } from "../candidates/invoiceProductCodeCandidateDiscovery.js";
 import { createFoundation8SpecialistProvider } from "./qwenTextInvoiceProvider.js";
 import type { InvoiceLlmExtractionArtifact, InvoiceLlmExtractionProvider } from "../domain/invoiceLlmExtraction.types.js";
 import type { InvoiceVisionPageRenderer } from "./invoiceProductionVisionExecution.js";
@@ -1076,15 +1077,23 @@ export async function fuseInvoiceVisionIntoWorkerCandidates(params: {
       result.segmentId,
       productionCandidates
     ));
+    const productCodeAnchors = mergeInvoiceCandidateSources(productionCandidates, tokenNumericFill);
+    const lateProductCodeFill = absentGoodsFields(discoverInvoiceProductCodeFieldCandidates(
+      params.canonicalDocument,
+      result.segmentId,
+      productCodeAnchors
+    ));
+    const originAnchors = mergeInvoiceCandidateSources(productCodeAnchors, lateProductCodeFill);
     const lateOriginFill = absentGoodsFields(canonicalizeCountryFieldCandidates(discoverInvoiceOriginFieldCandidates(
       params.canonicalDocument,
       result.segmentId,
-      productionCandidates,
+      originAnchors,
       { requireCountryColumn: true }
     )));
     const tokenCompletedCandidates = mergeInvoiceCandidateSources(
       productionCandidates,
       tokenNumericFill,
+      lateProductCodeFill,
       lateOriginFill
     );
 
