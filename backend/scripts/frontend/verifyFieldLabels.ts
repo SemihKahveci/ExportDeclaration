@@ -54,4 +54,18 @@ const fieldLabelsTs = fs.readFileSync(
 assert.match(fieldLabelsTs, /invoiceDate:\s*'Fatura Tarihi'/);
 assert.match(fieldLabelsTs, /packageType:\s*'Kap Cinsi'/);
 
+const reviewTs = fs.readFileSync(
+  path.join(root, "frontend/src/pages/EvrakHazirlik/IdpReviewTab.tsx"),
+  "utf8"
+);
+assert.match(reviewTs, /Ne yapmalısınız/);
+assert.doesNotMatch(reviewTs, /contentSource === 'DERIVED'\) return/);
+assert.match(reviewTs, /Konum yok/);
+
+const viewerTs = fs.readFileSync(
+  path.join(root, "frontend/src/components/documents/DocumentEvidenceViewer.tsx"),
+  "utf8"
+);
+assert.match(viewerTs, /işaretli bir kutuya bağlı değil/);
+
 console.log("verifyFieldLabels: ok");

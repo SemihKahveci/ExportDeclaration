@@ -121,10 +121,16 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
 
   function showEvidence(candidate: DeclarationReviewCandidate, index: number) {
     const evidence = candidate.evidence[index];
-    if (!evidence || evidence.contentSource === 'DERIVED') return;
+    if (!evidence) return;
     setViewer({
       uploadedFileId: candidate.uploadedFileId,
-      evidence: { ...evidence, field: candidate.field, label: `${documentLabel(candidate.documentType)} · ${fieldLabel(candidate.field)}` },
+      evidence: {
+        ...evidence,
+        // Türetilmiş adaylarda bbox olmayabilir; yine de ilgili sayfayı aç.
+        bbox: evidence.contentSource === 'DERIVED' ? undefined : evidence.bbox,
+        field: candidate.field,
+        label: `${documentLabel(candidate.documentType)} · ${fieldLabel(candidate.field)}`,
+      },
     });
   }
 
@@ -205,7 +211,9 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
         ) : (
           <>
             <Note variant="warn">
-              <b>REVIEW REQUIRED:</b> Çelişkili alanlar çözülmeden mevcut normalize değerleri kesin sonuç olarak kullanmayın.
+              <b>Ne yapmalısınız:</b> Her alan için doğru adayı seçin → <b>Seçimleri Uygula</b>.
+              Hiçbiri doğru değilse <b>İnceleme Gerekli Olarak Bırak</b>.
+              “Türetilmiş” adaylarda belgede sarı kutu olmayabilir; yine de <b>Belgede Göster</b> ile faturayı açıp değeri kontrol edin.
             </Note>
 
             {review.request.fields.map((field) => (
@@ -221,6 +229,8 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
                 <div className="p-4 grid gap-3 md:grid-cols-2">
                   {field.candidates.map((candidate) => {
                     const selected = selections[field.field] === candidate.candidateId;
+                    const derivedOnly = candidate.evidence.length > 0
+                      && candidate.evidence.every((item) => item.contentSource === 'DERIVED');
                     return (
                       <div key={candidate.candidateId}
                         className={`rounded-[8px] border p-3 ${selected ? 'border-accent bg-surface-2' : 'border-line'}`}>
@@ -229,10 +239,16 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
                             <div className="flex items-center gap-2 flex-wrap">
                               <Pill variant="gray">{documentLabel(candidate.documentType)}</Pill>
                               <span className="font-mono text-[14px] font-bold text-text-strong">{valueText(candidate.value)}</span>
+                              {derivedOnly && <Pill variant="warn">Konum yok</Pill>}
                             </div>
                             <div className="text-[11.5px] text-muted mt-1">
                               Güven %{Math.round(candidate.confidence * 100)} · {candidate.extractor}
                             </div>
+                            {derivedOnly && (
+                              <div className="text-[11.5px] text-muted mt-1">
+                                Bu değer belgede kutulanmamış; satır/birim bilgisinden tahmin edildi. Doğruluğunu faturadan kontrol edip seçin.
+                              </div>
+                            )}
                             <div className="text-[10.5px] text-muted-2 mt-1 break-all">
                               candidate: {candidate.candidateId}
                             </div>
@@ -255,10 +271,12 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
                             <div className="flex-1 min-w-0">
                               <b>Sayfa {evidence.pageNumber}</b>
                               {evidence.contentSource && <span className="text-muted"> · {evidence.contentSource === 'OCR' ? 'OCR' : evidence.contentSource === 'NATIVE_TEXT' ? 'PDF metni' : 'Türetilmiş'}</span>}
+                              {evidence.contentSource === 'DERIVED' && (
+                                <div className="text-[11px] text-muted mt-0.5">Seçili kutu yok · sayfa bağlam için açılır</div>
+                              )}
                               {evidence.text && <div className="mt-1 text-text">“{evidence.text}”</div>}
                             </div>
-                            {evidence.contentSource !== 'DERIVED' &&
-                              <Button icon={Eye} onClick={() => showEvidence(candidate, index)}>Belgede Göster</Button>}
+                            <Button icon={Eye} onClick={() => showEvidence(candidate, index)}>Belgede Göster</Button>
                           </div>
                         ))}
                       </div>
