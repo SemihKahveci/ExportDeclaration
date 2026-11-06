@@ -11,6 +11,7 @@ export interface FirmUser {
   role: string;
   systemRole?: 'SUPERADMIN' | 'USER';
   capabilities: string[];
+  operationTypes?: string[];
 }
 
 export interface AppState {

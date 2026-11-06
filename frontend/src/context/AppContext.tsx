@@ -41,6 +41,7 @@ function firmUserFromAuth(user: authApi.AuthUser): FirmUser {
     role: user.role,
     systemRole: user.systemRole,
     capabilities: user.systemRole === 'SUPERADMIN' ? ALL_CAPABILITY_KEYS : user.capabilities,
+    operationTypes: user.operationTypes ?? [],
   };
 }
 

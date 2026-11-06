@@ -9,6 +9,8 @@ export interface AuthContext {
   companyId: mongoose.Types.ObjectId | null;
   operationalCompanyId: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
+  name: string;
+  role: AppUserDoc["role"];
   systemRole: AppUserDoc["systemRole"];
   capabilities: string[];
   operationTypes: string[];
@@ -127,6 +129,8 @@ export async function authContextMiddleware(
       companyId: user.companyId ?? null,
       operationalCompanyId,
       userId: user._id as mongoose.Types.ObjectId,
+      name: user.name ?? "",
+      role: user.role,
       systemRole: user.systemRole ?? "USER",
       capabilities: user.capabilities ?? [],
       operationTypes: user.operationTypes ?? []

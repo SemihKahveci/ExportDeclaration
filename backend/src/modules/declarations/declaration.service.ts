@@ -14,7 +14,13 @@ import {
 import { generateEvrimXmlDraft } from "../xml/evrimXml.generator.js";
 import { DeclarationModel, type DeclarationDoc, type OperationMetaDoc } from "./declaration.model.js";
 import { UploadedDocumentModel, type DocumentDoc } from "../documents/document.model.js";
-import { CustomerDocumentRuleModel } from "../customers/customer.models.js";
+import { CustomerDocumentRuleModel, CustomerModel } from "../customers/customer.models.js";
+import {
+  allowedOperationTypeKeys,
+  isOperationTypeVisible,
+  matchesMineScope,
+  type DeclarationListScope
+} from "./declarationListScope.js";
 import { notifyFileCreated } from "../mail/processMail.service.js";
 import { ProcessingRunModel } from "../idp/domain/processingRun.model.js";
 import { HumanReviewDecisionModel } from "../idp/domain/humanReviewDecision.model.js";
@@ -292,13 +298,56 @@ function withMissingDocuments(dto: DeclarationDto, missing: string[] | undefined
 const LIST_EXCLUDES =
   "-sourceTrace -idpIntelligence -idpIntelligencePolicy -idpLlmAssist -idpLlmAssistPolicy -idpExceptions -generatedXmlPath";
 
-export async function listDeclarations(companyId: mongoose.Types.ObjectId): Promise<DeclarationDto[]> {
+export type ListDeclarationsOptions = {
+  scope?: DeclarationListScope;
+  userId?: mongoose.Types.ObjectId | string;
+  userName?: string;
+  operationTypes?: string[];
+};
+
+async function myCustomerIdSet(
+  companyId: mongoose.Types.ObjectId,
+  userId: string
+): Promise<Set<string>> {
+  if (!userId) return new Set();
+  const rows = await CustomerModel.find({
+    companyId,
+    $or: [{ assignedMtUserId: userId }, { assignedMtManagerUserId: userId }]
+  })
+    .select({ _id: 1 })
+    .lean();
+  return new Set(rows.map((row) => String(row._id)));
+}
+
+export async function listDeclarations(
+  companyId: mongoose.Types.ObjectId,
+  options: ListDeclarationsOptions = {}
+): Promise<DeclarationDto[]> {
+  const allowedOps = allowedOperationTypeKeys(options.operationTypes);
+  const scope = options.scope === "mine" ? "mine" : "all";
+  const userId = String(options.userId ?? "");
+  const userName = options.userName ?? "";
+  const myCustomers = scope === "mine" ? await myCustomerIdSet(companyId, userId) : new Set<string>();
+
   const rows = await DeclarationModel.find({ companyId })
     .select(LIST_EXCLUDES)
     .sort({ createdAt: -1 })
     .lean();
-  const missing = await missingDocumentsByDeclaration(companyId, rows);
-  return rows.map((row) =>
+
+  const visible = rows.filter((row) => {
+    const op = (row as { operation?: OperationMetaDoc | null }).operation;
+    if (!isOperationTypeVisible(op?.operationType, allowedOps)) return false;
+    if (scope !== "mine") return true;
+    return matchesMineScope({
+      customerId: op?.customerId,
+      assigneeName: op?.assigneeName,
+      myCustomerIds: myCustomers,
+      userName
+    });
+  });
+
+  const missing = await missingDocumentsByDeclaration(companyId, visible);
+  return visible.map((row) =>
     withMissingDocuments(toDeclarationDto(row as unknown as DeclarationDoc), missing.get(String(row._id)))
   );
 }

@@ -57,10 +57,10 @@ export function mapDocLabelToType(label: string): DocumentType {
   return DOC_LABEL_TO_TYPE[label] ?? "OTHER";
 }
 
-export async function fetchDeclarationsFromApi() {
+export async function fetchDeclarationsFromApi(scope?: "all" | "mine") {
   if (!liveApiEnabled()) return null;
   try {
-    return await listDeclarations();
+    return await listDeclarations(scope);
   } catch {
     return null;
   }
@@ -162,8 +162,8 @@ export async function apiUploadByRef(ref: string, file: File, docTypeLabel: stri
   return uploadDocument(id, file, mapDocLabelToType(docTypeLabel));
 }
 
-export async function fetchCustomsFiles(): Promise<CustomsFile[] | null> {
-  const rows = await fetchDeclarationsFromApi();
+export async function fetchCustomsFiles(scope?: "all" | "mine"): Promise<CustomsFile[] | null> {
+  const rows = await fetchDeclarationsFromApi(scope);
   if (rows === null) return null;
   return rows.map(toCustomsFile);
 }

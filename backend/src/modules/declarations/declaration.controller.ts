@@ -10,6 +10,7 @@ import {
   runNormalize,
   runValidate
 } from "./declaration.service.js";
+import { parseDeclarationListScope } from "./declarationListScope.js";
 import { transitionApprovalWorkflow } from "./declarationWorkflow.service.js";
 import { transitionPreparationWorkflow } from "./declarationPreparationWorkflow.service.js";
 import { transitionWritingWorkflow } from "./declarationWritingWorkflow.service.js";
@@ -33,7 +34,14 @@ export async function postDeclaration(req: Request, res: Response): Promise<void
 }
 
 export async function getDeclarations(req: Request, res: Response): Promise<void> {
-  const list = await listDeclarations(req.auth!.operationalCompanyId);
+  const auth = req.auth!;
+  const scope = parseDeclarationListScope(req.query.scope);
+  const list = await listDeclarations(auth.operationalCompanyId, {
+    scope,
+    userId: auth.userId,
+    userName: auth.name,
+    operationTypes: auth.operationTypes
+  });
   res.json({ ok: true, data: list });
 }
 

@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Download, Filter, ChevronRight, Loader2 } from 'lucide-react';
 
 import type { CustomsFile, FileStatus } from '../../types';
-import { filesService, buildStatusCounts, buildStatSummary } from '../../services/files';
+import { filesService, buildStatusCounts, buildStatSummary, type FilesListScope } from '../../services/files';
 import { customersService } from '../../services/customers';
 import { ApiError } from '../../api/apiClient';
 import { transitionFileHold, transitionRegistrationWorkflow, transitionClosureWorkflow } from '../../api/declarationApi';
 import { useCan } from '../../permissions/useCan';
+import { useAppContext } from '../../context/AppContext';
 import Modal from '../../components/ui/Modal';
 import { Field, Input, Select, Textarea } from '../../components/ui/Fields';
 
@@ -27,6 +28,11 @@ import HatCell from './HatCell';
 import NewRequestDrawer from './NewRequestDrawer';
 import FilterDrawer, { EMPTY_FILTERS, type FilterState } from './FilterDrawer';
 import FileDetailDrawer from './FileDetailDrawer';
+
+function defaultFilesScope(role: string): FilesListScope {
+  if (role === 'MT' || role === 'Operasyon' || role === 'Saha') return 'mine';
+  return 'all';
+}
 
 // ─── Status filter chip bar ────────────────────────────────────────────────────
 
@@ -88,6 +94,7 @@ function MissingDocsPill({ docs, fileRef, onNavigate }: {
 export default function DosyaTakipPage() {
   const { toast } = useToast();
   const { can } = useCan();
+  const { currentUser } = useAppContext();
   const [holdTarget, setHoldTarget] = useState<CustomsFile | null>(null);
   const [holdNote, setHoldNote] = useState('');
   const [holding, setHolding] = useState(false);
@@ -99,6 +106,7 @@ export default function DosyaTakipPage() {
 
   const [files, setFiles] = useState<CustomsFile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listScope, setListScope] = useState<FilesListScope>(() => defaultFilesScope(currentUser.role));
 
   const [chipFilter, setChipFilter] = useState<ChipFilter>('all');
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
@@ -126,11 +134,23 @@ export default function DosyaTakipPage() {
   ], [statusCounts]);
 
   useEffect(() => {
-    filesService.list().then((data) => {
-      setFiles(data);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+    if (!currentUser.id) return;
+    setListScope(defaultFilesScope(currentUser.role));
+  }, [currentUser.id, currentUser.role]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    filesService.list(listScope).then((data) => {
+      if (!cancelled) {
+        setFiles(data);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [listScope]);
 
   const watchingStatus = detailFile !== null || files.some((file) => file.status === 'yeni-talep');
 
@@ -138,7 +158,7 @@ export default function DosyaTakipPage() {
     if (!watchingStatus) return;
     let cancelled = false;
     const timer = setInterval(() => {
-      filesService.list().then((data) => {
+      filesService.list(listScope).then((data) => {
         if (!cancelled) setFiles(data);
       }).catch(() => undefined);
     }, 5000);
@@ -146,7 +166,7 @@ export default function DosyaTakipPage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [watchingStatus]);
+  }, [watchingStatus, listScope]);
 
   const openDetail = useMemo(() => {
     if (!detailFile) return null;
@@ -197,8 +217,14 @@ export default function DosyaTakipPage() {
   }
 
   async function refreshFiles() {
-    const data = await filesService.list();
+    const data = await filesService.list(listScope);
     setFiles(data);
+  }
+
+  function handleListScope(next: FilesListScope) {
+    if (next === listScope) return;
+    setListScope(next);
+    setPage(1);
   }
 
   async function saveHold() {
@@ -301,7 +327,7 @@ export default function DosyaTakipPage() {
       }
       await filesService.create(payload);
       setNewRequestOpen(false);
-      const data = await filesService.list();
+      const data = await filesService.list(listScope);
       setFiles(data);
       toast('Yeni talep oluşturuldu · Yeni Talep statüsüyle eklendi');
     } catch (err) {
@@ -324,7 +350,29 @@ export default function DosyaTakipPage() {
             Yeni talepten kapanışa kadar tüm dosyaları statü bazlı izleyin.
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2.5">
+        <div className="ml-auto flex items-center gap-2.5 flex-wrap justify-end">
+          <div className="inline-flex rounded-[8px] border border-line bg-surface-2 p-0.5" role="group" aria-label="Dosya kapsamı">
+            <button
+              type="button"
+              onClick={() => handleListScope('all')}
+              className={[
+                'px-3 py-1.5 rounded-[6px] text-[12.5px] font-semibold transition-colors',
+                listScope === 'all' ? 'bg-surface text-text-strong shadow-sm' : 'text-muted hover:text-text',
+              ].join(' ')}
+            >
+              Tüm Beyannameler
+            </button>
+            <button
+              type="button"
+              onClick={() => handleListScope('mine')}
+              className={[
+                'px-3 py-1.5 rounded-[6px] text-[12.5px] font-semibold transition-colors',
+                listScope === 'mine' ? 'bg-surface text-text-strong shadow-sm' : 'text-muted hover:text-text',
+              ].join(' ')}
+            >
+              Müşterilerim
+            </button>
+          </div>
           <Button icon={Download} onClick={() => toast('Excel indirme hazırlanıyor…')} writeCap="dosya_takip.edit">
             Dışa Aktar
           </Button>

@@ -43,10 +43,12 @@ export function buildStatSummary(files: CustomsFile[]): FileStatSummary {
   return computeStatSummary(files);
 }
 
+export type FilesListScope = 'all' | 'mine';
+
 export const filesService = {
-  list: async (): Promise<CustomsFile[]> => {
+  list: async (scope?: FilesListScope): Promise<CustomsFile[]> => {
     if (!liveApiEnabled()) return [];
-    const rows = await fetchCustomsFiles();
+    const rows = await fetchCustomsFiles(scope);
     return rows ?? [];
   },
 

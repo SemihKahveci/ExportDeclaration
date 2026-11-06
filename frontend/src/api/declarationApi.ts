@@ -2,8 +2,11 @@ import { apiBaseUrl } from "@/config/appEnv";
 import { ApiError, apiGetBlob, apiGetJson, apiPatchJson, apiPostJson } from "./apiClient";
 import type { Declaration, OperationMeta, ValidationResult } from "@/api/types/declaration.types";
 
-export async function listDeclarations(): Promise<Declaration[]> {
-  return apiGetJson<Declaration[]>("/api/declarations");
+export type DeclarationListScope = "all" | "mine";
+
+export async function listDeclarations(scope?: DeclarationListScope): Promise<Declaration[]> {
+  const query = scope ? `?scope=${encodeURIComponent(scope)}` : "";
+  return apiGetJson<Declaration[]>(`/api/declarations${query}`);
 }
 
 export async function listDeclarationParseStatuses(): Promise<Array<{ id: string; ref: string; name: string; status: string }>> {
