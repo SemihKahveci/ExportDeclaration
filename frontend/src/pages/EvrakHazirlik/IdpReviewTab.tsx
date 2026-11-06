@@ -14,6 +14,7 @@ import {
   type DeclarationHumanReviewAuditRun,
   type DeclarationReviewCandidate,
 } from '../../api/declarationHumanReviewApi';
+import { fieldLabel } from './fieldLabels';
 
 function isMongoId(value: string) {
   return /^[a-f\d]{24}$/i.test(value);
@@ -24,6 +25,8 @@ function valueText(value: unknown) {
 }
 function documentLabel(type: string) {
   if (type === 'INVOICE') return 'Fatura';
+  if (type === 'EXPORT_INVOICE') return 'Invoice';
+  if (type === 'E_INVOICE_XML') return 'e-Fatura XML';
   if (type === 'PACKING_LIST') return 'Çeki / Paketleme Listesi';
   if (type === 'ATR') return 'A.TR';
   return type;
@@ -121,7 +124,7 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
     if (!evidence || evidence.contentSource === 'DERIVED') return;
     setViewer({
       uploadedFileId: candidate.uploadedFileId,
-      evidence: { ...evidence, field: candidate.field, label: `${documentLabel(candidate.documentType)} · ${candidate.field}` },
+      evidence: { ...evidence, field: candidate.field, label: `${documentLabel(candidate.documentType)} · ${fieldLabel(candidate.field)}` },
     });
   }
 
@@ -209,8 +212,8 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
               <div key={field.field} className="border border-warn/40 rounded-[9px] overflow-hidden bg-surface">
                 <div className="px-4 py-3 bg-warn-tint border-b border-warn/30 flex items-center justify-between gap-3">
                   <div>
-                    <div className="font-bold text-[13.5px] text-text-strong">{field.field}</div>
-                    <div className="text-[11.5px] text-muted mt-0.5">{field.candidates.length} grounded belge adayı</div>
+                    <div className="font-bold text-[13.5px] text-text-strong">{fieldLabel(field.field)}</div>
+                    <div className="text-[11.5px] text-muted mt-0.5 font-mono">{field.field} · {field.candidates.length} grounded belge adayı</div>
                   </div>
                   <Pill variant="warn">Çakışma</Pill>
                 </div>
