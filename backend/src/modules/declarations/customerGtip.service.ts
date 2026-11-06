@@ -141,8 +141,6 @@ export async function applyUserGtipGate(
     await holdForGtip(declaration, actorUserId, GTIP_ASKED_ACTIVITY, "evrak-bekleniyor");
     return "held";
   }
-  if (decision !== "continue") {
-    throw new HttpError(409, GTIP_CONFIRM_MESSAGE, "GTIP_MATCH_CONFIRM");
-  }
+  // GTİP onaylı kayıtla tutuyorsa ek onay penceresi açılmaz; yazıma devam edilir.
   return "continue";
 }
