@@ -79,6 +79,9 @@ assert.equal(dueReminderSlot({
 }), null);
 
 assert.deepEqual(missingDocsFromRule(["Fatura"], new Set(["INVOICE"])), []);
+assert.deepEqual(missingDocsFromRule(["Fatura"], new Set(["EXPORT_INVOICE"])), []);
+assert.deepEqual(missingDocsFromRule(["Invoice"], new Set(["EXPORT_INVOICE"])), []);
+assert.deepEqual(missingDocsFromRule(["Invoice"], new Set()), ["Invoice"]);
 assert.deepEqual(missingDocsFromRule(["Fatura"], new Set()), ["Fatura"]);
 assert.deepEqual(missingDocsFromRule(["Fatura", "ATR"], new Set(["INVOICE"])), ["ATR"]);
 assert.deepEqual(missingDocsFromRule(["Fatura", "ATR"], new Set()), ["Fatura", "ATR"]);

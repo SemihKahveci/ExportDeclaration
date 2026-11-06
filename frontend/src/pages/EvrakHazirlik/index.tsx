@@ -172,7 +172,7 @@ export default function EvrakHazirlikPage() {
   const anyProcessing = files.some((file) => file.processing);
   const reminderDisabled = docs.length > 0 && !docs.some((doc) => doc.status === 'Eksik');
   const invoiceArrived = docs.some((doc) =>
-    doc.status === 'Geldi' && (doc.name === 'Fatura' || doc.name === 'e-Fatura XML' || doc.name === 'İhracat Faturası')
+    doc.status === 'Geldi' && (doc.name === 'Fatura' || doc.name === 'Invoice' || doc.name === 'e-Fatura XML' || doc.name === 'İhracat Faturası')
   );
 
   const stats: EvrakPageStats | null = selectedFile ? {

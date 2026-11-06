@@ -161,6 +161,7 @@ export async function createDeclaration(
 
 const REQUIRED_DOC_TYPES: Record<string, string[]> = {
   Fatura: ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
+  Invoice: ["EXPORT_INVOICE"],
   "Çeki Listesi": ["PACKING_LIST"],
   CMR: ["CMR"],
   Konşimento: ["BILL_OF_LADING", "BILL_OF_LADING_INSTRUCTION"],

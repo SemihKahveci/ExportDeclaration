@@ -31,6 +31,7 @@ export function liveApiEnabled(): boolean {
 
 const DOC_LABEL_TO_TYPE: Record<string, DocumentType> = {
   Fatura: "INVOICE",
+  Invoice: "EXPORT_INVOICE",
   "e-Fatura XML": "E_INVOICE_XML",
   "İhracat Faturası": "EXPORT_INVOICE",
   "Çeki Listesi": "PACKING_LIST",
@@ -258,7 +259,7 @@ export async function fetchEvrakPreview(declarationId: string, documentId: strin
       docName: ({
         INVOICE: "Fatura",
         E_INVOICE_XML: "e-Fatura XML",
-        EXPORT_INVOICE: "İhracat Faturası",
+        EXPORT_INVOICE: "Invoice",
         PACKING_LIST: "Çeki Listesi",
         ATR: "ATR",
         EUR1: "EUR.1",

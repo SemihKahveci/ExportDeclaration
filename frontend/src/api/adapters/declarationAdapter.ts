@@ -18,7 +18,7 @@ import type {
 const DOC_TYPE_LABELS: Record<DocumentType, string> = {
   INVOICE: "Fatura",
   E_INVOICE_XML: "e-Fatura XML",
-  EXPORT_INVOICE: "İhracat Faturası",
+  EXPORT_INVOICE: "Invoice",
   PACKING_LIST: "Çeki Listesi",
   ATR: "ATR",
   EUR1: "EUR.1",
