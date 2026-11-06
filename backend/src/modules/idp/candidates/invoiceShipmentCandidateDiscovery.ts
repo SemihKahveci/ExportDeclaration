@@ -1,11 +1,31 @@
 import type { CanonicalBBox, CanonicalDocument, CanonicalPage, CanonicalWord } from "../domain/canonicalDocument.types.js";
 import type { FieldCandidate, FieldCandidateEnvelope } from "../domain/fieldCandidate.types.js";
 
-const EXTRACTOR = "invoice-shipment-generic-v1";
+const EXTRACTOR = "invoice-shipment-generic-v2";
 const PACKAGE_FIELD = "packageInfo.packageType";
 const TOTAL_FIELD = "packageInfo.totalPackage";
 const GROSS_FIELD = "packageInfo.grossKg";
 const NET_FIELD = "packageInfo.netKg";
+const TOTAL_PACKAGE_LABEL_RE =
+  /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?)|NUMBER\s+OF\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*([\d.,]+)/;
+const KNOWN_PACKAGE_TYPE_RE =
+  /^(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)$/;
+
+/** When the count label itself names the packaging kind, emit packageType. */
+export function packageTypeFromCountEvidence(evidence: string): string | undefined {
+  const n = norm(evidence);
+  if (/\bPALET\s+(?:ADEDI|SAYISI)\b/.test(n)) return "PALET";
+  if (
+    /\bPALLET\s+(?:COUNT|QTY|QUANTITY)\b/.test(n)
+    || /\bTOTAL\s+PALLETS?\b/.test(n)
+    || /\bNUMBER\s+OF\s+PALLETS?\b/.test(n)
+  ) {
+    return "PALLET";
+  }
+  if (/\bTOTAL\s+CARTONS?\b/.test(n) || /\bNUMBER\s+OF\s+CARTONS?\b/.test(n)) return "CARTON";
+  if (/\b(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI)\b/.test(n)) return "KOLI";
+  return undefined;
+}
 
 function norm(text: string): string {
   return text.toLocaleUpperCase("tr-TR").replace(/İ/g, "I").replace(/Ç/g, "C").replace(/Ğ/g, "G").replace(/Ö/g, "O").replace(/Ş/g, "S").replace(/Ü/g, "U").replace(/\s+/g, " ").trim();
@@ -583,9 +603,12 @@ function discoverPackageType(
         const winner = [...groups.entries()]
           .sort((a, b) => b[1].length - a[1].length)[0];
   
-        if (!winner || winner[1].length < 2) {
-          continue;
-        }
+        // Require ≥2 repeats for unknown tokens; a single known packaging
+        // token under EŞYA KAP CİNSİ is enough (still Incoterm-denylisted above).
+        if (!winner) continue;
+        const knownType = KNOWN_PACKAGE_TYPE_RE.test(winner[0]);
+        if (!knownType && winner[1].length < 2) continue;
+        if (knownType && winner[1].length < 1) continue;
   
         const representative = winner[1][0]!;
   
@@ -606,6 +629,57 @@ function discoverPackageType(
     }
   }
 
+function emitPackageTypeFromCountLabel(
+  fields: Record<string, FieldCandidate[]>,
+  segmentId: string,
+): void {
+  if (fields[PACKAGE_FIELD]?.length || !fields[TOTAL_FIELD]?.length) return;
+  const count = fields[TOTAL_FIELD]![0]!;
+  const evidenceText = count.evidence?.[0]?.text ?? "";
+  const derived = packageTypeFromCountEvidence(evidenceText);
+  if (!derived) return;
+  fields[PACKAGE_FIELD] = [{
+    candidateId: `${segmentId}:shipment:packageType`,
+    field: PACKAGE_FIELD,
+    value: derived,
+    confidence: Math.min(0.97, (count.confidence ?? 0.98) - 0.01),
+    extractor: EXTRACTOR,
+    evidence: count.evidence ?? [],
+  }];
+}
+
+function discoverExplicitPackageTypeLabel(
+  fields: Record<string, FieldCandidate[]>,
+  canonical: CanonicalDocument,
+  segmentId: string,
+): void {
+  if (fields[PACKAGE_FIELD]?.length) return;
+  const typeLabel =
+    /(?:KAP\s+CINSI|PACKAGE\s+TYPE|AMBALAJ(?:\s+CINSI)?|PACKAGING|PACKING\s+TYPE)\s*[:：]?\s*(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)\b/;
+  for (const page of canonical.pages) {
+    const lineTexts = [
+      ...(page.lines ?? []).map((line) => line.text),
+      ...(page.nativeText ?? "").split(/\r?\n/),
+      ...(page.ocrText ?? "").split(/\r?\n/),
+    ].map((text) => text.trim()).filter(Boolean);
+    const seen = new Set<string>();
+    for (const rawLine of lineTexts) {
+      const text = norm(rawLine);
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      const match = text.match(typeLabel);
+      if (!match?.[1]) continue;
+      const evidenceText = match[0];
+      const evidence = wordsForMatch(page, evidenceText);
+      const value = match[1];
+      fields[PACKAGE_FIELD] = [evidence.length
+        ? makeCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidence, 0.99)
+        : makeTextCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidenceText, 0.98)];
+      return;
+    }
+  }
+}
+
 export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocument, segmentId: string): FieldCandidateEnvelope {
   const fields: Record<string, FieldCandidate[]> = {};
   addLabeledNumber(
@@ -613,8 +687,9 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     canonical,
     segmentId,
     TOTAL_FIELD,
-    /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*([\d.,]+)/,
+    TOTAL_PACKAGE_LABEL_RE,
   );
+  emitPackageTypeFromCountLabel(fields, segmentId);
   
   addSameLineLabeledNumber(
     fields,
@@ -667,21 +742,37 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
   if (!fields[GROSS_FIELD]?.length) discoverCompactWeightLabel(fields, canonical, segmentId, GROSS_FIELD, "GROSS");
   if (!fields[NET_FIELD]?.length) discoverCompactWeightLabel(fields, canonical, segmentId, NET_FIELD, "NET");
   
+  // Explicit KAP CİNSİ / PACKAGE TYPE labels before dual summary so pageText
+  // duplication cannot bind a later "PACKAGE" token as type after TOPLAM KAP.
+  discoverExplicitPackageTypeLabel(fields, canonical, segmentId);
+
   // Explicit summary labels such as "TOPLAM KAP: 18 PALET" carry both
-  // package count and package type. Prefer this role-bound evidence before the
-  // table-column heuristic; it is layout/supplier independent.
+  // package count and package type. Match per line (not flattened pageText)
+  // so duplicated word streams cannot attach an unrelated type token.
   if (!fields[PACKAGE_FIELD]?.length) {
-    for (const page of canonical.pages) {
-      const text = norm(pageText(page));
-      const match = text.match(/(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*[\d.,]+\s+(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)\b/);
-      if (!match?.[1]) continue;
-      const evidenceText = match[0];
-      const evidence = wordsForMatch(page, evidenceText);
-      const value = match[1];
-      fields[PACKAGE_FIELD] = [evidence.length
-        ? makeCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidence, 0.99)
-        : makeTextCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidenceText, 0.98)];
-      break;
+    const dualTypeRe =
+      /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?)|NUMBER\s+OF\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*[\d.,]+\s+(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)\b/;
+    outer: for (const page of canonical.pages) {
+      const lineTexts = [
+        ...(page.lines ?? []).map((line) => line.text),
+        ...(page.nativeText ?? "").split(/\r?\n/),
+        ...(page.ocrText ?? "").split(/\r?\n/),
+      ].map((text) => text.trim()).filter(Boolean);
+      const seen = new Set<string>();
+      for (const rawLine of lineTexts) {
+        const text = norm(rawLine);
+        if (!text || seen.has(text)) continue;
+        seen.add(text);
+        const match = text.match(dualTypeRe);
+        if (!match?.[1]) continue;
+        const evidenceText = match[0];
+        const evidence = wordsForMatch(page, evidenceText);
+        const value = match[1];
+        fields[PACKAGE_FIELD] = [evidence.length
+          ? makeCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidence, 0.99)
+          : makeTextCandidate(PACKAGE_FIELD, value, `${segmentId}:shipment:packageType`, segmentId, page, evidenceText, 0.98)];
+        break outer;
+      }
     }
   }
   if (!fields[PACKAGE_FIELD]?.length) discoverPackageType(fields, canonical, segmentId);

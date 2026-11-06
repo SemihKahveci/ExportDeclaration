@@ -538,8 +538,10 @@ export function enforceVisionDocumentRoleAuthority(
   keepOnlyWithRole("totalAmount", /\b(?:FATURA\s+TOPLAMI|GENEL\s+TOPLAM|ODENECEK\s+TUTAR|INVOICE\s+TOTAL|GRAND\s+TOTAL|TOTAL\s+AMOUNT|AMOUNT\s+DUE)\b/);
   keepOnlyWithRole("grossWeight", /\b(?:BRUT|BRUTTO|GROSS)\s*(?:AGIRLIK|WEIGHT|KG)?\b|\b(?:GROSS\s+WEIGHT|BRUT\s+AGIRLIK)\b/);
   keepOnlyWithRole("netWeight", /\b(?:NET)\s*(?:AGIRLIK|WEIGHT|KG)\b|\b(?:NET\s+WEIGHT|NET\s+AGIRLIK)\b/);
-  const packageTypeRole = /\b(?:AMBALAJ|KAP\s+CINSI|PAKET\s+TIPI|PACKAGE\s+TYPE|PACKAGING|PACKING\s+TYPE)\b/;
-  const totalPackageRole = /\b(?:TOPLAM\s+KAP|KAP\s+ADEDI|PAKET\s+ADEDI|TOTAL\s+PACKAGES?|PACKAGE\s+COUNT|NUMBER\s+OF\s+PACKAGES?)\b/;
+  // Keep role labels aligned with invoiceShipmentCandidateDiscovery count/type cues
+  // so PAGE_IMAGE values near PALET SAYISI / TOTAL CARTONS are not dropped.
+  const packageTypeRole = /\b(?:AMBALAJ|KAP\s+CINSI|PAKET\s+TIPI|PACKAGE\s+TYPE|PACKAGING|PACKING\s+TYPE|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|TOTAL\s+(?:CARTONS?|PALLETS?)|(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI))\b/;
+  const totalPackageRole = /\b(?:TOPLAM\s+KAP|KAP\s+(?:ADEDI|ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|PAKET\s+ADEDI|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?)|PACKAGE\s+COUNT|NUMBER\s+OF\s+(?:PACKAGES?|CARTONS?|PALLETS?)|(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI))\b/;
   // 1.8.26: a package label somewhere on a dense page is not enough to
   // authorize an arbitrary VLM value from that page. The value itself must be
   // visible close to the semantic role. This remains document-generic and also
