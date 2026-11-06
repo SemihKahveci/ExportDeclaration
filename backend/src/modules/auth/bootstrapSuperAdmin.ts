@@ -8,57 +8,62 @@ export async function bootstrapSuperAdmin(): Promise<void> {
 
   if (!email || !password) return;
 
-  const existing = await AppUserModel.findOne({ email }).select("+passwordHash");
+  try {
+    const existing = await AppUserModel.findOne({ email }).select("+passwordHash");
 
-  if (existing) {
-    let changed = false;
+    if (existing) {
+      let changed = false;
 
-    if (existing.systemRole !== "SUPERADMIN") {
-      existing.systemRole = "SUPERADMIN";
-      changed = true;
+      if (existing.systemRole !== "SUPERADMIN") {
+        existing.systemRole = "SUPERADMIN";
+        changed = true;
+      }
+
+      if (existing.companyId != null) {
+        existing.companyId = null;
+        changed = true;
+      }
+
+      if (!existing.passwordHash || env.superAdminResetPassword) {
+        existing.passwordHash = await hashPassword(password);
+        existing.passwordChangedAt = new Date();
+        changed = true;
+      }
+
+      if (existing.status !== "Aktif") {
+        existing.status = "Aktif";
+        changed = true;
+      }
+
+      if (changed) {
+        await existing.save();
+      }
+
+      console.log(`[auth] Superadmin hazır: ${email}`);
+      return;
     }
 
-    if (existing.companyId != null) {
-      existing.companyId = null;
-      changed = true;
-    }
+    await AppUserModel.create({
+      companyId: null,
+      name: env.superAdminName || "Süper Admin",
+      email,
+      passwordHash: await hashPassword(password),
+      passwordChangedAt: new Date(),
+      systemRole: "SUPERADMIN",
+      role: "Admin",
+      status: "Aktif",
+      capabilities: [],
+      operationTypes: ["ithalat", "ihracat", "transit", "antrepo"],
+      menuAccess: [],
+      menuActions: {},
+      approverLevel: "second",
+      specialActions: [],
+      screenPermissions: {}
+    });
 
-    if (!existing.passwordHash || env.superAdminResetPassword) {
-      existing.passwordHash = await hashPassword(password);
-      existing.passwordChangedAt = new Date();
-      changed = true;
-    }
-
-    if (existing.status !== "Aktif") {
-      existing.status = "Aktif";
-      changed = true;
-    }
-
-    if (changed) {
-      await existing.save();
-    }
-
-    console.log(`[auth] Superadmin hazır: ${email}`);
-    return;
+    console.log(`[auth] Superadmin oluşturuldu: ${email}`);
+  } catch (err) {
+    // Zayıf SUPERADMIN_PASSWORD API'yi tamamen düşürmesin; login yine mümkün olsun.
+    console.error("[auth] Superadmin bootstrap başarısız; API ayakta kalıyor.", err);
   }
-
-  await AppUserModel.create({
-    companyId: null,
-    name: env.superAdminName || "Süper Admin",
-    email,
-    passwordHash: await hashPassword(password),
-    passwordChangedAt: new Date(),
-    systemRole: "SUPERADMIN",
-    role: "Admin",
-    status: "Aktif",
-    capabilities: [],
-    operationTypes: ["ithalat", "ihracat", "transit", "antrepo"],
-    menuAccess: [],
-    menuActions: {},
-    approverLevel: "second",
-    specialActions: [],
-    screenPermissions: {}
-  });
-
-  console.log(`[auth] Superadmin oluşturuldu: ${email}`);
 }
