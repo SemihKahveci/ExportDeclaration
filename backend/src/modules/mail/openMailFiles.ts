@@ -19,6 +19,7 @@ export type OpenMailFile = {
     isArchived?: boolean;
     tescilNo?: string | null;
     receivedAt?: Date;
+    workflowHistory?: Array<{ action?: string; toStatus?: string; at?: Date }>;
   } | null;
 };
 

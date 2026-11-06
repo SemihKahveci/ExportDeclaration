@@ -11,6 +11,7 @@ import { runCutoffAlerts, runCustomerSummaries } from "./customerSummaryJob.serv
 import { loadOpenMailFiles, withCustomer, type OpenMailFile } from "./openMailFiles.js";
 import { runGtipIdleReminders, sendDocumentReminder } from "./processMail.service.js";
 import { runStageDigests } from "./stageMail.service.js";
+import { runWritingReadyReminders } from "./writingReadyReminder.service.js";
 
 const TICK_MS = 60_000;
 const FIRST_SLOT = "first";
@@ -120,8 +121,9 @@ export function startDocumentReminderJob(): void {
       const stages = await runStageDigests(new Date(), openFiles);
       const summaries = await runCustomerSummaries(new Date(), openFiles);
       const cutoffs = await runCutoffAlerts(new Date(), openFiles);
-      if (sent > 0 || gtip > 0 || stages > 0 || summaries > 0 || cutoffs > 0) {
-        console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip, stages, summaries, cutoffs }));
+      const writing = await runWritingReadyReminders(new Date(), openFiles);
+      if (sent > 0 || gtip > 0 || stages > 0 || summaries > 0 || cutoffs > 0 || writing > 0) {
+        console.log(JSON.stringify({ event: "document-reminder.sent", sent, gtip, stages, summaries, cutoffs, writing }));
       }
     } catch (error) {
       console.error(JSON.stringify({

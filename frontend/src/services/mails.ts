@@ -12,6 +12,7 @@ export const MAIL_PROCESS_OPTIONS = [
   { value: 'eksik-evrak',       label: 'Eksik Evrak Hatırlatma'   },
   { value: 'gtip-kontrol',      label: 'GTİP Eksik/Hatalı'        },
   { value: 'beyanname-kontrol', label: 'Beyanname Kontrol'        },
+  { value: 'beyanname-yazim-hatirlatma', label: 'Beyanname Yazım Hatırlatma' },
   { value: 'tescil',            label: 'Tescil'                   },
   { value: 'kapanis',           label: 'Kapanış'                  },
   { value: 'mutabakat',         label: 'Mutabakat'                },

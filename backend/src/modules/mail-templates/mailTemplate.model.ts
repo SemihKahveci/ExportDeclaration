@@ -5,6 +5,7 @@ export const MAIL_PROCESS_STEPS = [
   "eksik-evrak",
   "gtip-kontrol",
   "beyanname-kontrol",
+  "beyanname-yazim-hatirlatma",
   "tescil",
   "kapanis",
   "mutabakat",
