@@ -591,6 +591,9 @@ const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
   JAPAN: "JP", JAPONYA: "JP", JP: "JP",
   KOREA: "KR", SOUTHKOREA: "KR", GUNEYKORE: "KR", KR: "KR",
   UAE: "AE", UNITEDARABEMIRATES: "AE", AE: "AE",
+  // City-as-country on export invoices (buyer block often prints only the emirate/city).
+  DUBAI: "AE", DUBAY: "AE",
+  TAJIKISTAN: "TJ", TACIKISTAN: "TJ", TJ: "TJ",
   SAUDIARABIA: "SA", SUUDIARABISTAN: "SA", SA: "SA",
   THAILAND: "TH", TAYLAND: "TH", TH: "TH",
   VIETNAM: "VN", VN: "VN",

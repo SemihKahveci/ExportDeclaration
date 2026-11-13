@@ -6,15 +6,17 @@ const PACKAGE_FIELD = "packageInfo.packageType";
 const TOTAL_FIELD = "packageInfo.totalPackage";
 const GROSS_FIELD = "packageInfo.grossKg";
 const NET_FIELD = "packageInfo.netKg";
+// Turkish "KAP ADEDİ" folds to ADEDI (not ADET) after İ→I.
 const TOTAL_PACKAGE_LABEL_RE =
-  /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?)|NUMBER\s+OF\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*([\d.,]+)/;
+  /(?:TOPLAM\s+KAP|KAP\s+(?:ADEDI|ADET|SAYISI)|PALET\s+(?:ADEDI|ADET|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|(?:KOLI|KOLLI)\s+(?:ADEDI|ADET|SAYISI)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?)|NUMBER\s+OF\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*(?:[A-Z]{1,6}\s+)?([\d.,]+)/;
 const KNOWN_PACKAGE_TYPE_RE =
   /^(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)$/;
 
 /** When the count label itself names the packaging kind, emit packageType. */
 export function packageTypeFromCountEvidence(evidence: string): string | undefined {
   const n = norm(evidence);
-  if (/\bPALET\s+(?:ADEDI|SAYISI)\b/.test(n)) return "PALET";
+  if (/\bPALET\s+(?:ADEDI|ADET|SAYISI)\b/.test(n)) return "PALET";
+  if (/\bKAP\s+(?:ADEDI|ADET|SAYISI)\b/.test(n) && /\bPALET(?:LER)?\b/.test(n)) return "PALET";
   if (
     /\bPALLET\s+(?:COUNT|QTY|QUANTITY)\b/.test(n)
     || /\bTOTAL\s+PALLETS?\b/.test(n)
@@ -23,7 +25,7 @@ export function packageTypeFromCountEvidence(evidence: string): string | undefin
     return "PALLET";
   }
   if (/\bTOTAL\s+CARTONS?\b/.test(n) || /\bNUMBER\s+OF\s+CARTONS?\b/.test(n)) return "CARTON";
-  if (/\b(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI)\b/.test(n)) return "KOLI";
+  if (/\b(?:KOLI|KOLLI)\s+(?:ADEDI|ADET|SAYISI)\b/.test(n)) return "KOLI";
   return undefined;
 }
 
@@ -41,15 +43,29 @@ function makeCandidate(field: string, value: unknown, id: string, segmentId: str
     evidence: [{ segmentId, pageNumber: page.pageNumber, bbox: unionBox(words), text: words.map(w => w.text).join(" "), contentSource: words.some(w => w.source === "OCR") ? "OCR" : "NATIVE_TEXT" }]
   };
 }
-function parseNumber(raw: string): number | undefined {
+export function parseShipmentNumber(raw: string): number | undefined {
   const s = raw.replace(/\s/g, "").replace(/[^\d.,-]/g, "");
   if (!s) return undefined;
-  const comma = s.lastIndexOf(","), dot = s.lastIndexOf(".");
+  const comma = s.lastIndexOf(",");
+  const dot = s.lastIndexOf(".");
+  const lastSep = Math.max(comma, dot);
+  // TR invoice weights often use "." as thousands: "7.190KG", "34.000KG".
+  if (lastSep >= 0) {
+    const trailing = s.length - lastSep - 1;
+    const sepCount = (s.match(/[.,]/g) ?? []).length;
+    if (sepCount === 1 && trailing === 3) {
+      const thousands = Number(s.replace(/[.,]/g, ""));
+      if (Number.isFinite(thousands)) return thousands;
+    }
+  }
   let n = s;
   if (comma > dot) n = s.replace(/\./g, "").replace(",", ".");
   else if (dot > comma) n = s.replace(/,/g, "");
   const value = Number(n);
   return Number.isFinite(value) ? value : undefined;
+}
+function parseNumber(raw: string): number | undefined {
+  return parseShipmentNumber(raw);
 }
 function pageText(page: CanonicalPage): string {
   const wordText = page.words.slice().sort((a,b) => centerY(a)-centerY(b) || a.bbox.x0-b.bbox.x0).map(w => w.text).join(" ");
@@ -696,7 +712,8 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
     canonical,
     segmentId,
     GROSS_FIELD,
-    /(?:TOPLAM\s+)?BRUT(?:\s+[A-Z]+){0,2}[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*KG|(?:TOPLAM\s+)?(?:BRUT\s+(?:AGIRLIK|KG)|(?:GROSS|GR\.?)\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?|GROSS\s+KG)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
+    // Include BÜRÜT (common e-fatura typo/OCR for BRÜT) and bare "BRÜT KG:".
+    /(?:TOPLAM\s+)?(?:BRUT|BURUT)(?:\s+[A-Z]+){0,2}[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*KG|(?:TOPLAM\s+)?(?:(?:BRUT|BURUT)\s+(?:AGIRLIK|KG)|(?:GROSS|GR\.?)\s+(?:WEIGHT|WT\.?)(?:\s*KGS?)?|GROSS\s+KG)[ \t]*[:：]?[ \t]*([\d.,]+)[ \t]*(?:KG|KGS)?/,
     true,
   );
   
@@ -751,7 +768,7 @@ export function discoverInvoiceShipmentFieldCandidates(canonical: CanonicalDocum
   // so duplicated word streams cannot attach an unrelated type token.
   if (!fields[PACKAGE_FIELD]?.length) {
     const dualTypeRe =
-      /(?:TOPLAM\s+KAP|KAP\s+(?:ADET|SAYISI)|PALET\s+(?:ADEDI|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|(?:KOLI|KOLLI)\s+(?:ADEDI|SAYISI)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?)|NUMBER\s+OF\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*[\d.,]+\s+(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)\b/;
+      /(?:TOPLAM\s+KAP|KAP\s+(?:ADEDI|ADET|SAYISI)|PALET\s+(?:ADEDI|ADET|SAYISI)|PALLET\s+(?:COUNT|QTY|QUANTITY)|(?:KOLI|KOLLI)\s+(?:ADEDI|ADET|SAYISI)|TOTAL\s+(?:PACKAGES?|CARTONS?|PALLETS?)|NUMBER\s+OF\s+(?:PACKAGES?|CARTONS?|PALLETS?))\s*[:：]?\s*(?:[A-Z]{1,6}\s+)?[\d.,]+\s+(PALET|PALLET|KOLI|KOLLI|CARTON|CARTONS|BOX|BOXES|BIN|PACKAGE|PACKAGES)\b/;
     outer: for (const page of canonical.pages) {
       const lineTexts = [
         ...(page.lines ?? []).map((line) => line.text),
