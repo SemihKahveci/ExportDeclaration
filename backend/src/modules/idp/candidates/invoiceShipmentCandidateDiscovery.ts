@@ -314,22 +314,10 @@ function discoverLabeledWeight(
   field: string,
   kind: "GROSS" | "NET",
 ) {
-  // Prefer full "TOPLAM BRÜT AĞIRLIK"; also accept BRÜT/NET AĞIRLIK without TOPLAM
-  // and common EN gross/net weight labels (Maçin/PAG footers).
-  const patterns =
+  const required =
     kind === "GROSS"
-      ? [
-          ["TOPLAM", "BRUT", "AGIRLIK"],
-          ["BRUT", "AGIRLIK"],
-          ["GROSS", "WEIGHT"],
-          ["GROSS", "WT"],
-        ]
-      : [
-          ["TOPLAM", "NET", "AGIRLIK"],
-          ["NET", "AGIRLIK"],
-          ["NET", "WEIGHT"],
-          ["NET", "WT"],
-        ];
+      ? ["TOPLAM", "BRUT", "AGIRLIK"]
+      : ["TOPLAM", "NET", "AGIRLIK"];
 
   for (const page of canonical.pages) {
     const words = page.words
@@ -340,13 +328,11 @@ function discoverLabeledWeight(
           a.bbox.x0 - b.bbox.x0,
       );
 
-    for (const required of patterns) {
     for (let i = 0; i < words.length; i++) {
       const first = norm(words[i]!.text)
         .replace(/[^A-Z0-9.,-]/g, "");
 
-      const startToken = required[0]!;
-      if (!(first === startToken || first.includes(startToken))) {
+      if (first !== "TOPLAM") {
         continue;
       }
 
@@ -460,7 +446,6 @@ function discoverLabeledWeight(
 
         return;
       }
-    }
     }
   }
 }

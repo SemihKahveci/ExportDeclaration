@@ -24,6 +24,3 @@ __pycache__/
 .pytest_cache/
 # IDP diagnostic outputs
 segment-fingerprints.txt
-
-# Local corpus scoring / scratch (not source of truth)
-tmp/

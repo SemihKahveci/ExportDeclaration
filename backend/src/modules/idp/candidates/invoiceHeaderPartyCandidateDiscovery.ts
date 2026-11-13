@@ -401,27 +401,16 @@ function explicitRoleParty(
   }
 
   let country: { value: string; line: EvidenceLine } | undefined;
-  // Prefer an ISO-resolvable country anywhere in the party block (often the
-  // last address line is "City / Country", not a bare country token).
-  for (const line of [...rows].reverse()) {
-    const value = line.text.trim();
+  const terminal = rows.at(-1);
+  if (terminal) {
+    const value = terminal.text.trim();
     const normalized = norm(value);
     const legalOrBusinessText = /\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|INDUSTRIES|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(normalized);
-    if (legalOrBusinessText) continue;
-    if (partyCountryValue(value)) {
-      country = { value, line };
-      break;
-    }
-  }
-  if (!country) {
-    const terminal = rows.at(-1);
-    if (terminal) {
-      const value = terminal.text.trim();
-      const normalized = norm(value);
-      const legalOrBusinessText = /\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|INDUSTRIES|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(normalized);
-      if (/^[A-Za-zÇĞİÖŞÜçğıöşüÄÖÜäöüß .'-]{3,40}$/.test(value) && !/\d/.test(value) && value.split(/\s+/).length <= 4 && !legalOrBusinessText) {
-        country = { value, line: terminal };
-      }
+    // Prefer ISO resolution (supports "City / Country") over pure-country regex.
+    if (!legalOrBusinessText && partyCountryValue(value)) {
+      country = { value, line: terminal };
+    } else if (/^[A-Za-zÇĞİÖŞÜçğıöşüÄÖÜäöüß .'-]{3,40}$/.test(value) && !/\d/.test(value) && value.split(/\s+/).length <= 4 && !legalOrBusinessText) {
+      country = { value, line: terminal };
     }
   }
   const addressRows = rows.filter(line => line !== country?.line);
@@ -550,47 +539,16 @@ function partyBlockCountry(block: EvidenceLine[], party: EvidenceLine): {value:s
     prevY=y;
   }
 
-  for (const line of [...rows].reverse()) {
-    const v = line.text.trim();
-    const n = norm(v);
-    if (/\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(n)) {
-      continue;
-    }
-    if (partyCountryValue(v)) return { value: v, line };
-  }
+  // Country authority is terminal: do not scan backwards past administrative,
+  // legal or malformed address rows looking for a country-looking phrase.
   const line=rows.at(-1);
   if(!line) return undefined;
   const v=line.text.trim(), n=norm(v);
   if(/\b(?:LIMITED|LTD|GMBH|LLC|INC|CORP|CORPORATION|SIRKETI|SIRKET|SANAYI|TICARET|COMPANY|INDUSTRY|HANDELSREGISTER|REGISTER|REGISTRY|VAT|TAX|VERGI|MERSIS|IBAN|SWIFT|BANK)\b/.test(n)) return undefined;
+  if (partyCountryValue(v)) return { value: v, line };
   if(!/^[A-Za-zÇĞİÖŞÜçğıöşü .'-]{3,40}$/.test(v)) return undefined;
   if(/\d/.test(v)||v.split(/\s+/).length>4) return undefined;
   return {value:v,line};
-}
-
-/** When country was left inside the address aggregate, promote an ISO hit. */
-function promoteCountryFromAddress(
-  fields: Record<string, FieldCandidate[]>,
-  role: "seller" | "buyer",
-  addressValue: string | undefined,
-  evidenceLine: EvidenceLine | undefined,
-  segmentId: string,
-  confidence: number,
-): void {
-  if (!addressValue?.trim() || !evidenceLine) return;
-  const field = `parties.${role}.country`;
-  if (fields[field]?.length) return;
-  const parts = addressValue
-    .split(/\s*\|\s*|\s*,\s*/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  for (const part of [...parts].reverse()) {
-    const iso = partyCountryValue(part);
-    if (!iso) continue;
-    add(fields, candidate(field, iso, `party-${role}-country`, segmentId, evidenceLine, confidence));
-    return;
-  }
-  const iso = partyCountryValue(addressValue);
-  if (iso) add(fields, candidate(field, iso, `party-${role}-country`, segmentId, evidenceLine, confidence));
 }
 
 function buyerCountry(block: EvidenceLine[], buyer: EvidenceLine): {value:string; line:EvidenceLine}|undefined {
@@ -673,9 +631,6 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
     const iso = partyCountryValue(explicitSeller.country.value);
     if (iso) add(fields, candidate("parties.seller.country", iso, "party-seller-country", segmentId, explicitSeller.country.line, 0.97));
   }
-  if (!fields["parties.seller.country"]?.length && explicitSeller?.address) {
-    promoteCountryFromAddress(fields, "seller", explicitSeller.address.value, explicitSeller.address.lines.at(-1), segmentId, 0.95);
-  }
 
   if (seller && sayin && !explicitSeller) {
     const block=between(lines, centerY(seller.bbox), centerY(sayin.bbox), seller.pageNumber);
@@ -692,9 +647,6 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
       const iso = partyCountryValue(country.value);
       if (iso) add(fields, candidate("parties.seller.country", iso, "party-seller-country", segmentId, country.line, 0.94));
     }
-    if (!fields["parties.seller.country"]?.length && address) {
-      promoteCountryFromAddress(fields, "seller", address.value, address.lines.at(-1), segmentId, 0.93);
-    }
   }
 
   if (explicitBuyer?.address) {
@@ -708,9 +660,6 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
   if (explicitBuyer?.country) {
     const iso = partyCountryValue(explicitBuyer.country.value);
     if (iso) add(fields, candidate("parties.buyer.country", iso, "party-buyer-country", segmentId, explicitBuyer.country.line, 0.97));
-  }
-  if (!fields["parties.buyer.country"]?.length && explicitBuyer?.address) {
-    promoteCountryFromAddress(fields, "buyer", explicitBuyer.address.value, explicitBuyer.address.lines.at(-1), segmentId, 0.95);
   }
 
   if (buyer && sayin && !explicitBuyer) {
@@ -732,9 +681,6 @@ export function discoverInvoiceHeaderPartyFieldCandidates(
     if (country) {
       const iso = partyCountryValue(country.value);
       if (iso) add(fields,candidate("parties.buyer.country",iso,"party-buyer-country",segmentId,country.line,0.94));
-    }
-    if (!fields["parties.buyer.country"]?.length && address) {
-      promoteCountryFromAddress(fields, "buyer", address.value, address.lines.at(-1), segmentId, 0.93);
     }
   }
 
