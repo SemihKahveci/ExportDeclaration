@@ -14,6 +14,8 @@ assert.equal(partyCountryValue("Zeytinburnu-Istanbul / TURKEY"), "TR");
 assert.equal(partyCountryValue("DE"), "DE");
 assert.equal(partyCountryValue("not-a-country"), undefined);
 assert.equal(partyCountryValue("Punane 73 Tallinn"), undefined);
+// Address-embedded country still resolves (promote path uses the same helper).
+assert.equal(partyCountryValue("ITOSB 8. Cadde No:7 Tuzla Istanbul / Turkey"), "TR");
 
 // Authority id contract (string literals used by discovery + F6).
 const roleBoundCountryIds = [
