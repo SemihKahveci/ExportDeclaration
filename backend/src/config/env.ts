@@ -114,11 +114,24 @@ export const env = {
     path.join(process.cwd(), "license-data", "installation-id.txt"),
     mailEnabled: bool(process.env.MAIL_ENABLED),
 
+    /**
+     * Mail taşıyıcı: `graph` | `smtp` | `auto`.
+     * `auto` → Graph kimlik bilgileri doluysa Graph, değilse SMTP.
+     */
+    mailProvider: (process.env.MAIL_PROVIDER ?? "auto").trim().toLowerCase(),
+
     smtpHost: process.env.SMTP_HOST ?? "",
     smtpPort: num(process.env.SMTP_PORT, 587),
     smtpSecure: bool(process.env.SMTP_SECURE),
     smtpUser: process.env.SMTP_USER ?? "",
     smtpPass: (process.env.SMTP_PASS ?? "").replace(/\s+/g, ""),
+
+    /** Entra ID (Azure AD) app registration — Microsoft Graph client credentials. */
+    msGraphTenantId: (process.env.MS_GRAPH_TENANT_ID ?? "").trim(),
+    msGraphClientId: (process.env.MS_GRAPH_CLIENT_ID ?? "").trim(),
+    msGraphClientSecret: (process.env.MS_GRAPH_CLIENT_SECRET ?? "").trim(),
+    /** Graph ile gönderen mailbox UPN (örn. adel360@adelgumruk.com). Boşsa MAIL_FROM. */
+    msGraphSender: (process.env.MS_GRAPH_SENDER ?? "").trim(),
 
     mailFrom: process.env.MAIL_FROM ?? "",
     mailFromName: process.env.MAIL_FROM_NAME ?? "Export Declaration",

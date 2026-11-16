@@ -1,5 +1,9 @@
 import nodemailer from "nodemailer";
 import { env } from "../../config/env.js";
+import {
+  isMicrosoftGraphMailConfigured,
+  sendMailViaMicrosoftGraph,
+} from "./microsoftGraphMail.service.js";
 
 export interface SendMailInput {
   to: string | string[];
@@ -28,9 +32,22 @@ function createTransporter() {
   });
 }
 
+function resolveMailProvider(): "graph" | "smtp" {
+  const mode = env.mailProvider;
+  if (mode === "graph") return "graph";
+  if (mode === "smtp") return "smtp";
+  return isMicrosoftGraphMailConfigured() ? "graph" : "smtp";
+}
+
 export async function sendMail(input: SendMailInput): Promise<void> {
   if (!env.mailEnabled) {
     console.log("[mail] Mail gönderimi kapalı.");
+    return;
+  }
+
+  const provider = resolveMailProvider();
+  if (provider === "graph") {
+    await sendMailViaMicrosoftGraph(input);
     return;
   }
 
