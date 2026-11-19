@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import * as XLSX from "xlsx";
 import { parseUblIhracatInvoiceXml } from "../../src/modules/extraction/ubl/ublIhracatInvoice.parser.js";
-import { applyManufacturerRules, applyNoteOriginRules } from "../../src/modules/extraction/ubl/ublIhracatNoteRules.js";
+import { applyManufacturerRules, enrichInvoiceFromNotes } from "../../src/modules/extraction/ubl/ublIhracatNoteRules.js";
 import { buildDeclarationWorkbook } from "../../src/modules/evrim-excel/declarationWorkbook.js";
 import { buildExportDeclarationContract } from "../../src/modules/export-contract/exportDeclarationContract.service.js";
 import type { NormalizedDeclaration } from "../../src/modules/normalization/normalizedDeclaration.types.js";
@@ -77,9 +77,8 @@ function readXmlText(filePath: string): string {
 
 function toNormalized(xmlPath: string, senderEvrimId: number): NormalizedDeclaration {
   const xml = readXmlText(xmlPath);
-  const parsed = parseUblIhracatInvoiceXml(xml);
-  const withOrigin = applyNoteOriginRules(parsed);
-  const lines = applyManufacturerRules(withOrigin, {
+  const parsed = enrichInvoiceFromNotes(parseUblIhracatInvoiceXml(xml));
+  const lines = applyManufacturerRules(parsed, {
     senderEvrimId,
     lookupManufacturer: (taxNo) => MANUFACTURER_BY_VKN[taxNo],
   });
@@ -94,9 +93,15 @@ function toNormalized(xmlPath: string, senderEvrimId: number): NormalizedDeclara
       seller: parsed.seller ? { name: parsed.seller.name, taxNo: parsed.seller.taxNo, country: parsed.seller.countryCode } : undefined,
       buyer: parsed.buyer ? { name: parsed.buyer.name, country: parsed.buyer.countryCode } : undefined,
     },
-    trade: { deliveryTerm: parsed.deliveryTerm },
-    transport: {},
-    packageInfo: { packageType: parsed.packageType },
+    trade: { deliveryTerm: parsed.deliveryTerm, paymentType: parsed.paymentType },
+    transport: { mode: parsed.transportMode },
+    packageInfo: {
+      packageType: parsed.packageType,
+      totalPackage: parsed.totalPackage,
+      grossKg: parsed.grossKg,
+      netKg: parsed.netKg,
+    },
+    finance: parsed.bankInfo ? { bankInfo: parsed.bankInfo } : undefined,
     goodsLines: lines.map((line) => ({
       lineNo: line.lineNo,
       hsCode: line.hsCode,

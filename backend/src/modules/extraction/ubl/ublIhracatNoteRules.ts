@@ -3,6 +3,103 @@ import type { UblParsedGoodsLine, UblParsedInvoice } from "./ublIhracatInvoice.t
 
 export type VknManufacturerLookup = (taxNo: string, nameHint?: string) => number | undefined;
 
+/** TR fatura notu sayıları: 9.825,02 → 9825.02 · 24.900 → 24900 · 472,00 → 472 */
+export function parseTrNoteNumber(raw: string | undefined): number | undefined {
+  if (!raw) return undefined;
+  let s = raw.trim().replace(/\s+/g, "");
+  if (!s) return undefined;
+  const dots = (s.match(/\./g) ?? []).length;
+  const commas = (s.match(/,/g) ?? []).length;
+  if (dots > 0 && commas > 0) s = s.replace(/\./g, "").replace(",", ".");
+  else if (commas === 1 && dots === 0) s = s.replace(",", ".");
+  else if (dots === 1 && commas === 0 && /^\d{1,3}\.\d{3}$/.test(s)) s = s.replace(".", "");
+  else if (dots > 1 && commas === 0) s = s.replace(/\./g, "");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function joinedNotes(invoice: UblParsedInvoice): string {
+  const lineNotes = invoice.goodsLines.map((line) => line.lineNote ?? "");
+  return [...invoice.invoiceNotes, ...lineNotes].filter(Boolean).join(" | ");
+}
+
+/**
+ * cbc:Note içinden kap / brüt / net / ödeme / taşıma / banka.
+ * Örnek: "TOPLAM KAP : 66 PALET BRÜT KG : 9.825,02 NET KG : 7.204,01"
+ */
+export function applyNoteShipmentRules(invoice: UblParsedInvoice): UblParsedInvoice {
+  const text = joinedNotes(invoice);
+  if (!text.trim()) return invoice;
+  const upper = text.toLocaleUpperCase("tr-TR");
+
+  const totalPackage =
+    invoice.totalPackage
+    ?? parseTrNoteNumber(
+      upper.match(/TOPLAM\s+KAP\s*[:：]?\s*([0-9][0-9.\s,]*)/)?.[1]
+      ?? upper.match(/KAP\s+ADED[İI]\s*[:：]?\s*([0-9][0-9.\s,]*)/)?.[1]
+    );
+
+  const grossKg =
+    invoice.grossKg
+    ?? parseTrNoteNumber(
+      upper.match(/TOPLAM\s+BR[ÜU]T\s+A[ĞG]IRLIK\s*[:：]?\s*([0-9][0-9.\s,]*)/)?.[1]
+      ?? upper.match(/BR[ÜU]T\s*KG\s*[:：]?\s*([0-9][0-9.\s,]*)/)?.[1]
+    );
+
+  const netKg =
+    invoice.netKg
+    ?? parseTrNoteNumber(
+      upper.match(/TOPLAM\s+NET\s+A[ĞG]IRLIK\s*[:：]?\s*([0-9][0-9.\s,]*)/)?.[1]
+      ?? upper.match(/NET\s*KG\s*[:：]?\s*([0-9][0-9.\s,]*)/)?.[1]
+    );
+
+  let packageType = invoice.packageType;
+  if (!packageType) {
+    const kapWord = upper.match(/TOPLAM\s+KAP\s*[:：]?\s*[0-9][0-9.\s,]*\s*([A-ZÇĞİÖŞÜ]+)/)?.[1]
+      ?? upper.match(/KAP\s+ADED[İI]\s*[:：]?\s*[0-9][0-9.\s,]*\s*([A-ZÇĞİÖŞÜ]+)/)?.[1];
+    if (kapWord && !["KG", "KGM", "EUR", "USD", "TL"].includes(kapWord)) {
+      packageType = kapWord === "PALET" ? "PALET" : kapWord;
+    }
+  }
+
+  const paymentType =
+    invoice.paymentType
+    ?? text.match(/ÖDEME\s+ŞEKL[İI]\s*[:：]\s*([A-ZÇĞİÖŞÜa-zçğıöşü0-9 /._-]{2,60}?)(?=\s*-{3,}|\s+BANKA\b|\s+TA[ŞS]IMA\b|\s*$)/i)?.[1]?.trim()
+    ?? upper.match(/ODEME\s+SEKLI\s*[:：]\s*([A-Z0-9 /._-]{2,60}?)(?=\s*-{3,}|\s+BANKA\b|\s*$)/)?.[1]?.trim();
+
+  // Yapısal TransportModeCode varsa koru; yoksa nottan doldur.
+  const transportMode =
+    invoice.transportMode
+    ?? text.match(/TA[ŞS]IMA\s+ŞEKL[İI]\s*[:：]\s*([A-ZÇĞİÖŞÜa-zçğıöşü0-9 /._-]{2,40}?)(?=\s*-{3,}|\s+BANKA\b|\s+ÖDEME\b|\s*$)/i)?.[1]?.trim();
+
+  const bankInfo =
+    invoice.bankInfo
+    ?? text.match(/BANKA\s*[:：]\s*([^|]+?)(?=\s+ÖDEME\b|\s+ODEME\b|\s+TA[ŞS]IMA\b|\s*-{3,}|\s*$)/i)?.[1]?.trim();
+
+  let deliveryTerm = invoice.deliveryTerm;
+  if (!deliveryTerm) {
+    const fromNote = upper.match(/\b(EXW|FCA|FOB|CIF|CFR|CIP|CPT|DAP|DPU|DDP|FAS)\b/)?.[1];
+    if (fromNote) deliveryTerm = fromNote;
+  }
+
+  return {
+    ...invoice,
+    ...(totalPackage != null ? { totalPackage } : {}),
+    ...(grossKg != null ? { grossKg } : {}),
+    ...(netKg != null ? { netKg } : {}),
+    ...(packageType ? { packageType } : {}),
+    ...(paymentType ? { paymentType: paymentType.replace(/\s+/g, " ").trim() } : {}),
+    ...(transportMode ? { transportMode: transportMode.replace(/\s+/g, " ").trim() } : {}),
+    ...(bankInfo ? { bankInfo: bankInfo.replace(/\s+/g, " ").trim() } : {}),
+    ...(deliveryTerm ? { deliveryTerm } : {}),
+  };
+}
+
+/** Menşe + sevkiyat not kurallarını birlikte uygular. */
+export function enrichInvoiceFromNotes(invoice: UblParsedInvoice): UblParsedInvoice {
+  return applyNoteShipmentRules(applyNoteOriginRules(invoice));
+}
+
 const LINE_ORIGIN_RANGE_RE =
   /(\d+)\s*(?:[-–,]\s*(\d+))?\s*(?:\.|\s)?\s*(?:KALEM(?:LER)?|SATIR(?:LAR)?)\s*([A-ZÇĞİÖŞÜa-zçğıöşü\s]+)/gi;
 

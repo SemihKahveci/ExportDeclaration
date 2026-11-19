@@ -1,6 +1,6 @@
 import type { FieldCandidate, FieldCandidateEnvelope } from "../../idp/domain/fieldCandidate.types.js";
 import type { UblParsedInvoice } from "./ublIhracatInvoice.types.js";
-import { applyNoteOriginRules } from "./ublIhracatNoteRules.js";
+import { enrichInvoiceFromNotes } from "./ublIhracatNoteRules.js";
 
 const EXTRACTOR = "ubl-ihracat-xml-v1";
 const SEGMENT_ID = "ubl-xml-1";
@@ -34,7 +34,7 @@ function push(fields: Record<string, FieldCandidate[]>, item: FieldCandidate | u
 
 /** Foundation 6 declarationCandidates için UBL alan adayları. */
 export function buildUblIhracatFieldCandidates(parsed: UblParsedInvoice): FieldCandidateEnvelope {
-  const invoice = applyNoteOriginRules(parsed);
+  const invoice = enrichInvoiceFromNotes(parsed);
   const fields: Record<string, FieldCandidate[]> = {};
 
   push(fields, candidate("invoiceNo", invoice.invoiceNo, "header"));
@@ -42,14 +42,21 @@ export function buildUblIhracatFieldCandidates(parsed: UblParsedInvoice): FieldC
   push(fields, candidate("currency", invoice.currency, "header"));
   push(fields, candidate("totalAmount", invoice.totalAmount, "header"));
   push(fields, candidate("deliveryTerm", invoice.deliveryTerm, "trade"));
-  push(fields, candidate("seller.name", invoice.seller?.name, "party"));
-  push(fields, candidate("seller.taxNo", invoice.seller?.taxNo, "party"));
-  push(fields, candidate("seller.country", invoice.seller?.countryCode, "party"));
-  push(fields, candidate("seller.address", invoice.seller?.address, "party"));
-  push(fields, candidate("buyer.name", invoice.buyer?.name, "party"));
-  push(fields, candidate("buyer.country", invoice.buyer?.countryCode, "party"));
-  push(fields, candidate("buyer.address", invoice.buyer?.address, "party"));
+  push(fields, candidate("paymentType", invoice.paymentType, "trade"));
+  push(fields, candidate("transportMode", invoice.transportMode, "transport"));
+  push(fields, candidate("bankInfo", invoice.bankInfo, "finance"));
+  // Promotion map parties.seller.* / parties.buyer.* bekler (seller.name promote edilmez).
+  push(fields, candidate("parties.seller.name", invoice.seller?.name, "party"));
+  push(fields, candidate("parties.seller.taxNo", invoice.seller?.taxNo, "party"));
+  push(fields, candidate("parties.seller.country", invoice.seller?.countryCode, "party"));
+  push(fields, candidate("parties.seller.address", invoice.seller?.address, "party"));
+  push(fields, candidate("parties.buyer.name", invoice.buyer?.name, "party"));
+  push(fields, candidate("parties.buyer.country", invoice.buyer?.countryCode, "party"));
+  push(fields, candidate("parties.buyer.address", invoice.buyer?.address, "party"));
   push(fields, candidate("packageType", invoice.packageType, "package"));
+  push(fields, candidate("totalPackage", invoice.totalPackage, "package"));
+  push(fields, candidate("grossWeight", invoice.grossKg, "package"));
+  push(fields, candidate("netWeight", invoice.netKg, "package"));
 
   for (const [index, line] of invoice.goodsLines.entries()) {
     const p = `line-${line.lineNo}`;
@@ -70,7 +77,7 @@ export function buildUblIhracatFieldCandidates(parsed: UblParsedInvoice): FieldC
 }
 
 export function ublParsedToExtractedData(parsed: UblParsedInvoice): Record<string, unknown> {
-  const invoice = applyNoteOriginRules(parsed);
+  const invoice = enrichInvoiceFromNotes(parsed);
   return {
     header: {
       invoiceNo: invoice.invoiceNo,
@@ -84,10 +91,19 @@ export function ublParsedToExtractedData(parsed: UblParsedInvoice): Record<strin
     },
     trade: {
       deliveryTerm: invoice.deliveryTerm,
+      paymentType: invoice.paymentType,
     },
-    transport: {},
+    transport: {
+      mode: invoice.transportMode,
+    },
+    finance: {
+      bankInfo: invoice.bankInfo,
+    },
     packageInfo: {
       packageType: invoice.packageType,
+      totalPackage: invoice.totalPackage,
+      grossKg: invoice.grossKg,
+      netKg: invoice.netKg,
     },
     goodsLines: invoice.goodsLines.map((line) => ({
       lineNo: line.lineNo,

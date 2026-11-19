@@ -181,6 +181,10 @@ export function parseUblIhracatInvoiceXml(xml: string): UblParsedInvoice {
   // Prefer Invoice ID from early header (avoid nested Party Identification)
   const earlyId = textOf(headerSlice, "ID");
 
+  // UNECE Rec. 19: 1=deniz, 2=demiryolu, 3=karayolu, 4=hava ...
+  const transportModeCode = textOf(firstBlock(xml, "ShipmentStage") ?? xml, "TransportModeCode");
+  const transportMode = mapTransportModeCode(transportModeCode);
+
   return {
     ...(profileId ? { profileId } : {}),
     invoiceNo: earlyId ?? invoiceNo,
@@ -191,8 +195,24 @@ export function parseUblIhracatInvoiceXml(xml: string): UblParsedInvoice {
     ...(buyer ? { buyer } : {}),
     ...(accountingCustomer ? { accountingCustomer } : {}),
     ...(deliveryTerm ? { deliveryTerm } : {}),
+    ...(transportMode ? { transportMode } : {}),
     invoiceNotes: rootNotes.length ? rootNotes : invoiceNotes.slice(0, 20),
     ...(packageType ? { packageType } : {}),
     goodsLines,
   };
+}
+
+function mapTransportModeCode(code: string | undefined): string | undefined {
+  if (!code) return undefined;
+  const map: Record<string, string> = {
+    "1": "Denizyolu",
+    "2": "Demiryolu",
+    "3": "Karayolu",
+    "4": "Havayolu",
+    "5": "Posta",
+    "6": "Çok modlu",
+    "7": "Sabit taşıma tesisleri",
+    "8": "İç su yolu",
+  };
+  return map[code.trim()] ?? code.trim();
 }

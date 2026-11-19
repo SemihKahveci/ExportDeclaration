@@ -35,5 +35,12 @@ export interface UblParsedInvoice {
   deliveryTerm?: string;
   invoiceNotes: string[];
   packageType?: string;
+  /** Not / yapısal alandan gelen sevkiyat özeti */
+  totalPackage?: number;
+  grossKg?: number;
+  netKg?: number;
+  paymentType?: string;
+  transportMode?: string;
+  bankInfo?: string;
   goodsLines: UblParsedGoodsLine[];
 }

@@ -37,9 +37,11 @@ export const DEFAULT_DECLARATION_FIELD_TARGETS: Readonly<Record<string, string>>
   grossWeight: "packageInfo.grossKg",
   netWeight: "packageInfo.netKg",
   "parties.seller.name": "parties.seller.name",
+  "parties.seller.taxNo": "parties.seller.taxNo",
   "parties.seller.address": "parties.seller.address",
   "parties.seller.country": "parties.seller.country",
   "parties.buyer.name": "parties.buyer.name",
+  "parties.buyer.taxNo": "parties.buyer.taxNo",
   "parties.buyer.address": "parties.buyer.address",
   "parties.buyer.country": "parties.buyer.country"
 };
