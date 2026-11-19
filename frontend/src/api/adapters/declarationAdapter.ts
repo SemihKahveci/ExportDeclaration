@@ -286,9 +286,13 @@ export function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
       brutKg: line.grossKg != null ? line.grossKg.toLocaleString("tr-TR") : "—",
       netKg: weight ? quantity : line.netKg != null ? line.netKg.toLocaleString("tr-TR") : "—",
       kiymet: line.lineTotal != null ? line.lineTotal.toLocaleString("tr-TR") : "—",
+      birimFiyat: line.unitPrice != null ? line.unitPrice.toLocaleString("tr-TR") : "—",
       ticariTanim: line.description,
       miktarBirimi: line.unit,
-      dovizCinsi: norm.header.currency
+      dovizCinsi: norm.header.currency,
+      kapCinsi: line.packageType,
+      imalatci: line.manufacturerNo != null ? String(line.manufacturerNo) : undefined,
+      imalatciTipi: line.manufacturerType,
     };
   });
 }

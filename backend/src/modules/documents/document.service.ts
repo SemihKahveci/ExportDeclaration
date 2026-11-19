@@ -38,13 +38,15 @@ export async function saveUploadedDocument(params: {
       sha256: stored.sha256,
       extractionStatus: "PENDING"
     });
-    // Until segmentation exists, one upload maps to one logical document spanning an unknown page range.
+    // Until segmentation exists, one upload = one logical document (page 1..1).
+    // pageEnd zorunlu: XML worker provenance ve evidence page eşlemesi buna dayanır.
     await LogicalDocumentModel.create({
       companyId,
       declarationId: dec._id,
       uploadedFileId: doc._id,
       type,
       pageStart: 1,
+      pageEnd: 1,
       classificationMethod: "UPLOAD_DECLARED",
       classificationEvidence: ["upload-declared-type"]
     });

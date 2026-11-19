@@ -19,6 +19,14 @@ export interface GoodsLine {
   origin?: string;
   grossKg?: number;
   netKg?: number;
+  /** Kalem bazlı fatura no (çoklu fatura) */
+  invoiceNo?: string;
+  /** UBL ActualPackage / PackagingTypeCode */
+  packageType?: string;
+  /** Evrim imalatçı kart no */
+  manufacturerNo?: number;
+  /** I = TR menşe, T = yabancı menşe */
+  manufacturerType?: "I" | "T" | string;
 }
 
 /** Evrim şeması netleşince doldurulacak başlık alanları (doküman §2: beyan tipi, rejim, gümrük idaresi vb.). */

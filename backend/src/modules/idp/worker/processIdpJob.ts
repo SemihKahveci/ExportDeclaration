@@ -3,6 +3,8 @@ import { ProcessingRunModel } from "../domain/processingRun.model.js";
 import { ProcessingStage, ProcessingStatus } from "../domain/idp.types.js";
 import { UploadedDocumentModel } from "../../documents/document.model.js";
 import { extractFromUploaded } from "../../extraction/extraction.service.js";
+import { extractInvoiceXml } from "../../extraction/extractors/invoiceXml.extractor.js";
+import { LogicalDocumentModel } from "../domain/logicalDocument.model.js";
 import { analyzeUploadedPdf } from "../analyzer/pdfAnalyzer.js";
 import { enrichCanonicalDocumentWithOcr } from "../analyzer/ocrEnricher.js";
 import type { CanonicalDocument } from "../domain/canonicalDocument.types.js";
@@ -232,10 +234,54 @@ export async function processIdpJob(processingRunId: string, options: { allowCom
     }
 
     const isInvoiceDocument = file.type === DocumentType.INVOICE;
+    const isEInvoiceXml = file.type === DocumentType.E_INVOICE_XML;
 
     let extractedData: Record<string, unknown>;
 
-    if (isInvoiceDocument && canonicalDocument && segments?.length && classifications?.length) {
+    if (isEInvoiceXml) {
+      // UBL e-ihracat: Vision/OCR yok. Deterministik parse + Foundation 6 adayları.
+      const xmlExtraction = await stage(
+        "CANDIDATE_EXTRACT",
+        ProcessingStage.EXTRACT_CANDIDATES,
+        () => extractInvoiceXml(file.filePath ?? "")
+      );
+      // Upload anında pageEnd’siz logical doc oluşmuş olabilir; aynı dosya için tek kayda bağla.
+      const logical = await LogicalDocumentModel.findOneAndUpdate(
+        {
+          companyId: run.companyId,
+          declarationId: run.declarationId,
+          uploadedFileId: run.uploadedFileId,
+          pageStart: 1,
+        },
+        {
+          $set: {
+            type: DocumentType.E_INVOICE_XML,
+            pageStart: 1,
+            pageEnd: 1,
+            classificationConfidence: 1,
+            classificationMethod: "UPLOAD_DECLARED",
+            classificationEvidence: ["e-invoice-xml"],
+            sourceProcessingRunId: run._id,
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true, sort: { createdAt: 1 } }
+      );
+      if (logical?._id) {
+        await LogicalDocumentModel.deleteMany({
+          uploadedFileId: run.uploadedFileId,
+          _id: { $ne: logical._id },
+        });
+      }
+      await persistWorkerCandidateExtraction(run, xmlExtraction.candidateExtraction);
+      extractedData = xmlExtraction.data;
+      log("idp.e_invoice_xml.extracted", {
+        jobId: processingRunId,
+        lineCount: Array.isArray((xmlExtraction.data as { goodsLines?: unknown[] }).goodsLines)
+          ? (xmlExtraction.data as { goodsLines: unknown[] }).goodsLines.length
+          : 0,
+        invoiceNo: (xmlExtraction.data as { header?: { invoiceNo?: string } }).header?.invoiceNo,
+      });
+    } else if (isInvoiceDocument && canonicalDocument && segments?.length && classifications?.length) {
       let candidateEnvelope = await stage(
         "CANDIDATE_EXTRACT",
         ProcessingStage.EXTRACT_CANDIDATES,

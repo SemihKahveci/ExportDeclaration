@@ -224,6 +224,20 @@ export function selectDirectSourceEvidenceAuthority(
   const selections: DeclarationCandidateAuthoritySelection[] = [];
 
   /*
+   * e-ihracat UBL XML: yapısal alanlar PDF/Vision üzerinde önceliklidir.
+   * Aynı alanda tek bir ubl-ihracat-xml-v1 adayı varsa doğrudan seçilir.
+   */
+  const xmlSelectedFields = new Set<string>();
+  for (const [field, fieldCandidates] of Object.entries(candidates.fields)) {
+    const xml = fieldCandidates.filter((candidate) =>
+      candidate.extractor === "ubl-ihracat-xml-v1" || candidate.candidateId.startsWith("ubl-xml:")
+    );
+    if (xml.length !== 1) continue;
+    selections.push({ field, candidateId: xml[0]!.candidateId, source: "DIRECT_SOURCE_EVIDENCE" });
+    xmlSelectedFields.add(field);
+  }
+
+  /*
    * Commercial monetary fields have a deliberately role-bound native-text
    * candidate produced by invoiceCommercialTermsCandidateDiscovery.  Do not
    * let an older generic native candidate make that evidence "ambiguous": the
@@ -242,7 +256,7 @@ export function selectDirectSourceEvidenceAuthority(
     insurance: "finance-insurance:f6-insurance",
     bankInfo: "finance-bank-info:f6-bankInfo"
   };
-  const roleBoundFields = new Set<string>();
+  const roleBoundFields = new Set<string>(xmlSelectedFields);
   // Each invoice keeps its own goods total and weight. The declaration total is
   // their sum, already computed only when every invoice agreed internally and
   // the money currencies match. One invoice's number must not stand for the rest.

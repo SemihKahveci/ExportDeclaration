@@ -90,6 +90,7 @@ export const FIELD_SOURCE_AUTHORITY: Record<string, DeclarationFieldSourceAuthor
   'Net Kilo': D(),
 
   'Kalem No': D(),
+  'Fatura No': D(),
   'Malzeme No': D(),
   'GTİP No': D(),
   'Ticari Tanım': D(),
@@ -97,9 +98,13 @@ export const FIELD_SOURCE_AUTHORITY: Record<string, DeclarationFieldSourceAuthor
   'Mal Tanımı': D(),
   'Miktar': D(),
   'Miktar Birimi': D(),
+  'Birim Fiyat': D(),
   'Kalem Menşe': D(),
+  'Kap Cinsi': D(),
   'Kalem Brüt KG': D('DIRECT', 'Fatura toplam ağırlığı kaleme kopyalanmaz.'),
   'Kalem Net KG': D('DIRECT', 'Fatura toplam ağırlığı kaleme kopyalanmaz.'),
+  'İmalatçı': D(),
+  'İmalatçı Tipi': D(),
   'Kalem Kıymet': E('Kalem fiyat authority iş alanı dokümanında Evrim olarak tanımlı; IDP satır toplamı ayrı evidence olarak kalabilir.'),
   'Kalem Döviz Cinsi': D(),
 

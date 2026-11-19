@@ -114,17 +114,25 @@ async function persistLineItems(declarationId: string, items: BeyannameLineItem[
     const grossKg = parseTrNumber(item.brutKg);
     const netKg = parseTrNumber(item.netKg);
     const lineTotal = parseTrNumber(item.kiymet);
+    const unitPrice = parseTrNumber(item.birimFiyat);
+    const packageType = optionalText(item.kapCinsi);
+    const manufacturerType = optionalText(item.imalatciTipi);
+    const manufacturerNo = parseTrNumber(item.imalatci);
     if (hsCode) line.hsCode = hsCode;
     if (productCode) line.productCode = productCode;
     if (invoiceNo) line.invoiceNo = invoiceNo;
     if (description) line.description = description;
     if (quantity != null) line.quantity = quantity;
     if (unit) line.unit = unit;
-    if (previous?.unitPrice != null) line.unitPrice = previous.unitPrice;
+    if (unitPrice != null) line.unitPrice = unitPrice;
+    else if (previous?.unitPrice != null) line.unitPrice = previous.unitPrice;
     if (lineTotal != null) line.lineTotal = lineTotal;
     if (origin) line.origin = origin;
     if (grossKg != null) line.grossKg = grossKg;
     if (netKg != null) line.netKg = netKg;
+    if (packageType) line.packageType = packageType;
+    if (manufacturerType) line.manufacturerType = manufacturerType;
+    if (manufacturerNo != null) line.manufacturerNo = Math.round(manufacturerNo);
     return line;
   });
   await patchDeclaration(declarationId, {
@@ -275,13 +283,14 @@ function GroupSection({
     'Fatura No': Boolean(lineItems?.some((item) => hasLineValue(item.faturaNo))),
     'GTİP No': Boolean(lineItems?.some((item) => hasLineValue(item.gtip))),
     'Ticari Tanım': Boolean(lineItems?.some((item) => hasLineValue(item.ticariTanim))),
-    'Eşyanın Cinsi': Boolean(lineItems?.some((item) => hasLineValue(item.description))),
-    'Mal Tanımı': Boolean(lineItems?.some((item) => hasLineValue(item.description))),
     'Miktar': Boolean(lineItems?.some((item) => hasLineValue(item.quantity))),
     'Miktar Birimi': Boolean(lineItems?.some((item) => hasLineValue(item.miktarBirimi))),
+    'Birim Fiyat': Boolean(lineItems?.some((item) => hasLineValue(item.birimFiyat))),
     'Kalem Menşe': Boolean(lineItems?.some((item) => hasLineValue(item.mense))),
-    'Kalem Brüt KG': Boolean(lineItems?.some((item) => hasLineValue(item.brutKg))),
+    'Kap Cinsi': Boolean(lineItems?.some((item) => hasLineValue(item.kapCinsi))),
     'Kalem Net KG': Boolean(lineItems?.some((item) => hasLineValue(item.netKg))),
+    'İmalatçı': Boolean(lineItems?.some((item) => hasLineValue(item.imalatci))),
+    'İmalatçı Tipi': Boolean(lineItems?.some((item) => hasLineValue(item.imalatciTipi))),
     'Kalem Kıymet': Boolean(lineItems?.some((item) => hasLineValue(item.kiymet))),
     'Kalem Döviz Cinsi': Boolean(lineItems?.some((item) => hasLineValue(item.dovizCinsi))),
   };
@@ -338,8 +347,8 @@ function GroupSection({
                   <tr className="bg-surface-2 border-b border-line">
                     {[
                       'Kalem No', 'Fatura No', 'Malzeme No', 'GTİP No', 'Ticari Tanım',
-                      'Eşyanın Cinsi', 'Miktar', 'Miktar Birimi', 'Menşe',
-                      'Brüt KG', 'Net KG', 'Kıymet', 'Döviz Cinsi',
+                      'Miktar', 'Birim', 'Birim Fiyat', 'Kıymet', 'Menşe',
+                      'Kap Cinsi', 'Net KG', 'İmalatçı', 'İmalatçı Tipi', 'Döviz',
                     ].map((col) => (
                       <th
                         key={col}
@@ -393,13 +402,15 @@ function GroupSection({
                         {cell(item.malzemeNo, (text) => ({ malzemeNo: text }))}
                         {cell(item.gtip, (text) => ({ gtip: text }), 'gtip')}
                         {cell(item.ticariTanim, (text) => ({ ticariTanim: text, description: text }), 'wide')}
-                        {cell(item.description, (text) => ({ description: text, ticariTanim: text }), 'wide')}
                         {cell(item.quantity, (text) => ({ quantity: text }))}
                         {cell(item.miktarBirimi, (text) => ({ miktarBirimi: text }))}
-                        {cell(item.mense, (text) => ({ mense: text }))}
-                        {cell(item.brutKg, (text) => ({ brutKg: text }))}
-                        {cell(item.netKg, (text) => ({ netKg: text }))}
+                        {cell(item.birimFiyat, (text) => ({ birimFiyat: text }))}
                         {cell(item.kiymet, (text) => ({ kiymet: text }))}
+                        {cell(item.mense, (text) => ({ mense: text }))}
+                        {cell(item.kapCinsi, (text) => ({ kapCinsi: text }))}
+                        {cell(item.netKg, (text) => ({ netKg: text }))}
+                        {cell(item.imalatci, (text) => ({ imalatci: text }))}
+                        {cell(item.imalatciTipi, (text) => ({ imalatciTipi: text }))}
                         {cell(item.dovizCinsi, (text) => ({ dovizCinsi: text }))}
                       </tr>
                     );

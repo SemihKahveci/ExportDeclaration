@@ -137,6 +137,7 @@ export async function saveWritingDraft(
   next.goodsLines = applyWeightQuantityList(lineItems).map((item, index) => {
     const previous = norm.goodsLines[index];
     const quantity = parseTrNumber(item.quantity);
+    const manufacturerNo = parseTrNumber(item.imalatci);
     const line = {
       lineNo: Number.isFinite(Number(item.lineNo)) && Number(item.lineNo) > 0 ? Number(item.lineNo) : index + 1,
       hsCode: editableText(item.gtip) || undefined,
@@ -145,11 +146,14 @@ export async function saveWritingDraft(
       description: editableText(item.ticariTanim) || editableText(item.description) || undefined,
       quantity,
       unit: editableText(item.miktarBirimi) || undefined,
-      unitPrice: previous?.unitPrice,
+      unitPrice: parseTrNumber(item.birimFiyat) ?? previous?.unitPrice,
       lineTotal: parseTrNumber(item.kiymet),
       origin: editableText(item.mense) || undefined,
       grossKg: parseTrNumber(item.brutKg),
       netKg: parseTrNumber(item.netKg),
+      packageType: editableText(item.kapCinsi) || undefined,
+      manufacturerNo: manufacturerNo != null ? Math.round(manufacturerNo) : previous?.manufacturerNo,
+      manufacturerType: editableText(item.imalatciTipi) || previous?.manufacturerType,
     };
     return line;
   });

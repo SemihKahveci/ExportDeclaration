@@ -38,6 +38,9 @@ export interface GoodsLine {
   grossKg?: number;
   netKg?: number;
   invoiceNo?: string;
+  packageType?: string;
+  manufacturerNo?: number;
+  manufacturerType?: string;
 }
 
 export interface NormalizedDeclaration {

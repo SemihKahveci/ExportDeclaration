@@ -1,33 +1,50 @@
 import * as XLSX from "xlsx";
-import { mapEvrimPackageType, mapEvrimQuantityUnit } from "../export-code-tables/exportCodeTables.js";
+import { mapEvrimCountryNo, isTurkeyOrigin } from "../export-code-tables/evrimCountryCodes.js";
+import { mapEvrimIhracatQuantityUnit, mapEvrimPackageType } from "../export-code-tables/exportCodeTables.js";
 import type { ExportDeclarationContract } from "../export-contract/exportDeclarationContract.types.js";
-import type { NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
+import type { GoodsLine, NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
 
 /**
- * Column letters are the İhracat Excel statü grid. The workbook does not
- * print those headings: the first row is the first goods line. A cell with
- * no parsed value stays blank.
+ * Evrim ihracat Excel aktarımı (2026-11 paket).
+ * Başlık yok; A–AC kolon sırası `ornek-VED2026000000308-basarili-yukleme.xlsx` ile aynı.
+ *
+ * A PartNo="." · B Ticari Tanım · C Miktar · D Birim · E/F FOB · G/H CIF ·
+ * I Menşe(3 hane metin) · J Kap Adedi(yazılmaz) · K Kap Cinsi · L GTİP ·
+ * M BrutKG(boş) · N NetKG · O Bedelsiz · P Imalatci · Q MalKodu ·
+ * R/S boş · T Imalatçı Tipi · U boş · V İhr.FaturaNo · W Kap Marka(yazılmaz) ·
+ * X Fatura Miktarı(döviz, 1.satır) · Y Fatura Miktar Cinsi(tutar, 1.satır) ·
+ * Z boş · AA Fatura Tarihi(yazılmaz) · AB Fatura No · AC boş
  */
-const COLUMN = {
-  partNo: "A",
-  description: "B",
-  quantity: "C",
-  unit: "D",
-  fobUnitPrice: "E",
-  fobTotal: "F",
-  cifUnitPrice: "G",
-  cifTotal: "H",
-  origin: "I",
-  packageCount: "J",
-  packageType: "K",
-  hsCode: "L",
-  grossKg: "M",
-  netKg: "N",
-  exemption: "V",
-  productCode: "Z",
-  brand: "AN",
-  invoiceDate: "AV",
-  invoiceNo: "AW"
+export const EVRIM_IHRACAT_EXCEL_COLUMNS = {
+  partNo: 0,
+  description: 1,
+  quantity: 2,
+  unit: 3,
+  fobUnitPrice: 4,
+  fobTotal: 5,
+  cifUnitPrice: 6,
+  cifTotal: 7,
+  origin: 8,
+  packageCount: 9,
+  packageType: 10,
+  hsCode: 11,
+  grossKg: 12,
+  netKg: 13,
+  exemption: 14,
+  manufacturerNo: 15,
+  productCode: 16,
+  engDescription: 17,
+  styleOrder: 18,
+  manufacturerType: 19,
+  packageNo: 20,
+  exportInvoiceNo: 21,
+  packageBrand: 22,
+  invoiceCurrency: 23,
+  invoiceTotal: 24,
+  referenceNo: 25,
+  invoiceDate: 26,
+  invoiceNo: 27,
+  lineNote: 28,
 } as const;
 
 export interface DeclarationWorkbook {
@@ -35,78 +52,131 @@ export interface DeclarationWorkbook {
   rowCount: number;
 }
 
-function columnIndex(column: string): number {
-  let index = 0;
-  for (const char of column) index = index * 26 + char.charCodeAt(0) - 64;
-  return index - 1;
+export interface DeclarationWorkbookOptions {
+  /** Kullanıcının seçtiği gönderici Evrim ID — imalatçı fallback */
+  senderEvrimId?: number;
 }
 
-function put(sheet: XLSX.WorkSheet, column: string, row: number, value: string | number | Date | undefined): void {
-  if (value === undefined || value === null || value === "") return;
-  const address = XLSX.utils.encode_cell({ c: columnIndex(column), r: row });
-  if (value instanceof Date) {
-    sheet[address] = { t: "d", v: value, z: "dd.mm.yyyy" };
-    return;
+type PriceLane = "fob" | "cif";
+
+function deliveryLane(deliveryTerm: string | undefined): PriceLane {
+  const first = (deliveryTerm ?? "").trim().charAt(0).toLocaleUpperCase("tr-TR");
+  if (first === "C" || first === "D") return "cif";
+  return "fob";
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function originCode(line: GoodsLine, fallback?: string): string {
+  return mapEvrimCountryNo(line.origin) ?? mapEvrimCountryNo(fallback) ?? (line.origin?.trim() || "");
+}
+
+function manufacturerTypeFor(originRaw: string | undefined): "I" | "T" {
+  return isTurkeyOrigin(originRaw) ? "I" : "T";
+}
+
+function linePackageType(line: GoodsLine, packageInfoType?: string): string {
+  const raw = (line as GoodsLine & { packageType?: string }).packageType ?? packageInfoType ?? "";
+  return raw ? mapEvrimPackageType(raw) : "";
+}
+
+function lineManufacturerNo(line: GoodsLine, senderEvrimId?: number): number | "" {
+  const explicit = (line as GoodsLine & { manufacturerNo?: number }).manufacturerNo;
+  if (typeof explicit === "number" && Number.isFinite(explicit)) return explicit;
+  if (typeof senderEvrimId === "number" && Number.isFinite(senderEvrimId)) return senderEvrimId;
+  return "";
+}
+
+function lineManufacturerType(line: GoodsLine): "I" | "T" | string {
+  const explicit = (line as GoodsLine & { manufacturerType?: string }).manufacturerType;
+  if (explicit === "I" || explicit === "T") return explicit;
+  return manufacturerTypeFor(line.origin);
+}
+
+function gtipValue(hsCode: string | undefined): number | string {
+  const digits = (hsCode ?? "").replace(/\D/g, "");
+  if (/^\d{12}$/.test(digits)) {
+    const n = Number(digits);
+    return Number.isSafeInteger(n) ? n : digits;
   }
-  if (typeof value === "number") {
-    sheet[address] = { t: "n", v: value };
-    return;
+  return hsCode?.trim() || "";
+}
+
+function buildRow(
+  line: GoodsLine,
+  index: number,
+  normalized: NormalizedDeclaration,
+  options: DeclarationWorkbookOptions
+): Array<string | number> {
+  const lane = deliveryLane(normalized.trade?.deliveryTerm);
+  const unitPrice = asNumber(line.unitPrice);
+  const lineTotal = asNumber(line.lineTotal);
+  const quantity = asNumber(line.quantity);
+  const unit = line.unit?.trim() ? mapEvrimIhracatQuantityUnit(line.unit) : "";
+  const origin = originCode(line, normalized.trade?.origin);
+  const netFromLine = asNumber(line.netKg);
+  const netKg = netFromLine ?? (unit.toUpperCase() === "KGM" && quantity != null ? quantity : undefined);
+  const invoiceNo = (line as GoodsLine & { invoiceNo?: string }).invoiceNo?.trim()
+    || normalized.header?.invoiceNo?.trim()
+    || "";
+
+  const row: Array<string | number> = Array.from({ length: 29 }, () => "");
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.partNo] = ".";
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.description] = line.description?.trim() || "";
+  if (quantity != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.quantity] = quantity;
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.unit] = unit;
+  if (lane === "fob") {
+    if (unitPrice != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.fobUnitPrice] = unitPrice;
+    if (lineTotal != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.fobTotal] = lineTotal;
+  } else {
+    if (unitPrice != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.cifUnitPrice] = unitPrice;
+    if (lineTotal != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.cifTotal] = lineTotal;
   }
-  sheet[address] = { t: "s", v: value };
-}
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.origin] = origin;
+  // J Kap Adedi: paket kuralı — yazılmaz
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.packageType] = linePackageType(line, normalized.packageInfo?.packageType);
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.hsCode] = gtipValue(line.hsCode);
+  // M BrutKG şimdilik boş
+  if (netKg != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.netKg] = netKg;
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.manufacturerNo] = lineManufacturerNo(line, options.senderEvrimId);
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.productCode] = line.productCode?.trim() || "";
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.manufacturerType] = lineManufacturerType(line);
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.exportInvoiceNo] = invoiceNo;
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.invoiceNo] = invoiceNo;
 
-function invoiceDate(value: string | undefined): Date | undefined {
-  if (!value) return undefined;
-  const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
+  if (index === 0) {
+    row[EVRIM_IHRACAT_EXCEL_COLUMNS.invoiceCurrency] = normalized.header?.currency?.trim().toUpperCase() || "";
+    const total = asNumber(normalized.header?.totalAmount);
+    if (total != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.invoiceTotal] = total;
+  }
 
-function isCif(deliveryTerm: string | undefined): boolean {
-  return (deliveryTerm ?? "").toLocaleUpperCase("tr-TR").includes("CIF");
+  return row;
 }
 
 export function buildDeclarationWorkbook(
   normalized: NormalizedDeclaration,
-  contract: ExportDeclarationContract
+  _contract: ExportDeclarationContract,
+  options: DeclarationWorkbookOptions = {}
 ): DeclarationWorkbook {
-  const sheet: XLSX.WorkSheet = {};
   const lines = normalized.goodsLines ?? [];
-  const cif = isCif(normalized.trade?.deliveryTerm);
-  const packageInfo = normalized.packageInfo ?? {};
+  const rows = lines.map((line, index) => buildRow(line, index, normalized, options));
 
-  lines.forEach((source, index) => {
-    const extra = contract.lines[index];
-    put(sheet, COLUMN.partNo, index, ".");
-    put(sheet, COLUMN.description, index, source.description?.trim());
-    if (typeof source.quantity === "number") put(sheet, COLUMN.quantity, index, source.quantity);
-    if (source.unit?.trim()) put(sheet, COLUMN.unit, index, mapEvrimQuantityUnit(source.unit));
-    if (typeof source.unitPrice === "number") put(sheet, cif ? COLUMN.cifUnitPrice : COLUMN.fobUnitPrice, index, source.unitPrice);
-    if (typeof source.lineTotal === "number") put(sheet, cif ? COLUMN.cifTotal : COLUMN.fobTotal, index, source.lineTotal);
-    put(sheet, COLUMN.origin, index, extra?.origin?.trim() || source.origin?.trim());
-    put(sheet, COLUMN.hsCode, index, source.hsCode?.trim());
-    put(sheet, COLUMN.productCode, index, source.productCode?.trim());
-    put(sheet, COLUMN.exemption, index, extra?.exemptionCode?.trim());
-    put(sheet, COLUMN.brand, index, extra?.brand?.trim());
-    if (index === 0) {
-      if (typeof packageInfo.totalPackage === "number") put(sheet, COLUMN.packageCount, index, packageInfo.totalPackage);
-      if (packageInfo.packageType?.trim()) put(sheet, COLUMN.packageType, index, mapEvrimPackageType(packageInfo.packageType));
-      if (typeof packageInfo.grossKg === "number") put(sheet, COLUMN.grossKg, index, packageInfo.grossKg);
-      if (typeof packageInfo.netKg === "number") put(sheet, COLUMN.netKg, index, packageInfo.netKg);
-      put(sheet, COLUMN.invoiceNo, index, normalized.header?.invoiceNo?.trim());
-      put(sheet, COLUMN.invoiceDate, index, invoiceDate(normalized.header?.invoiceDate));
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  // Menşe metin kalsın (001 → Excel "1" olmasın)
+  for (let r = 0; r < rows.length; r++) {
+    const addr = XLSX.utils.encode_cell({ c: EVRIM_IHRACAT_EXCEL_COLUMNS.origin, r });
+    if (sheet[addr] && typeof sheet[addr].v === "string") {
+      sheet[addr].t = "s";
+      sheet[addr].z = "@";
     }
-  });
-
-  const lastRow = Math.max(lines.length - 1, 0);
-  sheet["!ref"] = XLSX.utils.encode_range({
-    s: { c: 0, r: 0 },
-    e: { c: columnIndex(COLUMN.invoiceNo), r: lastRow }
-  });
+  }
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Sayfa1");
   return {
-    buffer: Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx", cellDates: true })),
-    rowCount: lines.length
+    buffer: Buffer.from(XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })),
+    rowCount: lines.length,
   };
 }

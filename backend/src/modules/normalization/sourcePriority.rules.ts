@@ -1,40 +1,40 @@
 import type { DocumentTypeValue } from "../../common/enums/documentType.js";
 
 /**
- * Teknik doküman §5: önce fatura (INVOICE / E_INVOICE_XML), sonra ihracat faturası (EXPORT_INVOICE),
- * kap/kilo ve teslim/ödeme için çeki listesi / proforma / konşimento talimatı sırası dokümandaki tabloyla uyumlu.
+ * e-ihracat paketi: XML varsa çakışmada XML kazanır; yoksa PDF fatura.
+ * Sonra ihracat faturası / çeki listesi / proforma sırası.
  */
 export const sourcePriorityRules: Record<string, DocumentTypeValue[]> = {
-  "header.invoiceNo": ["INVOICE", "E_INVOICE_XML"],
-  "header.invoiceDate": ["INVOICE", "E_INVOICE_XML"],
-  "header.currency": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "header.totalAmount": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
+  "header.invoiceNo": ["E_INVOICE_XML", "INVOICE"],
+  "header.invoiceDate": ["E_INVOICE_XML", "INVOICE"],
+  "header.currency": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "header.totalAmount": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
 
-  "parties.seller": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.seller.name": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.seller.taxNo": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.seller.address": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.seller.country": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
+  "parties.seller": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.seller.name": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.seller.taxNo": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.seller.address": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.seller.country": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
 
-  "parties.buyer": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.buyer.name": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.buyer.taxNo": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.buyer.address": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
-  "parties.buyer.country": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE"],
+  "parties.buyer": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.buyer.name": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.buyer.taxNo": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.buyer.address": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
+  "parties.buyer.country": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"],
 
-  "trade.deliveryTerm": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PROFORMA"],
-  "transport.mode": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "BILL_OF_LADING_INSTRUCTION"],
+  "trade.deliveryTerm": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PROFORMA"],
+  "transport.mode": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "BILL_OF_LADING_INSTRUCTION"],
 
-  "packageInfo.totalPackage": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PACKING_LIST"],
-  "packageInfo.packageType": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PACKING_LIST"],
-  "packageInfo.grossKg": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PACKING_LIST"],
-  "packageInfo.netKg": ["INVOICE", "E_INVOICE_XML", "EXPORT_INVOICE", "PACKING_LIST"]
+  "packageInfo.totalPackage": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"],
+  "packageInfo.packageType": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"],
+  "packageInfo.grossKg": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"],
+  "packageInfo.netKg": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"]
 };
 
-/** Kalem satırları: doküman — önce fatura, sonra invoice (EXPORT_INVOICE). */
+/** Kalem satırları: e-fatura XML > PDF fatura > EXPORT_INVOICE. */
 export const goodsLineSourcePriority: DocumentTypeValue[] = [
-  "INVOICE",
   "E_INVOICE_XML",
+  "INVOICE",
   "EXPORT_INVOICE",
   "PROFORMA"
 ];

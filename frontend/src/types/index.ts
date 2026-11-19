@@ -516,6 +516,11 @@ export interface BeyannameLineItem {
   ticariTanim?: string;
   miktarBirimi?: string;
   dovizCinsi?: string;
+  /** Birim fiyat (FOB veya CIF kolonuna teslim şekline göre yazılır) */
+  birimFiyat?: string;
+  kapCinsi?: string;
+  imalatci?: string;
+  imalatciTipi?: string;
 }
 
 export interface BeyannameWritingField {
