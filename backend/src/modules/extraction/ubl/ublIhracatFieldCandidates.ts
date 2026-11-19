@@ -1,9 +1,14 @@
 import type { FieldCandidate, FieldCandidateEnvelope } from "../../idp/domain/fieldCandidate.types.js";
 import type { UblParsedInvoice } from "./ublIhracatInvoice.types.js";
-import { enrichInvoiceFromNotes } from "./ublIhracatNoteRules.js";
+import { applyManufacturerRules, enrichInvoiceFromNotes, type VknManufacturerLookup } from "./ublIhracatNoteRules.js";
 
 const EXTRACTOR = "ubl-ihracat-xml-v1";
 const SEGMENT_ID = "ubl-xml-1";
+
+export type UblFieldCandidateOptions = {
+  senderEvrimId?: number;
+  lookupManufacturer?: VknManufacturerLookup;
+};
 
 function candidate(
   field: string,
@@ -33,8 +38,12 @@ function push(fields: Record<string, FieldCandidate[]>, item: FieldCandidate | u
 }
 
 /** Foundation 6 declarationCandidates için UBL alan adayları. */
-export function buildUblIhracatFieldCandidates(parsed: UblParsedInvoice): FieldCandidateEnvelope {
+export function buildUblIhracatFieldCandidates(
+  parsed: UblParsedInvoice,
+  options: UblFieldCandidateOptions = {}
+): FieldCandidateEnvelope {
   const invoice = enrichInvoiceFromNotes(parsed);
+  const lines = applyManufacturerRules(invoice, options);
   const fields: Record<string, FieldCandidate[]> = {};
 
   push(fields, candidate("invoiceNo", invoice.invoiceNo, "header"));
@@ -58,7 +67,7 @@ export function buildUblIhracatFieldCandidates(parsed: UblParsedInvoice): FieldC
   push(fields, candidate("grossWeight", invoice.grossKg, "package"));
   push(fields, candidate("netWeight", invoice.netKg, "package"));
 
-  for (const [index, line] of invoice.goodsLines.entries()) {
+  for (const [index, line] of lines.entries()) {
     const p = `line-${line.lineNo}`;
     push(fields, candidate(`goodsLines.${index}.hsCode`, line.hsCode, p));
     push(fields, candidate(`goodsLines.${index}.productCode`, line.productCode, p));
@@ -70,14 +79,20 @@ export function buildUblIhracatFieldCandidates(parsed: UblParsedInvoice): FieldC
     push(fields, candidate(`goodsLines.${index}.origin`, line.origin, p));
     push(fields, candidate(`goodsLines.${index}.netKg`, line.netKg, p));
     push(fields, candidate(`goodsLines.${index}.packageType`, line.packageType, p));
+    push(fields, candidate(`goodsLines.${index}.manufacturerNo`, line.manufacturerNo, p));
+    push(fields, candidate(`goodsLines.${index}.manufacturerType`, line.manufacturerType, p));
     push(fields, candidate(`goodsLines.${index}.invoiceNo`, invoice.invoiceNo, p));
   }
 
   return { version: "1", fields };
 }
 
-export function ublParsedToExtractedData(parsed: UblParsedInvoice): Record<string, unknown> {
+export function ublParsedToExtractedData(
+  parsed: UblParsedInvoice,
+  options: UblFieldCandidateOptions = {}
+): Record<string, unknown> {
   const invoice = enrichInvoiceFromNotes(parsed);
+  const lines = applyManufacturerRules(invoice, options);
   return {
     header: {
       invoiceNo: invoice.invoiceNo,
@@ -105,7 +120,7 @@ export function ublParsedToExtractedData(parsed: UblParsedInvoice): Record<strin
       grossKg: invoice.grossKg,
       netKg: invoice.netKg,
     },
-    goodsLines: invoice.goodsLines.map((line) => ({
+    goodsLines: lines.map((line) => ({
       lineNo: line.lineNo,
       hsCode: line.hsCode,
       productCode: line.productCode,
@@ -117,6 +132,8 @@ export function ublParsedToExtractedData(parsed: UblParsedInvoice): Record<strin
       origin: line.origin,
       netKg: line.netKg,
       packageType: line.packageType,
+      manufacturerNo: line.manufacturerNo,
+      manufacturerType: line.manufacturerType,
       invoiceNo: invoice.invoiceNo,
     })),
     ublProfileId: invoice.profileId,

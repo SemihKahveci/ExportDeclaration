@@ -293,6 +293,9 @@ const DeclarationSchema = new Schema(
           origin: String,
           grossKg: Number,
           netKg: Number,
+          packageType: String,
+          manufacturerNo: Number,
+          manufacturerType: String,
           invoiceNo: String
         }
       ]
