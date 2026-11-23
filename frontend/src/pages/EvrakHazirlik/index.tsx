@@ -3,9 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, CheckSquare, Bell, Loader2, Info, Upload } from 'lucide-react';
 import type { EvrakFile, EvrakDocRow, EvrakConflictRow, DocPreviewData, EvrakPageStats } from '../../types';
 import { evrakService } from '../../services/documents';
-import { transitionPreparationWorkflow } from '../../api/declarationApi';
-import { ApiError, apiErrorCode } from '../../api/apiClient';
-import { GtipChoiceModal } from '../../components/workflow/WorkflowDialogs';
+import {
+  downloadDeclarationGtipFaultsCsv,
+  getDeclarationGtipFaults,
+  transitionPreparationWorkflow,
+} from '../../api/declarationApi';
+import { ApiError, apiErrorCode, apiErrorDetails } from '../../api/apiClient';
+import { GtipChoiceModal, GtipFaultListModal, type GtipFaultRow } from '../../components/workflow/WorkflowDialogs';
 import StatCard from '../../components/ui/StatCard';
 import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Pill from '../../components/ui/Pill';
@@ -155,6 +159,8 @@ export default function EvrakHazirlikPage() {
   const [transitioning,setTransitioning]=useState(false);
   const [gtipOpen, setGtipOpen] = useState(false);
   const [gtipOverride, setGtipOverride] = useState(false);
+  const [gtipFaultOpen, setGtipFaultOpen] = useState(false);
+  const [gtipFaults, setGtipFaults] = useState<GtipFaultRow[]>([]);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [docRefresh, setDocRefresh] = useState(0);
@@ -289,9 +295,38 @@ export default function EvrakHazirlikPage() {
         setGtipOpen(true);
         return;
       }
+      if (apiErrorCode(error) === 'GTIP_NOT_IN_CUSTOMER_DB') {
+        const details = apiErrorDetails<{ faults?: GtipFaultRow[] }>(error);
+        if (details?.faults?.length) {
+          setGtipFaults(details.faults);
+          setGtipFaultOpen(true);
+        } else {
+          try {
+            setGtipFaults(await getDeclarationGtipFaults(selectedFile.id));
+            setGtipFaultOpen(true);
+          } catch {
+            /* toast below */
+          }
+        }
+      }
       const message = error instanceof ApiError ? error.message : 'Beyanname yazımı başlatılamadı. Evrak durumunu ve yetkinizi kontrol edin.';
       toast(message, { duration: 7000 });
     } finally { setTransitioning(false); }
+  }
+
+  async function downloadGtipFaultCsv() {
+    if (!selectedFile) return;
+    try {
+      const { blob, filename } = await downloadDeclarationGtipFaultsCsv(selectedFile.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast(error instanceof ApiError ? error.message : 'CSV indirilemedi', { duration: 7000 });
+    }
   }
 
   return (
@@ -494,6 +529,12 @@ export default function EvrakHazirlikPage() {
         onClose={() => setGtipOpen(false)}
         onAskCustomer={() => void startDeclaration('yazim', gtipOverride, 'ask-customer')}
         onContinue={() => void startDeclaration('yazim', gtipOverride, 'continue')}
+      />
+      <GtipFaultListModal
+        open={gtipFaultOpen}
+        onClose={() => setGtipFaultOpen(false)}
+        faults={gtipFaults}
+        onDownload={() => void downloadGtipFaultCsv()}
       />
     </div>
   );

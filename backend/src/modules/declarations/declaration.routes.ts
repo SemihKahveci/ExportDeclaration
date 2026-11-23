@@ -85,6 +85,11 @@ router.get("/:id/control-provenance",
   asyncHandler(getControlProjection)
 );
 router.get(
+  "/:id/gtip-faults",
+  requireAnyCapability("beyanname.write", "beyanname.view", "gtip_hazirlik.view", "gtip_hazirlik.edit"),
+  asyncHandler(ctrl.getDeclarationGtipFaults)
+);
+router.get(
   "/:id",
   requireAnyCapability(...DECLARATION_READ),
   asyncHandler(ctrl.getDeclarationById)

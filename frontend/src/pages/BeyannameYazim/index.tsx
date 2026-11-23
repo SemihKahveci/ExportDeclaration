@@ -14,12 +14,16 @@ import ControlTab from './ControlTab';
 import ListeView from './ListeView';
 import UploadDrawer from './UploadDrawer';
 import ReminderModal from './ReminderModal';
-import { ApiError, apiErrorCode } from '../../api/apiClient';
+import { ApiError, apiErrorCode, apiErrorDetails } from '../../api/apiClient';
 import Note from '../../components/ui/Note';
-import { useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
+import { GtipFaultListModal, type GtipFaultRow, useHoldStepConfirm } from '../../components/workflow/WorkflowDialogs';
 import { listDocuments, reprocessDocument } from '../../api/documentApi';
 import DocumentEvidenceViewer from '../../components/documents/DocumentEvidenceViewer';
-import { downloadDeclarationExcel } from '../../api/declarationApi';
+import {
+  downloadDeclarationExcel,
+  downloadDeclarationGtipFaultsCsv,
+  getDeclarationGtipFaults,
+} from '../../api/declarationApi';
 import { sendGtipReminder } from '../../api/mailApi';
 import DeclarationSheet, { type DeclarationSheetData } from './DeclarationSheet';
 import Modal from '../../components/ui/Modal';
@@ -73,9 +77,40 @@ export default function BeyannameYazimPage() {
   const [returnNote, setReturnNote] = useState('');
   const [returning, setReturning] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [gtipFaultOpen, setGtipFaultOpen] = useState(false);
+  const [gtipFaults, setGtipFaults] = useState<GtipFaultRow[]>([]);
   const sawRewritePending = useRef(false);
   const saveDraftRef = useRef<(() => Promise<void>) | null>(null);
   const sheetRef = useRef<DeclarationSheetData | null>(null);
+
+  function openGtipFaults(faults: GtipFaultRow[]) {
+    setGtipFaults(faults);
+    setGtipFaultOpen(true);
+  }
+
+  async function loadAndShowGtipFaults(declarationId: string) {
+    try {
+      const faults = await getDeclarationGtipFaults(declarationId);
+      openGtipFaults(faults);
+    } catch (error) {
+      toast(actionError(error, 'GTİP listesi alınamadı'), { duration: 7000 });
+    }
+  }
+
+  async function downloadGtipFaultCsv() {
+    if (!selectedId) return;
+    try {
+      const { blob, filename } = await downloadDeclarationGtipFaultsCsv(selectedId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast(actionError(error, 'CSV indirilemedi'), { duration: 7000 });
+    }
+  }
 
   useEffect(() => {
     Promise.all([
@@ -170,6 +205,9 @@ export default function BeyannameYazimPage() {
     } catch (error) {
       if (apiErrorCode(error) === 'GTIP_NOT_IN_CUSTOMER_DB') {
         await reloadDeclarationData();
+        const details = apiErrorDetails<{ faults?: GtipFaultRow[] }>(error);
+        if (details?.faults?.length) openGtipFaults(details.faults);
+        else await loadAndShowGtipFaults(selected.id);
       }
       toast(actionError(error, 'MT kontrole geçiş yapılamadı'), { duration: 7000 });
     }
@@ -451,19 +489,28 @@ export default function BeyannameYazimPage() {
             actions={
               <div className="flex items-center gap-2">
                 {selected.operationFileStatus === 'gtip-eksik' && (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      void sendGtipReminder(selected.id).then((result) => {
-                        toast(result.to.length > 0 ? `GTİP hatırlatması ${result.to.length} adrese gönderildi` : 'Alıcı bulunamadı');
-                      }).catch((error: unknown) => {
-                        toast(error instanceof ApiError ? error.message : 'GTİP hatırlatması gönderilemedi', { duration: 7000 });
-                      });
-                    }}
-                    writeCap="beyanname.write"
-                  >
-                    Müşteriye hatırlat
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() => void loadAndShowGtipFaults(selected.id)}
+                      writeCaps={['beyanname.view', 'beyanname.write', 'gtip_hazirlik.view']}
+                    >
+                      Eksik GTİP listesi
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        void sendGtipReminder(selected.id).then((result) => {
+                          toast(result.to.length > 0 ? `GTİP hatırlatması ${result.to.length} adrese gönderildi` : 'Alıcı bulunamadı');
+                        }).catch((error: unknown) => {
+                          toast(error instanceof ApiError ? error.message : 'GTİP hatırlatması gönderilemedi', { duration: 7000 });
+                        });
+                      }}
+                      writeCap="beyanname.write"
+                    >
+                      Müşteriye hatırlat
+                    </Button>
+                  </>
                 )}
                 <Pill variant={selected.operationFileStatus === 'ic-kontrol' ? 'accent' : 'warn'}>
                   {selected.durumLabel}
@@ -541,6 +588,12 @@ export default function BeyannameYazimPage() {
           />
         </label>
       </Modal>
+      <GtipFaultListModal
+        open={gtipFaultOpen}
+        onClose={() => setGtipFaultOpen(false)}
+        faults={gtipFaults}
+        onDownload={() => void downloadGtipFaultCsv()}
+      />
       {holdDialog}
     </div>
   );

@@ -80,20 +80,43 @@ export function gtipMatchIsClean(lines: GtipGoodsLine[], records: GtipMaterialRo
   return present.every((line) => lineMatchesRecord(line, records));
 }
 
+export type GtipFaultItem = {
+  lineNo: number;
+  materialNo: string;
+  description: string;
+  invoiceGtip: string;
+};
+
+export function gtipFaultItems(lines: GtipGoodsLine[], records: GtipMaterialRow[]): GtipFaultItem[] {
+  return meaningfulLines(lines)
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => !lineMatchesRecord(line, records))
+    .map(({ line, index }) => ({
+      lineNo: index + 1,
+      materialNo: String(line.productCode ?? "").trim() || "Malzeme no yok",
+      description: String(line.description ?? "").trim() || "Tanım yok",
+      invoiceGtip: String(line.hsCode ?? "").trim() || "GTİP yok",
+    }));
+}
+
 export function gtipFaultCount(lines: GtipGoodsLine[], records: GtipMaterialRow[]): number {
-  return meaningfulLines(lines).filter((line) => !lineMatchesRecord(line, records)).length;
+  return gtipFaultItems(lines, records).length;
 }
 
 export function gtipFaultSummary(lines: GtipGoodsLine[], records: GtipMaterialRow[]): string {
-  return meaningfulLines(lines)
-    .filter((line) => !lineMatchesRecord(line, records))
-    .map((line) => {
-      const material = String(line.productCode ?? "").trim() || "Malzeme no yok";
-      const description = String(line.description ?? "").trim() || "Tanım yok";
-      const gtip = String(line.hsCode ?? "").trim() || "GTİP yok";
-      return `${material} · ${description} · ${gtip}`;
-    })
+  return gtipFaultItems(lines, records)
+    .map((item) => `${item.materialNo} · ${item.description} · ${item.invoiceGtip}`)
     .join(", ");
+}
+
+export function gtipFaultsCsv(items: GtipFaultItem[]): string {
+  const header = "Kalem No;Malzeme No;Ticari Tanım;Fatura GTİP";
+  const rows = items.map((item) =>
+    [item.lineNo, item.materialNo, item.description, item.invoiceGtip]
+      .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+      .join(";")
+  );
+  return [header, ...rows].join("\r\n");
 }
 
 async function holdForGtip(
@@ -123,6 +146,19 @@ async function holdForGtip(
   await declaration.save();
 }
 
+export async function listDeclarationGtipFaults(
+  declaration: GateDeclaration
+): Promise<GtipFaultItem[]> {
+  const operation = declaration.operation;
+  if (!operation) throw new HttpError(409, "Beyanname operasyon bilgisi bulunmuyor.");
+  const customerId = operation.customerId ?? "";
+  const records = await MaterialRecordModel.find({ companyId: declaration.companyId, customerId })
+    .select({ materialNo: 1, gtipNo: 1, status: 1, pendingUpdate: 1 })
+    .lean<GtipMaterialRow[]>();
+  const lines = (declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
+  return gtipFaultItems(lines, records);
+}
+
 export async function applyUserGtipGate(
   declaration: GateDeclaration,
   actorUserId: mongoose.Types.ObjectId,
@@ -136,8 +172,9 @@ export async function applyUserGtipGate(
     .lean<GtipMaterialRow[]>();
   const lines = (declaration.normalizedData as { goodsLines?: GtipGoodsLine[] } | undefined)?.goodsLines ?? [];
   if (!gtipMatchIsClean(lines, records)) {
+    const faults = gtipFaultItems(lines, records);
     await holdForGtip(declaration, actorUserId, GTIP_MISSING_MESSAGE, "gtip-eksik");
-    throw new HttpError(409, GTIP_MISSING_MESSAGE, "GTIP_NOT_IN_CUSTOMER_DB");
+    throw new HttpError(409, GTIP_MISSING_MESSAGE, "GTIP_NOT_IN_CUSTOMER_DB", { faults });
   }
   if (decision === "ask-customer") {
     await holdForGtip(declaration, actorUserId, GTIP_ASKED_ACTIVITY, "evrak-bekleniyor");

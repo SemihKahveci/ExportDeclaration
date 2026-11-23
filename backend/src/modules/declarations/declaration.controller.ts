@@ -26,6 +26,10 @@ import {
   type EvrimExcelExportInput,
   type UblIhracatExportInput
 } from "../declaration-exports/declarationExport.service.js";
+import { DeclarationModel } from "./declaration.model.js";
+import { gtipFaultsCsv, listDeclarationGtipFaults } from "./customerGtip.service.js";
+import { HttpError } from "../../common/middlewares/errorHandler.js";
+import mongoose from "mongoose";
 
 export async function postDeclaration(req: Request, res: Response): Promise<void> {
   const companyId = req.auth!.operationalCompanyId;
@@ -58,6 +62,23 @@ export async function getDeclarationDocumentSummaries(req: Request, res: Respons
 export async function getDeclarationById(req: Request, res: Response): Promise<void> {
   const row = await getDeclaration(req.auth!.operationalCompanyId, req.params.id!);
   res.json({ ok: true, data: row });
+}
+
+export async function getDeclarationGtipFaults(req: Request, res: Response): Promise<void> {
+  const companyId = req.auth!.operationalCompanyId;
+  const id = req.params.id!;
+  if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz beyanname id.");
+  const declaration = await DeclarationModel.findOne({ _id: id, companyId });
+  if (!declaration) throw new HttpError(404, "Beyanname bulunamadı.");
+  const faults = await listDeclarationGtipFaults(declaration);
+  if (String(req.query.format ?? "").toLowerCase() === "csv") {
+    const csv = gtipFaultsCsv(faults);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="gtip-eksik-${id}.csv"`);
+    res.send("\uFEFF" + csv);
+    return;
+  }
+  res.json({ ok: true, data: { faults } });
 }
 
 export async function patchDeclarationById(req: Request, res: Response): Promise<void> {

@@ -25,6 +25,25 @@ export async function getDeclaration(id: string): Promise<Declaration> {
   return apiGetJson<Declaration>(`/api/declarations/${encodeURIComponent(id)}`);
 }
 
+export type DeclarationGtipFault = {
+  lineNo: number;
+  materialNo: string;
+  description: string;
+  invoiceGtip: string;
+};
+
+export async function getDeclarationGtipFaults(id: string): Promise<DeclarationGtipFault[]> {
+  const data = await apiGetJson<{ faults: DeclarationGtipFault[] }>(
+    `/api/declarations/${encodeURIComponent(id)}/gtip-faults`
+  );
+  return data.faults ?? [];
+}
+
+export async function downloadDeclarationGtipFaultsCsv(id: string): Promise<{ blob: Blob; filename: string }> {
+  const blob = await apiGetBlob(`/api/declarations/${encodeURIComponent(id)}/gtip-faults?format=csv`);
+  return { blob, filename: `gtip-eksik-${id}.csv` };
+}
+
 export async function patchDeclaration(
   id: string,
   body: Partial<Pick<Declaration, "normalizedData" | "status">> & { operation?: Partial<OperationMeta> }

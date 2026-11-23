@@ -44,6 +44,11 @@ export function apiErrorCode(error: unknown): string {
   const code = (error.body as { code?: unknown }).code;
   return typeof code === "string" ? code : "";
 }
+
+export function apiErrorDetails<T = unknown>(error: unknown): T | undefined {
+  if (!(error instanceof ApiError) || !error.body || typeof error.body !== "object") return undefined;
+  return (error.body as { details?: T }).details;
+}
 export async function apiPostBlob(path: string, body: unknown): Promise<Blob> {
   const res = await fetch(`${apiBaseUrl()}${path}`, {
     method: "POST",

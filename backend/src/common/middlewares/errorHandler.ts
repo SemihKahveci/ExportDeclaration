@@ -15,14 +15,24 @@ export function errorHandler(
     err && typeof err === "object" && "code" in err && typeof (err as { code?: unknown }).code === "string"
       ? (err as { code: string }).code
       : undefined;
-  res.status(status).json({ ok: false, error: message, ...(code ? { code } : {}) });
+  const details =
+    err && typeof err === "object" && "details" in err
+      ? (err as { details?: unknown }).details
+      : undefined;
+  res.status(status).json({
+    ok: false,
+    error: message,
+    ...(code ? { code } : {}),
+    ...(details !== undefined ? { details } : {}),
+  });
 }
 
 export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
-    public code?: string
+    public code?: string,
+    public details?: unknown
   ) {
     super(message);
     this.name = "HttpError";
