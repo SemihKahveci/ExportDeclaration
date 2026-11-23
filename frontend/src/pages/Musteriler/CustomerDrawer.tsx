@@ -74,7 +74,7 @@ const NOTIFICATION_PROCESS_LIST = [
 ];
 
 const DOCUMENT_LIST = [
-  'Fatura', 'Çeki Listesi', 'CMR', 'Konşimento', 'AWB', 'Booking',
+  'Fatura', 'Invoice', 'Çeki Listesi', 'CMR', 'Konşimento', 'AWB', 'Booking',
   'Dolaşım Belgesi', 'Menşe Şahadetnamesi', 'ATR', 'EUR.1',
   'Sigorta Poliçesi', 'Özet Beyan Bilgisi',
 ];

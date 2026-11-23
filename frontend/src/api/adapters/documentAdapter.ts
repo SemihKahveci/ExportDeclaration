@@ -6,8 +6,8 @@ import { mergeNormalizedFromApi } from "@/api/types/document.types";
 
 const DOC_TYPE_LABELS: Record<DocumentType, string> = {
   INVOICE: "Fatura",
-  E_INVOICE_XML: "e-Fatura XML",
   EXPORT_INVOICE: "Invoice",
+  E_INVOICE_XML: "e-Fatura XML",
   PACKING_LIST: "Çeki Listesi",
   ATR: "ATR",
   EUR1: "EUR.1",
@@ -22,6 +22,31 @@ const DOC_TYPE_LABELS: Record<DocumentType, string> = {
   BILL_OF_LADING_INSTRUCTION: "Konşimento Talimatı",
   OTHER: "Diğer"
 };
+
+/** Evrak listesinde Fatura → Invoice → e-Fatura XML sırası sabit kalsın. */
+const DOC_TYPE_ORDER: DocumentType[] = [
+  "INVOICE",
+  "EXPORT_INVOICE",
+  "E_INVOICE_XML",
+  "PACKING_LIST",
+  "CMR",
+  "BILL_OF_LADING",
+  "BILL_OF_LADING_INSTRUCTION",
+  "AWB",
+  "BOOKING",
+  "ATR",
+  "EUR1",
+  "CERTIFICATE_OF_ORIGIN",
+  "INSURANCE_POLICY",
+  "SUMMARY_DECLARATION",
+  "PROFORMA",
+  "OTHER"
+];
+
+function docTypeRank(type: DocumentType): number {
+  const index = DOC_TYPE_ORDER.indexOf(type);
+  return index < 0 ? DOC_TYPE_ORDER.length : index;
+}
 
 export function toEvrakFile(d: BackendDeclaration, docs: UploadedDocument[]): EvrakFile {
   const pending = docs.filter((doc) => doc.extractionStatus === "PENDING").length;
@@ -50,7 +75,9 @@ export function toEvrakFile(d: BackendDeclaration, docs: UploadedDocument[]): Ev
 }
 
 export function toEvrakDocRows(docs: UploadedDocument[]): EvrakDocRow[] {
-  return docs.map((doc) => {
+  return [...docs]
+    .sort((a, b) => docTypeRank(a.type) - docTypeRank(b.type) || a._id.localeCompare(b._id))
+    .map((doc) => {
     const status: EvrakDocRow["status"] =
       doc.extractionStatus === "SUCCESS" ? "Geldi" :
       doc.extractionStatus === "FAILED" ? "Eksik" :

@@ -118,6 +118,7 @@ const EVRAK_STATS: EvrakPageStats = {
 export const DOCUMENT_TYPE_OPTIONS: string[] = [
   'Fatura',
   'Invoice',
+  'e-Fatura XML',
   'CMR',
   'Konşimento',
   'AWB',
