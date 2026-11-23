@@ -351,7 +351,10 @@ export default function DosyaTakipPage() {
             İhracat Dosya Takip
           </h1>
           <p className="text-muted text-[13px] mt-0.5">
-            Yeni talepten kapanışa kadar tüm dosyaları statü bazlı izleyin.
+            Yeni talepten kapanışa kadar dosyaları statü bazlı izleyin.
+            {canSwitchListScope(currentUser.role)
+              ? ' Admin / Yönetici / MT Yönetici / Muhasebe varsayılanı: Tüm Beyannameler.'
+              : ' MT / Operasyon / Saha varsayılanı: yalnızca Müşterilerim.'}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2.5 flex-wrap justify-end">
