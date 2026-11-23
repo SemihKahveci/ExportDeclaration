@@ -35,6 +35,8 @@ assert.equal(isOperationTypeVisible("İthalat", allowed), false);
 assert.equal(isOperationTypeVisible("İhracat", allowed), true);
 assert.equal(isOperationTypeVisible("export", allowed), true);
 assert.equal(isOperationTypeVisible("İthalat", allowedOperationTypeKeys([])), false);
+assert.equal(isOperationTypeVisible("İhracat", allowedOperationTypeKeys([])), true);
+assert.equal(isOperationTypeVisible("ihracat", allowedOperationTypeKeys([])), true);
 
 const mine = new Set(["cust-1"]);
 assert.equal(

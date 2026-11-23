@@ -13,14 +13,19 @@ export function allowedOperationTypeKeys(operationTypes: string[] | null | undef
   return new Set((operationTypes ?? []).map((item) => operationTypeKey(item)).filter(Boolean));
 }
 
-/** Kullanıcı ayarlarındaki işlem tipi yoksa ilgili beyanname görünmez. */
+/**
+ * Kullanıcı ayarlarındaki işlem tipi whitelist.
+ * Hiç tip seçilmemişse ihracat varsayılır (yeni kullanıcı boş listeye düşmesin).
+ * İthalat seçili değilse ithalat dosyası görünmez.
+ */
 export function isOperationTypeVisible(
   operationType: string | null | undefined,
   allowed: Set<string>
 ): boolean {
-  if (allowed.size === 0) return false;
   const key = operationTypeKey(operationType);
-  return Boolean(key) && allowed.has(key);
+  if (!key) return false;
+  if (allowed.size === 0) return key === "ihracat";
+  return allowed.has(key);
 }
 
 export function defaultDeclarationListScope(role: string | null | undefined): DeclarationListScope {

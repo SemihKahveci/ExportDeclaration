@@ -119,7 +119,7 @@ export async function createAppUser(companyId: mongoose.Types.ObjectId, body: Cr
     role: body.role,
     status: body.status ?? "Aktif",
     capabilities: body.capabilities ?? [],
-    operationTypes: body.operationTypes ?? [],
+    operationTypes: (body.operationTypes?.length ? body.operationTypes : ["ihracat"]),
     menuAccess: body.menuAccess ?? [],
     menuActions: body.menuActions ?? {},
     approverLevel: body.approverLevel ?? "none",

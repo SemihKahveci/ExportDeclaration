@@ -490,8 +490,17 @@ export default function DosyaTakipPage() {
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-muted text-[13px]">
-                    Bu kriterlere uyan dosya bulunamadı.
+                  <td colSpan={10} className="py-12 text-center text-muted text-[13px] px-6">
+                    {files.length === 0 && listScope === 'mine' ? (
+                      <span>
+                        Atanmış müşterisi olan dosya yok. Müşteri kartında bu kullanıcıyı MT / MT yönetici
+                        olarak atayın; aksi halde yalnız “Müşterilerim” görünür.
+                      </span>
+                    ) : files.length === 0 ? (
+                      <span>Bu firmada görünebilir dosya yok. Kullanıcıda işlem tipi (ör. İhracat) seçili mi kontrol edin.</span>
+                    ) : (
+                      <span>Bu kriterlere uyan dosya bulunamadı.</span>
+                    )}
                   </td>
                 </tr>
               ) : (

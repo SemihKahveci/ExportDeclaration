@@ -33,7 +33,9 @@ export default function UserDrawer({ open, initial, onClose, onSave, saving = fa
       role,
       status,
       capabilities: initial?.capabilities ?? [],
-      operationTypes: initial?.operationTypes ?? ([] as OperationType[]),
+      operationTypes: initial?.operationTypes?.length
+        ? initial.operationTypes
+        : (['ihracat'] as OperationType[]),
       menuAccess: initial?.menuAccess ?? [],
       menuActions: initial?.menuActions ?? ({} as Record<string, MenuAction[]>),
       approverLevel: initial?.approverLevel ?? ('none' as ApproverLevel),
