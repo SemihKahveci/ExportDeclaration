@@ -59,16 +59,18 @@ function approvedLiveValue(record: GtipMaterialRow): boolean {
 }
 
 function lineMatchesRecord(line: GtipGoodsLine, records: GtipMaterialRow[]): boolean {
-  const hs = normalizeGtipCode(line.hsCode);
-  if (hs.length < 4) return false;
   const verified = records.filter(approvedLiveValue);
   const material = folded(line.productCode);
   if (material) {
     const byMaterial = records.filter((record) => folded(record.materialNo) === material);
     if (byMaterial.length > 0) {
-      return byMaterial.some((record) => approvedLiveValue(record) && normalizeGtipCode(record.gtipNo) === hs);
+      return byMaterial.some((record) => (
+        approvedLiveValue(record) && normalizeGtipCode(record.gtipNo).length >= 4
+      ));
     }
   }
+  const hs = normalizeGtipCode(line.hsCode);
+  if (hs.length < 4) return false;
   return verified.some((record) => normalizeGtipCode(record.gtipNo) === hs);
 }
 
