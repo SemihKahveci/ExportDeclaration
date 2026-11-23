@@ -1,6 +1,9 @@
+import { lookupEvrimCountryNoFromTables } from "./evrimVeriTables.js";
+
 /**
- * Evrim Ulke_No lookup — seed from e-ihracat paket golden’ları.
- * Excel’e 3 haneli metin yazılır ("001"). Sonra Evrim dbo.Ulke sync ile genişler.
+ * Evrim Ulke_No lookup.
+ * Önce `evrim-veri.xlsx` Mense sayfası; yoksa paket golden seed.
+ * Excel’e 3 haneli metin yazılır ("001").
  */
 const BY_CODE: Record<string, string> = {
   FR: "001",
@@ -75,6 +78,9 @@ function normalizeKey(value: string): string {
 /** Evrim menşe numarası (3 hane metin). Bulunamazsa undefined. */
 export function mapEvrimCountryNo(value: string | undefined | null): string | undefined {
   if (!value) return undefined;
+  const fromTables = lookupEvrimCountryNoFromTables(value);
+  if (fromTables) return fromTables;
+
   const raw = value.trim();
   if (!raw) return undefined;
   if (/^\d{1,3}$/.test(raw)) return raw.padStart(3, "0");

@@ -6,6 +6,7 @@ import { CandidateExtractionStatus, type CandidateExtractionEnvelope } from "../
 import { ClassifiedDocumentType } from "../../idp/domain/segmentClassification.types.js";
 import { parseUblIhracatInvoiceXml } from "../ubl/ublIhracatInvoice.parser.js";
 import { buildUblIhracatFieldCandidates, ublParsedToExtractedData } from "../ubl/ublIhracatFieldCandidates.js";
+import { decodeUblXmlBuffer } from "../ubl/ublXmlTextEncoding.js";
 
 export interface InvoiceXmlExtractionResult extends ExtractedSource {
   candidateExtraction: CandidateExtractionEnvelope;
@@ -47,17 +48,7 @@ export async function extractInvoiceXml(filePath: string): Promise<InvoiceXmlExt
 
 async function readXmlText(filePath: string): Promise<string> {
   const buf = await fs.readFile(filePath);
-  const head = buf.subarray(0, 180).toString("ascii");
-  const encodingMatch = head.match(/encoding\s*=\s*["']([^"']+)["']/i);
-  const encoding = (encodingMatch?.[1] ?? "utf-8").toLowerCase();
-  if (encoding.includes("iso-8859-9") || encoding.includes("windows-1254") || encoding.includes("latin5")) {
-    return new TextDecoder("windows-1254").decode(buf);
-  }
-  // UTF-8 BOM
-  if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
-    return buf.subarray(3).toString("utf8");
-  }
-  return buf.toString("utf8");
+  return decodeUblXmlBuffer(buf);
 }
 
 function emptyData(): Record<string, unknown> {

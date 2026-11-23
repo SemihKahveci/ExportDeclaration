@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { mapEvrimCountryNo, isTurkeyOrigin } from "../export-code-tables/evrimCountryCodes.js";
 import { mapEvrimIhracatQuantityUnit, mapEvrimPackageType } from "../export-code-tables/exportCodeTables.js";
+import { lookupEvrimFirmaNoByVkn } from "../export-code-tables/evrimVeriTables.js";
 import type { ExportDeclarationContract } from "../export-contract/exportDeclarationContract.types.js";
 import type { GoodsLine, NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
 
@@ -55,6 +56,9 @@ export interface DeclarationWorkbook {
 export interface DeclarationWorkbookOptions {
   /** Kullanıcının seçtiği gönderici Evrim ID — imalatçı fallback */
   senderEvrimId?: number;
+  /** Gönderici VKN — senderEvrimId yoksa Firma tablosundan çözülür */
+  senderTaxNo?: string;
+  senderNameHint?: string;
 }
 
 type PriceLane = "fob" | "cif";
@@ -80,6 +84,18 @@ function manufacturerTypeFor(originRaw: string | undefined): "I" | "T" {
 function linePackageType(line: GoodsLine, packageInfoType?: string): string {
   const raw = (line as GoodsLine & { packageType?: string }).packageType ?? packageInfoType ?? "";
   return raw ? mapEvrimPackageType(raw) : "";
+}
+
+function resolveSenderEvrimId(
+  options: DeclarationWorkbookOptions,
+  normalized: NormalizedDeclaration
+): number | undefined {
+  if (typeof options.senderEvrimId === "number" && Number.isFinite(options.senderEvrimId)) {
+    return options.senderEvrimId;
+  }
+  const taxNo = options.senderTaxNo ?? normalized.parties?.seller?.taxNo;
+  const nameHint = options.senderNameHint ?? normalized.parties?.seller?.name;
+  return lookupEvrimFirmaNoByVkn(taxNo, nameHint);
 }
 
 function lineManufacturerNo(line: GoodsLine, senderEvrimId?: number): number | "" {
@@ -108,13 +124,16 @@ function buildRow(
   line: GoodsLine,
   index: number,
   normalized: NormalizedDeclaration,
-  options: DeclarationWorkbookOptions
+  options: DeclarationWorkbookOptions,
+  senderEvrimId?: number
 ): Array<string | number> {
   const lane = deliveryLane(normalized.trade?.deliveryTerm);
   const unitPrice = asNumber(line.unitPrice);
   const lineTotal = asNumber(line.lineTotal);
   const quantity = asNumber(line.quantity);
+  // D: sadece birim kodu tablodan/seed’den çevrilir (NIU/EA→C62 vb.)
   const unit = line.unit?.trim() ? mapEvrimIhracatQuantityUnit(line.unit) : "";
+  // I: ülke adı/kod → Ulke_No
   const origin = originCode(line, normalized.trade?.origin);
   const netFromLine = asNumber(line.netKg);
   const netKg = netFromLine ?? (unit.toUpperCase() === "KGM" && quantity != null ? quantity : undefined);
@@ -136,11 +155,13 @@ function buildRow(
   }
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.origin] = origin;
   // J Kap Adedi: paket kuralı — yazılmaz
+  // K: kap kodu tabloda varsa Kod, yoksa XML değeri olduğu gibi
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.packageType] = linePackageType(line, normalized.packageInfo?.packageType);
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.hsCode] = gtipValue(line.hsCode);
   // M BrutKG şimdilik boş
   if (netKg != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.netKg] = netKg;
-  row[EVRIM_IHRACAT_EXCEL_COLUMNS.manufacturerNo] = lineManufacturerNo(line, options.senderEvrimId);
+  // P: imalatçı Evrim ID (satırda varsa o; yoksa gönderici)
+  row[EVRIM_IHRACAT_EXCEL_COLUMNS.manufacturerNo] = lineManufacturerNo(line, senderEvrimId);
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.productCode] = line.productCode?.trim() || "";
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.manufacturerType] = lineManufacturerType(line);
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.exportInvoiceNo] = invoiceNo;
@@ -161,7 +182,8 @@ export function buildDeclarationWorkbook(
   options: DeclarationWorkbookOptions = {}
 ): DeclarationWorkbook {
   const lines = normalized.goodsLines ?? [];
-  const rows = lines.map((line, index) => buildRow(line, index, normalized, options));
+  const senderEvrimId = resolveSenderEvrimId(options, normalized);
+  const rows = lines.map((line, index) => buildRow(line, index, normalized, options, senderEvrimId));
 
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   // Menşe metin kalsın (001 → Excel "1" olmasın)

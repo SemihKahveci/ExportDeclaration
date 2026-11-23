@@ -9,6 +9,7 @@ import path from "node:path";
 import * as XLSX from "xlsx";
 import { parseUblIhracatInvoiceXml } from "../../src/modules/extraction/ubl/ublIhracatInvoice.parser.js";
 import { applyManufacturerRules, enrichInvoiceFromNotes } from "../../src/modules/extraction/ubl/ublIhracatNoteRules.js";
+import { decodeUblXmlBuffer } from "../../src/modules/extraction/ubl/ublXmlTextEncoding.js";
 import { buildDeclarationWorkbook } from "../../src/modules/evrim-excel/declarationWorkbook.js";
 import { buildExportDeclarationContract } from "../../src/modules/export-contract/exportDeclarationContract.service.js";
 import type { NormalizedDeclaration } from "../../src/modules/normalization/normalizedDeclaration.types.js";
@@ -65,14 +66,7 @@ function cellEqual(expected: unknown, actual: unknown): boolean {
 }
 
 function readXmlText(filePath: string): string {
-  const buf = fs.readFileSync(filePath);
-  const head = buf.subarray(0, 180).toString("ascii");
-  const encoding = (head.match(/encoding\s*=\s*["']([^"']+)["']/i)?.[1] ?? "utf-8").toLowerCase();
-  if (encoding.includes("iso-8859-9") || encoding.includes("windows-1254") || encoding.includes("latin5")) {
-    return new TextDecoder("windows-1254").decode(buf);
-  }
-  if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.subarray(3).toString("utf8");
-  return buf.toString("utf8");
+  return decodeUblXmlBuffer(fs.readFileSync(filePath));
 }
 
 function toNormalized(xmlPath: string, senderEvrimId: number): NormalizedDeclaration {

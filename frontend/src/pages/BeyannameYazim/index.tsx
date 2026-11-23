@@ -63,7 +63,7 @@ export default function BeyannameYazimPage() {
   const [activeTab,        setActiveTab]         = useState<'yazim' | 'kontrol'>('yazim');
   const [hasViewedPreview, setHasViewedPreview]  = useState(false);
   const [previewDocId,     setPreviewDocId]      = useState<string | null>(null);
-  const [previewLabel,     setPreviewLabel]      = useState('Belge');
+  const [,                 setPreviewLabel]      = useState('Belge');
   const [uploadOpen,       setUploadOpen]        = useState(false);
   const [uploadRef,        setUploadRef]         = useState<string | undefined>(undefined);
   const [reminderOpen,     setReminderOpen]      = useState(false);

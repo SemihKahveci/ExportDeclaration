@@ -91,7 +91,10 @@ export async function exportDeclarationWorkbook(
     return { ready: false, issues: contract.readiness.issues };
   }
 
-  const workbook = buildDeclarationWorkbook(normalized, contract);
+  const workbook = buildDeclarationWorkbook(normalized, contract, {
+    senderTaxNo: normalized.parties?.seller?.taxNo,
+    senderNameHint: normalized.parties?.seller?.name,
+  });
   const filename = `${safeFilenamePart(contract.invoice.invoiceNo)}-beyanname.xlsx`;
   await recordExportAudit({
     companyId, declarationId, format: "EVRIM_EXCEL",

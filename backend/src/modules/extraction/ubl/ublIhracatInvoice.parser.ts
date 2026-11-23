@@ -1,14 +1,17 @@
 import type { UblParsedGoodsLine, UblParsedInvoice, UblParsedParty } from "./ublIhracatInvoice.types.js";
+import { repairTurkishReplacementChars } from "./ublXmlTextEncoding.js";
 
 function decodeXml(text: string): string {
-  return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#42;/g, "*")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&apos;/g, "'");
+  return repairTurkishReplacementChars(
+    text
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#42;/g, "*")
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&apos;/g, "'")
+  );
 }
 
 function textOf(block: string, localName: string): string | undefined {

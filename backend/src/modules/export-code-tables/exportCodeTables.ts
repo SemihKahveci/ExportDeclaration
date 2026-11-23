@@ -1,12 +1,17 @@
+import {
+  lookupEvrimPackageTypeFromTables,
+  lookupEvrimQuantityUnitFromTables,
+} from "./evrimVeriTables.js";
+
 /**
  * Foundation 5.6B.1 — verified export-format code tables.
  *
- * These are output-system translations, not invoice evidence and not customs
- * master data. Only mappings proven by supplied fixtures belong here.
+ * Önce `evrim-veri.xlsx` (Miktar/Kap); yoksa aşağıdaki seed.
  * Unknown values are deliberately passed through by the adapter.
  */
 export const EVRIM_PACKAGE_TYPE_CODES = {
   bin: "BI",
+  palet: "PALET",
 } as const;
 
 /**
@@ -45,15 +50,21 @@ function key(value: string): string {
 }
 
 export function mapEvrimPackageType(value: string): string {
+  const fromTables = lookupEvrimPackageTypeFromTables(value);
+  if (fromTables) return fromTables;
   return EVRIM_PACKAGE_TYPE_CODES[key(value) as keyof typeof EVRIM_PACKAGE_TYPE_CODES] ?? value;
 }
 
 export function mapEvrimQuantityUnit(value: string): string {
+  const fromTables = lookupEvrimQuantityUnitFromTables(value);
+  if (fromTables) return fromTables;
   return EVRIM_QUANTITY_UNIT_CODES[key(value) as keyof typeof EVRIM_QUANTITY_UNIT_CODES]
     ?? value.toLocaleUpperCase("tr-TR");
 }
 
 export function mapEvrimIhracatQuantityUnit(value: string): string {
+  const fromTables = lookupEvrimQuantityUnitFromTables(value);
+  if (fromTables) return fromTables;
   return EVRIM_IHRACAT_QUANTITY_UNIT_CODES[key(value) as keyof typeof EVRIM_IHRACAT_QUANTITY_UNIT_CODES]
     ?? value.toLocaleUpperCase("tr-TR");
 }

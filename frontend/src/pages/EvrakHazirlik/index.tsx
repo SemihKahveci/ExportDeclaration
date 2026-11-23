@@ -269,7 +269,7 @@ export default function EvrakHazirlikPage() {
     if (!selectedFile) return;
     setTransitioning(true);
     try {
-      const result = await transitionPreparationWorkflow(selectedFile.id,{
+      await transitionPreparationWorkflow(selectedFile.id,{
         action: override ? 'START_WRITING_WITH_MISSING_DOCUMENTS' : 'START_WRITING',
         reason: override ? overrideReason.trim() : undefined,
         gtipDecision,
