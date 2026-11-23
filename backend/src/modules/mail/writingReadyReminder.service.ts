@@ -18,12 +18,12 @@ const PROCESS_STEP = "beyanname-yazim-hatirlatma" as const;
 
 const START_ACTIONS = new Set(["START_WRITING", "START_WRITING_WITH_MISSING_DOCUMENTS"]);
 
-function hasStartedWriting(file: OpenMailFile): boolean {
+export function hasStartedWriting(file: OpenMailFile): boolean {
   const history = file.operation?.workflowHistory ?? [];
   return history.some((entry) => START_ACTIONS.has(String(entry.action ?? "")));
 }
 
-function readyAtFromHistory(file: OpenMailFile): Date | null {
+export function readyAtFromHistory(file: OpenMailFile): Date | null {
   const history = file.operation?.workflowHistory ?? [];
   const advanced = [...history].reverse().find((entry) =>
     entry.action === "AUTO_ADVANCE" && entry.toStatus === "beyanname-yazim"
@@ -31,6 +31,17 @@ function readyAtFromHistory(file: OpenMailFile): Date | null {
   if (!advanced?.at) return null;
   const at = new Date(advanced.at);
   return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/** Yazıma hazır olduktan 15 dk geçtiyse ve MT henüz yazıma başlamadıysa hatırlatılır. */
+export function writingReadyReminderDue(input: {
+  readyAt: Date | null;
+  now: Date;
+  startedWriting: boolean;
+}): boolean {
+  if (input.startedWriting) return false;
+  if (!input.readyAt) return false;
+  return input.now.getTime() - input.readyAt.getTime() >= WRITING_READY_LIMIT_MS;
 }
 
 async function mtEmails(companyId: mongoose.Types.ObjectId, customerId: string): Promise<string[]> {
@@ -119,7 +130,7 @@ export async function runWritingReadyReminders(now = new Date(), openFiles: Open
             .filter((value) => value > 0);
           return times.length > 0 ? new Date(Math.max(...times)) : null;
         })();
-      if (!readyAt || now.getTime() - readyAt.getTime() < WRITING_READY_LIMIT_MS) continue;
+      if (!writingReadyReminderDue({ readyAt, now, startedWriting: false })) continue;
 
       const recipients = await mtEmails(companyId, customerId);
       if (recipients.length === 0) continue;

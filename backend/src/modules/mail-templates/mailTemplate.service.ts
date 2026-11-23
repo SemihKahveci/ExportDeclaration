@@ -79,6 +79,13 @@ const BUILTIN_TEMPLATES: Array<{
     subject: "Cut-off uyarısı · {referans}",
     body: "Sayın {musteri},\n\n{referans} dosyasında cut-off yaklaşıyor.\n\n{cutoff}\n\n{ozet_tablo}\n\nİyi çalışmalar.",
     variables: ["{musteri}", "{tarih}", "{referans}", "{cutoff}", "{ozet_tablo}"]
+  },
+  {
+    processStep: "beyanname-yazim-hatirlatma",
+    name: "Beyanname Yazım Hatırlatma",
+    subject: "Beyanname yazım hatırlatması · {referans}",
+    body: "Sayın ilgili,\n\n{referans} dosyası yazıma hazır. Parse tamamlandıktan sonra 15 dakika geçti; henüz beyanname yazımına başlanmadı.\n\nİyi çalışmalar.",
+    variables: ["{musteri}", "{referans}", "{beyanname_no}", "{tarih}"]
   }
 ];
 
