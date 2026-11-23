@@ -34,6 +34,10 @@ function defaultFilesScope(role: string): FilesListScope {
   return 'all';
 }
 
+function canSwitchListScope(role: string): boolean {
+  return defaultFilesScope(role) === 'all';
+}
+
 // ─── Status filter chip bar ────────────────────────────────────────────────────
 
 type ChipFilter = 'all' | FileStatus;
@@ -351,28 +355,34 @@ export default function DosyaTakipPage() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2.5 flex-wrap justify-end">
-          <div className="inline-flex rounded-[8px] border border-line bg-surface-2 p-0.5" role="group" aria-label="Dosya kapsamı">
-            <button
-              type="button"
-              onClick={() => handleListScope('all')}
-              className={[
-                'px-3 py-1.5 rounded-[6px] text-[12.5px] font-semibold transition-colors',
-                listScope === 'all' ? 'bg-surface text-text-strong shadow-sm' : 'text-muted hover:text-text',
-              ].join(' ')}
-            >
-              Tüm Beyannameler
-            </button>
-            <button
-              type="button"
-              onClick={() => handleListScope('mine')}
-              className={[
-                'px-3 py-1.5 rounded-[6px] text-[12.5px] font-semibold transition-colors',
-                listScope === 'mine' ? 'bg-surface text-text-strong shadow-sm' : 'text-muted hover:text-text',
-              ].join(' ')}
-            >
+          {canSwitchListScope(currentUser.role) ? (
+            <div className="inline-flex rounded-[8px] border border-line bg-surface-2 p-0.5" role="group" aria-label="Dosya kapsamı">
+              <button
+                type="button"
+                onClick={() => handleListScope('all')}
+                className={[
+                  'px-3 py-1.5 rounded-[6px] text-[12.5px] font-semibold transition-colors',
+                  listScope === 'all' ? 'bg-surface text-text-strong shadow-sm' : 'text-muted hover:text-text',
+                ].join(' ')}
+              >
+                Tüm Beyannameler
+              </button>
+              <button
+                type="button"
+                onClick={() => handleListScope('mine')}
+                className={[
+                  'px-3 py-1.5 rounded-[6px] text-[12.5px] font-semibold transition-colors',
+                  listScope === 'mine' ? 'bg-surface text-text-strong shadow-sm' : 'text-muted hover:text-text',
+                ].join(' ')}
+              >
+                Müşterilerim
+              </button>
+            </div>
+          ) : (
+            <div className="px-3 py-1.5 rounded-[8px] border border-line bg-surface text-[12.5px] font-semibold text-text-strong">
               Müşterilerim
-            </button>
-          </div>
+            </div>
+          )}
           <Button icon={Download} onClick={() => toast('Excel indirme hazırlanıyor…')} writeCap="dosya_takip.edit">
             Dışa Aktar
           </Button>

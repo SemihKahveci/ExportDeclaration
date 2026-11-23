@@ -39,7 +39,7 @@ export async function postDeclaration(req: Request, res: Response): Promise<void
 
 export async function getDeclarations(req: Request, res: Response): Promise<void> {
   const auth = req.auth!;
-  const scope = parseDeclarationListScope(req.query.scope);
+  const scope = parseDeclarationListScope(req.query.scope, auth.role, auth.systemRole);
   const list = await listDeclarations(auth.operationalCompanyId, {
     scope,
     userId: auth.userId,

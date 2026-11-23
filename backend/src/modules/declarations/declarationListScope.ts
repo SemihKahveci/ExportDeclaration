@@ -28,8 +28,27 @@ export function defaultDeclarationListScope(role: string | null | undefined): De
   return "all";
 }
 
-/** Query yoksa all; UI rol default'unu açıkça scope=mine|all gönderir. */
-export function parseDeclarationListScope(raw: unknown): DeclarationListScope {
+/** MT / Operasyon / Saha yalnız kendi müşterilerini görür; istemci scope=all gönderemez. */
+export function canUseDeclarationListAll(
+  role: string | null | undefined,
+  systemRole?: string | null
+): boolean {
+  if (systemRole === "SUPERADMIN") return true;
+  return defaultDeclarationListScope(role) === "all";
+}
+
+/** Query yoksa rol default'u; kısıtlı roller her zaman mine. */
+export function parseDeclarationListScope(
+  raw: unknown,
+  role?: string | null,
+  systemRole?: string | null
+): DeclarationListScope {
+  if (role !== undefined || systemRole !== undefined) {
+    if (!canUseDeclarationListAll(role, systemRole)) return "mine";
+    const value = String(raw ?? "").trim().toLowerCase();
+    if (value === "mine" || value === "all") return value;
+    return defaultDeclarationListScope(role);
+  }
   const value = String(raw ?? "").trim().toLowerCase();
   if (value === "mine") return "mine";
   return "all";

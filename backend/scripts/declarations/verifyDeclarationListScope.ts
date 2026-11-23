@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   allowedOperationTypeKeys,
+  canUseDeclarationListAll,
   defaultDeclarationListScope,
   isOperationTypeVisible,
   matchesMineScope,
@@ -19,6 +20,15 @@ assert.equal(parseDeclarationListScope(undefined), "all");
 assert.equal(parseDeclarationListScope("mine"), "mine");
 assert.equal(parseDeclarationListScope("all"), "all");
 assert.equal(parseDeclarationListScope("weird"), "all");
+
+assert.equal(canUseDeclarationListAll("MT"), false);
+assert.equal(canUseDeclarationListAll("Admin"), true);
+assert.equal(canUseDeclarationListAll("MT", "SUPERADMIN"), true);
+assert.equal(parseDeclarationListScope("all", "MT"), "mine");
+assert.equal(parseDeclarationListScope(undefined, "MT"), "mine");
+assert.equal(parseDeclarationListScope("mine", "Admin"), "mine");
+assert.equal(parseDeclarationListScope(undefined, "Admin"), "all");
+assert.equal(parseDeclarationListScope("all", "MT", "SUPERADMIN"), "all");
 
 const allowed = allowedOperationTypeKeys(["İhracat", "Transit"]);
 assert.equal(isOperationTypeVisible("İthalat", allowed), false);
