@@ -178,7 +178,7 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
               {exceptions.exceptions.map((item) => (
                 <div key={item.exceptionId} className="rounded bg-surface/70 px-3 py-2 text-[12px]">
                   <b>{item.reason}</b>
-                  {item.field && <span className="text-muted"> · {item.field}</span>}
+                  {item.field && <span className="text-muted"> · {fieldLabel(item.field)} <span className="font-mono">({item.field})</span></span>}
                   {item.confidence !== undefined && (
                     <span className="text-muted">
                       {' '}· güven %{Math.round(item.confidence * 100)}
@@ -221,7 +221,10 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
                 <div className="px-4 py-3 bg-warn-tint border-b border-warn/30 flex items-center justify-between gap-3">
                   <div>
                     <div className="font-bold text-[13.5px] text-text-strong">{fieldLabel(field.field)}</div>
-                    <div className="text-[11.5px] text-muted mt-0.5 font-mono">{field.field} · {field.candidates.length} grounded belge adayı</div>
+                    <div className="text-[11.5px] text-muted mt-0.5">
+                      <span className="font-mono">{field.field}</span>
+                      <span> · {field.candidates.length} grounded belge adayı</span>
+                    </div>
                   </div>
                   <Pill variant="warn">Çakışma</Pill>
                 </div>

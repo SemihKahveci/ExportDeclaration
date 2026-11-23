@@ -30,9 +30,14 @@ export interface DeclarationControlProjection {
   entries:ControlProvenanceEntry[];
 }
 
+const LINE_FIELD_LABELS:Record<string,string>={
+ hsCode:"GTİP",productCode:"Malzeme No",description:"Mal Tanımı",quantity:"Miktar",unit:"Birim",
+ unitPrice:"Birim Fiyat",lineTotal:"Satır Tutarı",origin:"Menşe",brand:"Marka",
+ exemptionCode:"Muafiyet Kodu",permitCode:"İzin Kodu",utsNo:"UTS No",usedFlag:"Kullanılmış",
+};
 const LABELS:Record<string,string>={
  "invoice.invoiceNo":"Fatura No","invoice.invoiceDate":"Fatura Tarihi","invoice.currency":"Döviz","invoice.totalAmount":"Fatura Toplamı",
- "package.totalPackage":"Toplam Kap","package.packageType":"Kap Cinsi","package.grossKg":"Brüt KG","package.netKg":"Net KG",
+ "package.totalPackage":"Toplam Kap / Kap Adedi","package.packageType":"Kap Cinsi","package.grossKg":"Brüt KG","package.netKg":"Net KG",
  "customs.declarationType":"Beyan Tipi","customs.exportType":"İhracat Tipi","customs.customsOffice":"Gümrük İdaresi",
  "customs.regimeCode":"Rejim Kodu","customs.fileReference":"Dosya Referansı","customs.declarationDate":"Beyanname Tarihi",
 };
@@ -103,7 +108,7 @@ function contractPaths(contract:any):Array<{path:string;value:unknown;label:stri
  for(const field of ["declarationType","exportType","customsOffice","regimeCode","fileReference","declarationDate"])
   out.push({path:`customs.${field}`,value:contract.customs?.[field],label:LABELS[`customs.${field}`]??field});
  for(const line of contract.lines??[])for(const field of ["hsCode","productCode","description","quantity","unit","unitPrice","lineTotal","origin","brand","exemptionCode","permitCode","utsNo","usedFlag"])
-  out.push({path:`lines.${line.lineNo}.${field}`,value:line[field],label:`Kalem ${line.lineNo} · ${field}`});
+  out.push({path:`lines.${line.lineNo}.${field}`,value:line[field],label:`Kalem ${line.lineNo} · ${LINE_FIELD_LABELS[field]??field}`});
  return out.filter(x=>hasValue(x.value));
 }
 

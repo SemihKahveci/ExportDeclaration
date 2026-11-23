@@ -187,7 +187,7 @@ export default function ControlTab({ declarationId }: ControlTabProps) {
               return (
                 <button key={entry.path} type="button" onClick={() => setActivePath(entry.path)}
                   className={`w-full px-4 py-3 text-left grid grid-cols-[minmax(170px,1.1fr)_minmax(130px,1fr)_170px] gap-3 items-center transition-colors ${selected ? 'bg-accent/6' : 'bg-surface hover:bg-surface-2'}`}>
-                  <div className="min-w-0"><div className="text-[12.5px] font-semibold text-text-strong truncate">{entry.label}</div><div className="text-[10.5px] text-muted font-mono truncate mt-0.5">{entry.path}</div></div>
+                  <div className="min-w-0"><div className="text-[12.5px] font-semibold text-text-strong truncate">{entry.label}</div><div className="text-[10.5px] text-muted truncate mt-0.5" title={entry.path}><span className="font-mono">{entry.path}</span></div></div>
                   <div className="text-[12px] font-mono font-semibold text-text-strong truncate">{displayValue(entry.value)}</div>
                   <div className="flex items-center gap-1.5 text-[11.5px] text-muted"><AuthorityIcon authority={entry.authority}/><span>{AUTHORITY_LABEL[entry.authority]}</span>{entry.evidence && <CheckCircle2 size={12} className="text-ok ml-auto"/>}</div>
                 </button>
