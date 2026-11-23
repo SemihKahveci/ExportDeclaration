@@ -126,8 +126,8 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
       uploadedFileId: candidate.uploadedFileId,
       evidence: {
         ...evidence,
-        // Türetilmiş adaylarda bbox olmayabilir; yine de ilgili sayfayı aç.
-        bbox: evidence.contentSource === 'DERIVED' ? undefined : evidence.bbox,
+        // Bbox yoksa yine de ilgili sayfayı aç; seçili alan yok UX’i viewer’da anlatılır.
+        bbox: evidence.bbox,
         field: candidate.field,
         label: `${documentLabel(candidate.documentType)} · ${fieldLabel(candidate.field)}`,
       },
@@ -265,20 +265,30 @@ export default function IdpReviewTab({ declarationId }: { declarationId: string 
                         </div>
 
                         {candidate.evidence.length === 0 ? (
-                          <div className="text-[11.5px] text-muted mt-3">Bu aday için görüntülenebilir sayfa kanıtı yok.</div>
-                        ) : candidate.evidence.map((evidence, index) => (
+                          <div className="text-[11.5px] text-muted mt-3">Bu aday için görüntülenebilir sayfa kanıtı yok. Değeri faturadan kontrol edip karttan seçin veya incelemeyi açık bırakın.</div>
+                        ) : candidate.evidence.map((evidence, index) => {
+                          const noBox = evidence.contentSource === 'DERIVED' || !evidence.bbox;
+                          return (
                           <div key={`${candidate.candidateId}-${index}`} className="mt-2 rounded bg-surface-2 px-3 py-2 text-[12px] flex items-start gap-3">
                             <div className="flex-1 min-w-0">
                               <b>Sayfa {evidence.pageNumber}</b>
                               {evidence.contentSource && <span className="text-muted"> · {evidence.contentSource === 'OCR' ? 'OCR' : evidence.contentSource === 'NATIVE_TEXT' ? 'PDF metni' : 'Türetilmiş'}</span>}
-                              {evidence.contentSource === 'DERIVED' && (
-                                <div className="text-[11px] text-muted mt-0.5">Seçili kutu yok · sayfa bağlam için açılır</div>
+                              {noBox && (
+                                <div className="text-[11px] text-muted mt-0.5">
+                                  Seçili alan yok · “Belgede Göster” sayfayı açar; alttaki metin yardımcı kanıttır, sarı kutu beklemeyin.
+                                </div>
                               )}
-                              {evidence.text && <div className="mt-1 text-text">“{evidence.text}”</div>}
+                              {evidence.text && (
+                                <div className="mt-1 text-text">
+                                  {noBox ? <span className="text-muted">Yardımcı metin: </span> : null}
+                                  “{evidence.text}”
+                                </div>
+                              )}
                             </div>
                             <Button icon={Eye} onClick={() => showEvidence(candidate, index)}>Belgede Göster</Button>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   })}

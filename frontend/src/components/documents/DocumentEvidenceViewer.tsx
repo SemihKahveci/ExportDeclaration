@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ExternalLink, FileSearch, Loader2, X } from 'lucide-react';
 import Button from '../ui/Button';
 import { apiGetBlob, apiGetJson } from '../../api/apiClient';
+import { fieldLabel } from '../../utils/fieldLabels';
 
 export interface EvidenceBBox { x0: number; y0: number; x1: number; y1: number; }
 export interface DocumentEvidenceSelection {
@@ -71,7 +72,7 @@ function PageImage({imageUrl, alt, boxes, selected, caption = 'Seçili alan'}:{i
     {boxes?.map((item,index)=>{
       const isSelected=sameBox(item.bbox,selected);
       return <div key={`${item.candidateId??item.field}-${index}`}
-        title={`${item.field}${item.text?`: ${item.text}`:''}`}
+        title={`${fieldLabel(item.field)}${item.text?`: ${item.text}`:''}`}
         className={`absolute pointer-events-none ${isSelected?'border-[3px] border-amber-500 bg-amber-400/25 z-20':'border-2 border-emerald-500/80 bg-emerald-300/10 z-10'}`}
         style={boxStyle(item.bbox)}>
         {isSelected&&<span className="absolute -top-6 left-0 bg-amber-500 text-white text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap">{caption}</span>}
@@ -82,6 +83,20 @@ function PageImage({imageUrl, alt, boxes, selected, caption = 'Seçili alan'}:{i
         <span className="absolute -top-6 left-0 bg-amber-500 text-white text-[10px] font-semibold px-1.5 py-1 rounded whitespace-nowrap">{caption}</span>
       </div>}
   </div>;
+}
+
+function NoSelectionGuide({ field, text }: { field?: string; text?: string }) {
+  const label = field ? fieldLabel(field) : null;
+  return (
+    <div className="px-4 py-2 border-b border-warn/30 bg-warn-tint text-[12.5px] text-text leading-relaxed">
+      <b>Seçili alan yok.</b>{' '}
+      {label
+        ? `“${label}” için belgede sarı kutu çizilmedi.`
+        : 'Bu kayıt için belgede sarı kutu çizilmedi.'}
+      {' '}Sayfayı gözden geçirin; değer doğruysa karttan seçin, yanlışsa başka adayı deneyin veya incelemeyi açık bırakın.
+      {text ? <span className="block mt-1 text-muted">Görünen metin: “{text}” — bu metin alan adının altında yardımcı kanıt olarak durur; tek başına seçili alan değildir.</span> : null}
+    </div>
+  );
 }
 
 export default function DocumentEvidenceViewer({ open, declarationId, uploadedFileId, evidence, onClose, mode = 'selected', declarationView }: Props) {
@@ -123,12 +138,28 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
     return {total:rows.length,ocr:rows.filter(x=>x.contentSource==='OCR').length,native:rows.filter(x=>x.contentSource==='NATIVE_TEXT').length};
   },[pageEvidence]);
 
+  const noSelection = Boolean(open && evidence && !loading && !error && imageUrl && !highlight.box && mode !== 'all');
+  const panelTitle = mode === 'all'
+    ? 'Faturadan parse edilen alanlar'
+    : !highlight.box
+      ? 'Seçili alan yok'
+      : 'Seçili Alan';
+  const panelHint = highlight.band
+    ? 'Tutarın kendi kutusu yok; aynı satırdaki kanıtlardan biraz geniş çizildi.'
+    : !highlight.box
+      ? (mode === 'all'
+        ? 'Faturadaki persisted IDP kanıtları'
+        : 'Sarı kutu yok; sayfa yalnızca kontrol için. Değeri karttan seçin veya incelemeyi açık bırakın.')
+      : mode === 'all'
+        ? 'Faturadaki persisted IDP kanıtları'
+        : 'Yalnızca seçtiğiniz alanın persisted bbox kanıtı';
+
   if(!open||!evidence)return null;
   return <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onMouseDown={onClose}>
     <div className="bg-surface border border-line rounded-xl shadow-2xl w-[min(1580px,97vw)] h-[min(900px,94vh)] flex flex-col overflow-hidden" onMouseDown={e=>e.stopPropagation()}>
       <div className="px-4 py-3 border-b border-line flex items-center gap-3">
         <FileSearch size={18}/>
-        <div><div className="font-bold text-[14px]">{evidence.label??'Belge Analizi'}</div><div className="text-[11.5px] text-muted">Sayfa {page}{sourceLabel(evidence.contentSource)?` · ${sourceLabel(evidence.contentSource)}`:''}{highlight.band?' · satır bandı':''}</div></div>
+        <div><div className="font-bold text-[14px]">{evidence.label??'Belge Analizi'}</div><div className="text-[11.5px] text-muted">Sayfa {page}{sourceLabel(evidence.contentSource)?` · ${sourceLabel(evidence.contentSource)}`:''}{highlight.band?' · satır bandı':!highlight.box?' · seçili alan yok':''}</div></div>
         {mode==='all' && (pageEvidence?.pageCount ?? 0) > 1 && (
           <div className="flex items-center gap-1">
             {Array.from({ length: pageEvidence?.pageCount ?? 0 }, (_, i) => i + 1).map((n) => (
@@ -142,12 +173,8 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
           <button type="button" onClick={onClose} className="w-8 h-8 rounded border border-line flex items-center justify-center"><X size={16}/></button>
         </div>
       </div>
-      {evidence.text&&<div className="px-4 py-2 border-b border-line bg-surface-2 text-[12.5px]"><b>{evidence.contentSource==='DERIVED'?'Türetilmiş değer:':'Seçili kanıt:'}</b> “{evidence.text}”</div>}
-      {evidence.contentSource==='DERIVED'&&!evidence.bbox&&(
-        <div className="px-4 py-2 border-b border-warn/30 bg-warn-tint text-[12.5px] text-text">
-          Bu aday belgede işaretli bir kutuya bağlı değil. Aşağıdaki fatura sayfası yalnızca bağlam için açıldı; değeri okuyup aday kartından seçin.
-        </div>
-      )}
+      {evidence.text&&<div className="px-4 py-2 border-b border-line bg-surface-2 text-[12.5px]"><b>{evidence.contentSource==='DERIVED'?'Türetilmiş değer:':!highlight.box?'Yardımcı metin:':'Seçili kanıt:'}</b> “{evidence.text}”</div>}
+      {noSelection && <NoSelectionGuide field={evidence.field} text={evidence.text} />}
       <div className="flex-1 min-h-0 bg-[#e8e5df]">
         {loading?<div className="h-full flex items-center justify-center gap-2 text-muted"><Loader2 className="animate-spin" size={18}/> Belge analizi hazırlanıyor…</div>
         :error?<div className="h-full flex items-center justify-center text-warn">{error}</div>
@@ -159,7 +186,7 @@ export default function DocumentEvidenceViewer({ open, declarationId, uploadedFi
             </div>
           </section>
           <section className="min-w-0 min-h-0 bg-[#e8e5df] flex flex-col">
-            <div className="px-4 py-2.5 bg-surface border-b border-line flex items-center justify-between gap-2"><div><div className="font-bold text-[12.5px]">{mode==='all'?'Faturadan parse edilen alanlar':evidence.contentSource==='DERIVED'&&!highlight.box?'Fatura sayfası':'Seçili Alan'}</div><div className="text-[10.5px] text-muted">{highlight.band?'Tutarın kendi kutusu yok; aynı satırdaki kanıtlardan biraz geniş çizildi.':evidence.contentSource==='DERIVED'&&!highlight.box?'İşaretli alan yok; sayfa kontrol için gösteriliyor.':mode==='all'?'Faturadaki persisted IDP kanıtları':'Yalnızca seçtiğiniz alanın persisted bbox kanıtı'}</div></div><div className="flex items-center gap-3 text-[10.5px] text-muted">{mode==='all'&&<span className="flex items-center gap-1"><i className="w-3 h-3 border-2 border-emerald-500 inline-block"/>Tespit</span>}{(mode==='all'||highlight.box)&&<span className="flex items-center gap-1"><i className="w-3 h-3 border-[3px] border-amber-500 inline-block"/>Seçili</span>}</div></div>
+            <div className="px-4 py-2.5 bg-surface border-b border-line flex items-center justify-between gap-2"><div><div className="font-bold text-[12.5px]">{panelTitle}</div><div className="text-[10.5px] text-muted">{panelHint}</div></div><div className="flex items-center gap-3 text-[10.5px] text-muted">{mode==='all'&&<span className="flex items-center gap-1"><i className="w-3 h-3 border-2 border-emerald-500 inline-block"/>Tespit</span>}{(mode==='all'||highlight.box)&&<span className="flex items-center gap-1"><i className="w-3 h-3 border-[3px] border-amber-500 inline-block"/>Seçili</span>}</div></div>
             <div ref={parsedScrollRef} className="flex-1 min-h-0 overflow-auto p-4"><PageImage imageUrl={imageUrl} alt={`Parse edilen belge sayfa ${evidence.pageNumber}`} boxes={mode==='all'?(pageEvidence?.evidence??[]):[]} selected={highlight.box} caption={highlight.band?'Satır':'Seçili alan'}/></div>
           </section>
         </div>:null}
