@@ -20,6 +20,9 @@ function canonicalize(value: unknown): unknown {
   return value;
 }
 
+/** Bump when projection/promotion semantics change so old doubled resolutions are not reused. */
+const DECLARATION_FIELD_ORCHESTRATION_VERSION = "invoice-representation-dedupe-v2";
+
 function orchestrationKey(params: {
   companyId: mongoose.Types.ObjectId;
   declarationId: mongoose.Types.ObjectId;
@@ -28,6 +31,7 @@ function orchestrationKey(params: {
   rules: CrossDocumentFieldRule[];
 }): string {
   const payload = JSON.stringify(canonicalize({
+    version: DECLARATION_FIELD_ORCHESTRATION_VERSION,
     companyId: String(params.companyId),
     declarationId: String(params.declarationId),
     documents: params.documents,

@@ -81,6 +81,7 @@ export default function BeyannameYazimPage() {
   const [gtipFaultOpen, setGtipFaultOpen] = useState(false);
   const [gtipFaults, setGtipFaults] = useState<GtipFaultRow[]>([]);
   const sawRewritePending = useRef(false);
+  const rewriteInvoiceIds = useRef<string[]>([]);
   const sawUploadPending = useRef(false);
   const saveDraftRef = useRef<(() => Promise<void>) | null>(null);
   const sheetRef = useRef<DeclarationSheetData | null>(null);
@@ -283,17 +284,21 @@ export default function BeyannameYazimPage() {
     if (!selected || rewriting) return;
     try {
       const docs = await listDocuments(selected.id);
-      const invoice = docs.find((doc) =>
+      const invoices = docs.filter((doc) =>
         doc.type === 'INVOICE' || doc.type === 'E_INVOICE_XML' || doc.type === 'EXPORT_INVOICE'
-      ) ?? docs[0];
-      if (!invoice) {
+      );
+      if (invoices.length === 0) {
         toast('Yeniden yazılacak fatura bulunamadı.');
         return;
       }
+      rewriteInvoiceIds.current = invoices.map((doc) => doc._id);
       sawRewritePending.current = false;
-      await reprocessDocument(selected.id, invoice._id);
+      // PDF + XML birlikte yeniden işlensin; tek dosya eski çift kalemleri bırakabiliyordu.
+      for (const invoice of invoices) {
+        await reprocessDocument(selected.id, invoice._id);
+      }
       setRewriting(true);
-      toast('Fatura yeniden parse ediliyor. Beyanname yazımı işlem bitene kadar kapalı.');
+      toast('Fatura(lar) yeniden parse ediliyor. Beyanname yazımı işlem bitene kadar kapalı.');
     } catch (error) {
       toast(actionError(error, 'Fatura yeniden parse edilemedi.'), { duration: 7000 });
     }
@@ -302,25 +307,32 @@ export default function BeyannameYazimPage() {
   useEffect(() => {
     if (!rewriting || !selectedId) return;
     let cancelled = false;
+    const startedAt = Date.now();
     const timer = window.setInterval(() => {
       void (async () => {
         const docs = await listDocuments(selectedId).catch(() => []);
-        const invoice = docs.find((doc) =>
-          doc.type === 'INVOICE' || doc.type === 'E_INVOICE_XML' || doc.type === 'EXPORT_INVOICE'
-        ) ?? docs[0];
-        if (!invoice || cancelled) return;
-        if (invoice.extractionStatus === 'PENDING') {
+        const watchedIds = rewriteInvoiceIds.current;
+        const invoices = watchedIds.length > 0
+          ? docs.filter((doc) => watchedIds.includes(doc._id))
+          : docs.filter((doc) =>
+            doc.type === 'INVOICE' || doc.type === 'E_INVOICE_XML' || doc.type === 'EXPORT_INVOICE'
+          );
+        if (invoices.length === 0 || cancelled) return;
+        if (invoices.some((doc) => doc.extractionStatus === 'PENDING')) {
           sawRewritePending.current = true;
           return;
         }
-        if (!sawRewritePending.current) return;
+        // Hızlı tamamlanırsa PENDING kaçmasın; kısa süre sonra terminal say.
+        if (!sawRewritePending.current && Date.now() - startedAt < 8000) return;
         setRewriting(false);
+        rewriteInvoiceIds.current = [];
         await reloadDeclarationData();
-        toast(invoice.extractionStatus === 'SUCCESS'
+        const ok = invoices.every((doc) => doc.extractionStatus === 'SUCCESS');
+        toast(ok
           ? 'Parse tamamlandı. Beyanname yazımı tekrar açıldı.'
           : 'Parse tamamlanamadı. Beyanname yazımı tekrar açıldı.');
       })();
-    }, 4000);
+    }, 2500);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

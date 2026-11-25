@@ -80,7 +80,7 @@ function setGoodsLineByPath(target: MutableObject, path: string, value: unknown)
   const goodsLines = (existing ?? []) as unknown[];
   target.goodsLines = goodsLines;
   const current = goodsLines[index];
-  if (current === undefined || current === null) goodsLines[index] = {};
+  if (current === undefined || current === null) goodsLines[index] = { lineNo: index + 1 };
   else if (typeof current !== "object" || Array.isArray(current)) throw new Error(`Promotion target path collides at goodsLines.${index}.`);
   (goodsLines[index] as MutableObject)[field] = value;
 }
@@ -237,6 +237,15 @@ export async function promotePersistedDeclarationFieldResolution(params: {
   const skippedReviewFields: string[] = [];
   const unmappedResolvedFields: string[] = [];
 
+  // Yeni resolution'da kalem sayısı düştüyse (PDF+XML dedupe) eski satırlar array'de kalmasın.
+  const resolutionHasGoods = Object.keys(run.resolution.fields).some((field) => GOODS_LINE_FIELD_RE.test(field));
+  if (resolutionHasGoods) {
+    normalizedData.goodsLines = [];
+    for (const key of Object.keys(sourceTrace)) {
+      if (key === "goodsLines" || GOODS_LINE_FIELD_RE.test(key)) delete sourceTrace[key];
+    }
+  }
+
   for (const [fieldName, fieldResolution] of Object.entries(run.resolution.fields)) {
     if (fieldResolution.status === "REVIEW_REQUIRED") {
       skippedReviewFields.push(fieldName);
@@ -266,6 +275,12 @@ export async function promotePersistedDeclarationFieldResolution(params: {
       evidence: selected.evidence
     };
     promotedFields.push(fieldName);
+  }
+
+  if (resolutionHasGoods && Array.isArray(normalizedData.goodsLines)) {
+    normalizedData.goodsLines = (normalizedData.goodsLines as MutableObject[])
+      .filter((line) => line && typeof line === "object")
+      .map((line, index) => ({ ...line, lineNo: index + 1 }));
   }
 
   declaration.normalizedData = normalizedData;
