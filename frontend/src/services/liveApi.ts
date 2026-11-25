@@ -57,6 +57,14 @@ export function mapDocLabelToType(label: string): DocumentType {
   return DOC_LABEL_TO_TYPE[label] ?? "OTHER";
 }
 
+/** Çoklu yüklemede uzantıya göre tip: .xml her zaman e-Fatura XML; XML tipi seçiliyken PDF fatura kalır. */
+export function resolveUploadDocLabel(selectedLabel: string, fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".xml")) return "e-Fatura XML";
+  if (selectedLabel === "e-Fatura XML") return "Fatura";
+  return selectedLabel;
+}
+
 export async function fetchDeclarationsFromApi(scope?: "all" | "mine") {
   if (!liveApiEnabled()) return null;
   try {

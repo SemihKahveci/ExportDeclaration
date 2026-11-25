@@ -73,6 +73,7 @@ export default function BeyannameYazimPage() {
   const [reminderOpen,     setReminderOpen]      = useState(false);
   const [reminderRef,      setReminderRef]       = useState<string | undefined>(undefined);
   const [rewriting, setRewriting] = useState(false);
+  const [awaitingParseId, setAwaitingParseId] = useState<string | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnNote, setReturnNote] = useState('');
   const [returning, setReturning] = useState(false);
@@ -80,6 +81,7 @@ export default function BeyannameYazimPage() {
   const [gtipFaultOpen, setGtipFaultOpen] = useState(false);
   const [gtipFaults, setGtipFaults] = useState<GtipFaultRow[]>([]);
   const sawRewritePending = useRef(false);
+  const sawUploadPending = useRef(false);
   const saveDraftRef = useRef<(() => Promise<void>) | null>(null);
   const sheetRef = useRef<DeclarationSheetData | null>(null);
 
@@ -325,6 +327,37 @@ export default function BeyannameYazimPage() {
     };
   }, [rewriting, selectedId]);
 
+  useEffect(() => {
+    if (!awaitingParseId) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const docs = await listDocuments(awaitingParseId).catch(() => []);
+        if (cancelled || docs.length === 0) return;
+        const invoices = docs.filter((doc) =>
+          doc.type === 'INVOICE' || doc.type === 'E_INVOICE_XML' || doc.type === 'EXPORT_INVOICE'
+        );
+        const watch = invoices.length > 0 ? invoices : docs;
+        if (watch.some((doc) => doc.extractionStatus === 'PENDING' || !doc.extractionStatus)) {
+          sawUploadPending.current = true;
+          return;
+        }
+        if (!sawUploadPending.current) return;
+        setAwaitingParseId(null);
+        sawUploadPending.current = false;
+        await reloadDeclarationData();
+        const failed = watch.some((doc) => doc.extractionStatus !== 'SUCCESS');
+        toast(failed
+          ? 'Parse tamamlandı; bazı evraklar başarısız. Yazım alanlarını kontrol edin.'
+          : 'Parse tamamlandı. Beyanname yazım alanları güncellendi.', { duration: 7000 });
+      })();
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [awaitingParseId]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full gap-3 text-muted">
@@ -367,8 +400,11 @@ export default function BeyannameYazimPage() {
           items={listeItems}
           preselectedRef={uploadRef}
           onClose={() => { setUploadOpen(false); setUploadRef(undefined); }}
-          onUploaded={() => {
+          onUploaded={(declarationId) => {
+            sawUploadPending.current = false;
+            setAwaitingParseId(declarationId);
             void reloadDeclarationData();
+            toast('Parse sürüyor; bitince yazım alanları yenilenecek.');
           }}
         />
 

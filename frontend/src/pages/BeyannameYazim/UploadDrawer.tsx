@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { BeyannameListeItem } from '../../types';
 import { beyannameListeService } from '../../services/declarations';
 import { DOCUMENT_TYPE_OPTIONS } from '../../services/documents';
+import { resolveUploadDocLabel } from '../../services/liveApi';
 import Drawer from '../../components/ui/Drawer';
 import { Field, Input, Select, Textarea } from '../../components/ui/Fields';
 import UploadBox from '../../components/ui/UploadBox';
@@ -62,20 +63,24 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
     setSaving(true);
     try {
       let declarationId = items.find((item) => item.ref === ref)?.id ?? '';
+      const usedTypes = new Set<string>();
       for (const file of files) {
+        const resolvedType = resolveUploadDocLabel(docType, file.name);
+        usedTypes.add(resolvedType);
         const uploaded = await beyannameListeService.uploadDocument({
           ref,
           customer,
-          docType,
+          docType: resolvedType,
           file,
           note,
           declarationId: declarationId || undefined,
         });
         declarationId = uploaded.declarationId || declarationId;
       }
+      const typeLabel = [...usedTypes].join(' + ');
       toast(files.length === 1
-        ? `Dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`
-        : `${files.length} dosya yüklendi · ${docType} — ${ref} · IDP işleme başladı`);
+        ? `Dosya yüklendi · ${typeLabel} — ${ref} · IDP işleme başladı`
+        : `${files.length} dosya yüklendi · ${typeLabel} — ${ref} · parse bitince yazım alanları dolacak`);
       handleClose();
       if (declarationId) onUploaded?.(declarationId);
     } catch (error) {
@@ -135,7 +140,7 @@ export default function UploadDrawer({ open, items, preselectedRef, onClose, onU
             multiple
             accumulate
             onFiles={setFiles}
-            hint="Birden fazla dosya seçilebilir · PDF, DOCX, XLSX, JPG — maks. 20 MB"
+            hint="Birden fazla dosya seçilebilir · PDF/XML birlikte yüklenebilir (.xml → e-Fatura XML) · maks. 20 MB"
           />
         </Field>
 
