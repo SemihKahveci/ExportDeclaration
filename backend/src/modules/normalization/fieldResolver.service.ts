@@ -62,7 +62,7 @@ const GOODS_LINE_FILL_KEYS = [
 export function fillMissingGoodsLineFields(target: GoodsLine, source: GoodsLine): void {
   for (const key of GOODS_LINE_FILL_KEYS) {
     if (!isEmpty(target[key]) || isEmpty(source[key])) continue;
-    (target as Record<string, unknown>)[key] = source[key];
+    (target as unknown as Record<string, unknown>)[key] = source[key];
   }
 }
 
