@@ -171,9 +171,19 @@ export function projectDeclarationFieldCandidates(params: {
   };
 }
 
-const INVOICE_DOCUMENT_TYPES = new Set<DocumentTypeValue>([DocumentType.INVOICE, DocumentType.E_INVOICE_XML]);
+const INVOICE_DOCUMENT_TYPES = new Set<DocumentTypeValue>([
+  DocumentType.INVOICE,
+  DocumentType.E_INVOICE_XML,
+  DocumentType.EXPORT_INVOICE
+]);
 const GOODS_LINE_FIELD_RE = /^goodsLines\.(\d+)\.(.+)$/;
 const ADDITIVE_INVOICE_FIELDS = ["totalAmount", "grossWeight", "netWeight", "totalPackage"] as const;
+/** Aynı faturanın birden fazla temsili: XML > PDF fatura > İngilizce Invoice. */
+const INVOICE_REPRESENTATION_RANK: Record<string, number> = {
+  [DocumentType.E_INVOICE_XML]: 0,
+  [DocumentType.INVOICE]: 1,
+  [DocumentType.EXPORT_INVOICE]: 2
+};
 
 function invoiceFileIds(documentSet: DeclarationDocumentSet): string[] {
   const ids: string[] = [];
@@ -182,6 +192,104 @@ function invoiceFileIds(documentSet: DeclarationDocumentSet): string[] {
     ids.push(document.uploadedFileId);
   }
   return ids;
+}
+
+function invoiceTypeByFile(documentSet: DeclarationDocumentSet): Map<string, DocumentTypeValue> {
+  const map = new Map<string, DocumentTypeValue>();
+  for (const document of documentSet.documents) {
+    if (!INVOICE_DOCUMENT_TYPES.has(document.type)) continue;
+    if (!map.has(document.uploadedFileId)) map.set(document.uploadedFileId, document.type);
+  }
+  return map;
+}
+
+function invoiceNoForFile(
+  fields: Record<string, DeclarationFieldCandidate[]>,
+  fileId: string
+): string {
+  const numbers = labelBoundInvoiceNumbers(fields.invoiceNo ?? [], fileId);
+  const values = [...new Set(numbers
+    .map((candidate) => typeof candidate.value === "string" ? candidate.value.trim() : "")
+    .filter(Boolean))];
+  return values.length === 1 ? values[0]!.replace(/\s+/g, "").toLocaleUpperCase("tr-TR") : "";
+}
+
+function pickInvoiceRepresentationWinner(
+  fileIds: string[],
+  typeByFile: Map<string, DocumentTypeValue>
+): string {
+  return [...fileIds].sort((a, b) => {
+    const rankA = INVOICE_REPRESENTATION_RANK[String(typeByFile.get(a))] ?? 99;
+    const rankB = INVOICE_REPRESENTATION_RANK[String(typeByFile.get(b))] ?? 99;
+    return rankA - rankB || a.localeCompare(b);
+  })[0]!;
+}
+
+/**
+ * Aynı ticari faturanın PDF + e-Fatura XML temsillerini tek kaynakta birleştir.
+ * Farklı fatura numaraları ayrı kalır ve mevcut stack davranışı sürer.
+ */
+export function selectDistinctInvoiceFiles(
+  documentSet: DeclarationDocumentSet,
+  fields: Record<string, DeclarationFieldCandidate[]>,
+  fileIds: string[]
+): string[] {
+  if (fileIds.length < 2) return fileIds;
+  const typeByFile = invoiceTypeByFile(documentSet);
+  const byInvoiceNo = new Map<string, string[]>();
+  const unmatched: string[] = [];
+
+  for (const fileId of fileIds) {
+    const invoiceNo = invoiceNoForFile(fields, fileId);
+    if (!invoiceNo) {
+      unmatched.push(fileId);
+      continue;
+    }
+    const group = byInvoiceNo.get(invoiceNo) ?? [];
+    group.push(fileId);
+    byInvoiceNo.set(invoiceNo, group);
+  }
+
+  const winners = new Set<string>();
+  for (const group of byInvoiceNo.values()) {
+    winners.add(pickInvoiceRepresentationWinner(group, typeByFile));
+  }
+
+  if (unmatched.length === 2) {
+    const xml = unmatched.filter((id) => typeByFile.get(id) === DocumentType.E_INVOICE_XML);
+    const pdf = unmatched.filter((id) => {
+      const type = typeByFile.get(id);
+      return type === DocumentType.INVOICE || type === DocumentType.EXPORT_INVOICE;
+    });
+    if (xml.length === 1 && pdf.length === 1) {
+      winners.add(xml[0]!);
+    } else {
+      for (const id of unmatched) winners.add(id);
+    }
+  } else {
+    for (const id of unmatched) winners.add(id);
+  }
+
+  return fileIds.filter((id) => winners.has(id));
+}
+
+function dropSuppressedInvoiceGoods(
+  fields: Record<string, DeclarationFieldCandidate[]>,
+  keptFileIds: string[],
+  allGoodsFileIds: string[]
+): Record<string, DeclarationFieldCandidate[]> {
+  const suppressed = new Set(allGoodsFileIds.filter((id) => !keptFileIds.includes(id)));
+  if (suppressed.size === 0) return fields;
+  const next: Record<string, DeclarationFieldCandidate[]> = {};
+  for (const [field, candidates] of Object.entries(fields)) {
+    if (!GOODS_LINE_FIELD_RE.test(field)) {
+      next[field] = candidates;
+      continue;
+    }
+    const kept = candidates.filter((candidate) => !suppressed.has(candidate.uploadedFileId));
+    if (kept.length > 0) next[field] = kept;
+  }
+  return next;
 }
 
 function finiteNumber(value: unknown): number | undefined {
@@ -221,23 +329,25 @@ export function stackMultiInvoiceFields(
   const withGoods = invoices.filter((fileId) => Object.keys(namespaced).some((field) =>
     GOODS_LINE_FIELD_RE.test(field) && namespaced[field]?.some((candidate) => candidate.uploadedFileId === fileId)
   ));
-  if (withGoods.length < 2) return namespaced;
+  const distinctGoods = selectDistinctInvoiceFiles(documentSet, namespaced, withGoods);
+  const cleaned = dropSuppressedInvoiceGoods(namespaced, distinctGoods, withGoods);
+  if (distinctGoods.length < 2) return cleaned;
 
   const shift = new Map<string, number>();
   let offset = 0;
-  for (const fileId of withGoods) {
+  for (const fileId of distinctGoods) {
     shift.set(fileId, offset);
     let maxIndex = 0;
-    for (const field of Object.keys(namespaced)) {
+    for (const field of Object.keys(cleaned)) {
       const match = GOODS_LINE_FIELD_RE.exec(field);
-      if (!match || !namespaced[field]?.some((candidate) => candidate.uploadedFileId === fileId)) continue;
+      if (!match || !cleaned[field]?.some((candidate) => candidate.uploadedFileId === fileId)) continue;
       maxIndex = Math.max(maxIndex, Number(match[1]));
     }
     offset += maxIndex + 1;
   }
 
   const stacked: Record<string, DeclarationFieldCandidate[]> = {};
-  for (const [field, candidates] of Object.entries(namespaced)) {
+  for (const [field, candidates] of Object.entries(cleaned)) {
     const match = GOODS_LINE_FIELD_RE.exec(field);
     for (const candidate of candidates) {
       const fileShift = match ? shift.get(candidate.uploadedFileId) : undefined;
@@ -250,10 +360,10 @@ export function stackMultiInvoiceFields(
   }
 
   for (const field of ADDITIVE_INVOICE_FIELDS) {
-    const summed = sumInvoiceField(documentSet, stacked, field, withGoods);
+    const summed = sumInvoiceField(documentSet, stacked, field, distinctGoods);
     if (summed) stacked[field] = summed;
   }
-  attachInvoiceNumbers(stacked, withGoods);
+  attachInvoiceNumbers(stacked, distinctGoods);
   return stacked;
 }
 

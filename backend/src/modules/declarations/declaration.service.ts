@@ -600,20 +600,28 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
       }
 
       const effective = buildEffectiveInvoiceGoodsLines(effectiveAudit, decisions);
-      if (!genericGoodsPromoted) {
-        normalized.goodsLines = [];
-        genericGoodsPromoted = true;
-      }
-      const rowOffset = normalized.goodsLines.length;
-      normalized.goodsLines.push(...effective.goodsLines.map((line, index) => ({ ...line, lineNo: rowOffset + index + 1 })));
-      for (const [field, trace] of Object.entries(effective.trace)) {
-        const match = /^goodsLines\.(\d+)\.(.+)$/.exec(field);
-        const targetField = match ? `goodsLines.${rowOffset + Number(match[1])}.${match[2]}` : field;
-        (sourceTrace as Record<string, any>)[targetField] = {
-          ...trace,
-          processingRunId: String(run._id),
-          uploadedFileId: String(invoiceDoc._id)
-        };
+      const xmlOwnsGoods = sources.some((source) =>
+        source.type === "E_INVOICE_XML"
+        && Array.isArray((source.data as { goodsLines?: unknown } | undefined)?.goodsLines)
+        && ((source.data as { goodsLines: unknown[] }).goodsLines.length > 0)
+      );
+      // PDF + e-Fatura XML aynı faturadaysa kalemler XML'de kalır; PDF satırları eklenmez/ezilmez.
+      if (!(xmlOwnsGoods && normalized.goodsLines.length > 0)) {
+        if (!genericGoodsPromoted) {
+          normalized.goodsLines = [];
+          genericGoodsPromoted = true;
+        }
+        const rowOffset = normalized.goodsLines.length;
+        normalized.goodsLines.push(...effective.goodsLines.map((line, index) => ({ ...line, lineNo: rowOffset + index + 1 })));
+        for (const [field, trace] of Object.entries(effective.trace)) {
+          const match = /^goodsLines\.(\d+)\.(.+)$/.exec(field);
+          const targetField = match ? `goodsLines.${rowOffset + Number(match[1])}.${match[2]}` : field;
+          (sourceTrace as Record<string, any>)[targetField] = {
+            ...trace,
+            processingRunId: String(run._id),
+            uploadedFileId: String(invoiceDoc._id)
+          };
+        }
       }
     } catch (error) {
       throw new HttpError(409, error instanceof Error ? error.message : "Generic invoice normalization tamamlanamadı.");

@@ -213,6 +213,53 @@ const labelledAuthority = selectDirectSourceEvidenceAuthority(labelled as never)
 assert.equal(labelledAuthority.find((item) => item.field === "totalAmount")?.candidateId, "multi-invoice-sum:totalAmount");
 assert.equal(labelledAuthority.some((item) => item.field === "invoiceNo"), false);
 
+/** Aynı fatura PDF + e-Fatura XML: kalemler çiftlenmez; XML kazanır. */
+const pdfXmlSameInvoice = projectDeclarationFieldCandidates({
+  documentSet: {
+    ...documentSet,
+    documents: [
+      { logicalDocumentId: "ld-pdf", uploadedFileId: "file-pdf", type: DocumentType.INVOICE, pageStart: 1, pageEnd: 1, sourceProcessingRunId: "run-pdf" },
+      { logicalDocumentId: "ld-xml", uploadedFileId: "file-xml", type: DocumentType.E_INVOICE_XML, pageStart: 1, pageEnd: 1, sourceProcessingRunId: "run-xml" }
+    ]
+  },
+  sources: [
+    { uploadedFileId: "file-pdf", sourceProcessingRunId: "run-pdf", candidates: {
+      version: "1",
+      fields: {
+        "goodsLines.0.quantity": [{ candidateId: "pdf-q0", field: "goodsLines.0.quantity", value: 1, confidence: 0.9, extractor: "fixture", evidence: [{ segmentId: "p0", pageNumber: 1, text: "1", contentSource: "NATIVE_TEXT" }] }],
+        "goodsLines.1.quantity": [{ candidateId: "pdf-q1", field: "goodsLines.1.quantity", value: 2, confidence: 0.9, extractor: "fixture", evidence: [{ segmentId: "p1", pageNumber: 1, text: "2", contentSource: "NATIVE_TEXT" }] }],
+        "goodsLines.2.quantity": [{ candidateId: "pdf-q2", field: "goodsLines.2.quantity", value: 3, confidence: 0.9, extractor: "fixture", evidence: [{ segmentId: "p2", pageNumber: 1, text: "3", contentSource: "NATIVE_TEXT" }] }],
+        "goodsLines.3.quantity": [{ candidateId: "pdf-q3", field: "goodsLines.3.quantity", value: 4, confidence: 0.9, extractor: "fixture", evidence: [{ segmentId: "p3", pageNumber: 1, text: "4", contentSource: "NATIVE_TEXT" }] }],
+        invoiceNo: [{ candidateId: "header-invoice-no:f6-header-party", field: "invoiceNo", value: "CLK2026000002140", confidence: 0.99, extractor: "fixture", evidence: [{ segmentId: "p", pageNumber: 1, text: "CLK2026000002140", contentSource: "NATIVE_TEXT" }] }],
+        totalAmount: [{ candidateId: "header-total-amount:f6-totalAmount", field: "totalAmount", value: 100, confidence: 0.98, extractor: "fixture", evidence: [{ segmentId: "p", pageNumber: 1, text: "100", contentSource: "NATIVE_TEXT" }] }],
+        currency: [{ candidateId: "cur-pdf", field: "currency", value: "EUR", confidence: 0.9, extractor: "fixture", evidence: [{ segmentId: "p", pageNumber: 1, text: "EUR", contentSource: "NATIVE_TEXT" }] }]
+      }
+    } },
+    { uploadedFileId: "file-xml", sourceProcessingRunId: "run-xml", candidates: {
+      version: "1",
+      fields: {
+        "goodsLines.0.quantity": [{ candidateId: "xml-q0", field: "goodsLines.0.quantity", value: 10, confidence: 0.95, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x0", pageNumber: 1, text: "10", contentSource: "NATIVE_TEXT" }] }],
+        "goodsLines.1.quantity": [{ candidateId: "xml-q1", field: "goodsLines.1.quantity", value: 20, confidence: 0.95, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x1", pageNumber: 1, text: "20", contentSource: "NATIVE_TEXT" }] }],
+        "goodsLines.2.quantity": [{ candidateId: "xml-q2", field: "goodsLines.2.quantity", value: 30, confidence: 0.95, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x2", pageNumber: 1, text: "30", contentSource: "NATIVE_TEXT" }] }],
+        "goodsLines.3.quantity": [{ candidateId: "xml-q3", field: "goodsLines.3.quantity", value: 40, confidence: 0.95, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x3", pageNumber: 1, text: "40", contentSource: "NATIVE_TEXT" }] }],
+        invoiceNo: [{ candidateId: "header-invoice-no:f6-header-party", field: "invoiceNo", value: "CLK2026000002140", confidence: 0.99, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "CLK2026000002140", contentSource: "NATIVE_TEXT" }] }],
+        totalAmount: [{ candidateId: "header-total-amount:f6-totalAmount", field: "totalAmount", value: 100, confidence: 0.98, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "100", contentSource: "NATIVE_TEXT" }] }],
+        currency: [{ candidateId: "cur-xml", field: "currency", value: "EUR", confidence: 0.9, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "EUR", contentSource: "NATIVE_TEXT" }] }]
+      }
+    } }
+  ]
+});
+const goodsQtyFields = Object.keys(pdfXmlSameInvoice.fields).filter((field) => /^goodsLines\.\d+\.quantity$/.test(field)).sort();
+assert.deepEqual(goodsQtyFields, [
+  "goodsLines.0.quantity",
+  "goodsLines.1.quantity",
+  "goodsLines.2.quantity",
+  "goodsLines.3.quantity"
+]);
+assert.equal(pdfXmlSameInvoice.fields["goodsLines.0.quantity"]?.[0]?.uploadedFileId, "file-xml");
+assert.equal(pdfXmlSameInvoice.fields["goodsLines.0.quantity"]?.[0]?.value, 10);
+assert.equal(pdfXmlSameInvoice.fields.totalAmount?.some((item) => item.candidateId.includes("multi-invoice-sum")), false);
+
 console.log(JSON.stringify({
   event: "foundation-6.4.declaration-field-candidate-projection.passed",
   projection: {
