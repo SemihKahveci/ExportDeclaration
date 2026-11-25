@@ -246,9 +246,10 @@ const pdfXmlSameInvoice = projectDeclarationFieldCandidates({
         "goodsLines.2.quantity": [{ candidateId: "xml-q2", field: "goodsLines.2.quantity", value: 30, confidence: 0.95, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x2", pageNumber: 1, text: "30", contentSource: "NATIVE_TEXT" }] }],
         "goodsLines.3.quantity": [{ candidateId: "xml-q3", field: "goodsLines.3.quantity", value: 40, confidence: 0.95, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x3", pageNumber: 1, text: "40", contentSource: "NATIVE_TEXT" }] }],
         "goodsLines.0.origin": [{ candidateId: "xml-or0", field: "goodsLines.0.origin", value: "FR", confidence: 0.95, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x0", pageNumber: 1, text: "FR", contentSource: "NATIVE_TEXT" }] }],
-        invoiceNo: [{ candidateId: "header-invoice-no:f6-header-party", field: "invoiceNo", value: "CLK2026000002140", confidence: 0.99, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "CLK2026000002140", contentSource: "NATIVE_TEXT" }] }],
-        totalAmount: [{ candidateId: "header-total-amount:f6-totalAmount", field: "totalAmount", value: 100, confidence: 0.98, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "100", contentSource: "NATIVE_TEXT" }] }],
-        currency: [{ candidateId: "cur-xml", field: "currency", value: "EUR", confidence: 0.9, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "EUR", contentSource: "NATIVE_TEXT" }] }]
+        // Gerçek UBL aday id’si — f6-header-party değil; eşleşme buna göre de çalışmalı.
+        invoiceNo: [{ candidateId: "ubl-xml:header:invoiceNo", field: "invoiceNo", value: "CLK2026000002140", confidence: 0.99, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "CLK2026000002140", contentSource: "NATIVE_TEXT" }] }],
+        totalAmount: [{ candidateId: "ubl-xml:header:totalAmount", field: "totalAmount", value: 100, confidence: 0.98, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "100", contentSource: "NATIVE_TEXT" }] }],
+        currency: [{ candidateId: "ubl-xml:header:currency", field: "currency", value: "EUR", confidence: 0.9, extractor: "ubl-ihracat-xml-v1", evidence: [{ segmentId: "x", pageNumber: 1, text: "EUR", contentSource: "NATIVE_TEXT" }] }]
       }
     } }
   ]

@@ -203,15 +203,24 @@ function invoiceTypeByFile(documentSet: DeclarationDocumentSet): Map<string, Doc
   return map;
 }
 
+function normalizeInvoiceNo(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, "").toLocaleUpperCase("tr-TR");
+}
+
+/**
+ * Dosyanın fatura no’su: önce etiket-bağlı (PDF), yoksa UBL `ubl-xml:…:invoiceNo`.
+ * Sadece f6-header-party’ye bakmak XML’i unmatched bırakıp PDF ile stack’e düşürüyordu.
+ */
 function invoiceNoForFile(
   fields: Record<string, DeclarationFieldCandidate[]>,
   fileId: string
 ): string {
-  const numbers = labelBoundInvoiceNumbers(fields.invoiceNo ?? [], fileId);
-  const values = [...new Set(numbers
-    .map((candidate) => typeof candidate.value === "string" ? candidate.value.trim() : "")
-    .filter(Boolean))];
-  return values.length === 1 ? values[0]!.replace(/\s+/g, "").toLocaleUpperCase("tr-TR") : "";
+  const forFile = (fields.invoiceNo ?? []).filter((candidate) => candidate.uploadedFileId === fileId);
+  const labelBound = labelBoundInvoiceNumbers(fields.invoiceNo ?? [], fileId);
+  const pool = labelBound.length > 0 ? labelBound : forFile;
+  const values = [...new Set(pool.map((candidate) => normalizeInvoiceNo(candidate.value)).filter(Boolean))];
+  return values.length === 1 ? values[0]! : "";
 }
 
 function pickInvoiceRepresentationWinner(
@@ -251,22 +260,55 @@ function invoiceRepresentationGroups(
     groups.push({ winner: pickInvoiceRepresentationWinner(members, typeByFile), members });
   }
 
+  // Tek XML + tek PDF fatura no’suz kaldıysa aynı temsil kabul et.
   if (unmatched.length === 2) {
     const xml = unmatched.filter((id) => typeByFile.get(id) === DocumentType.E_INVOICE_XML);
-    const pdf = unmatched.filter((id) => {
-      const type = typeByFile.get(id);
-      return type === DocumentType.INVOICE || type === DocumentType.EXPORT_INVOICE;
-    });
+    const pdf = unmatched.filter((id) => isPdfInvoiceType(typeByFile.get(id)));
     if (xml.length === 1 && pdf.length === 1) {
       groups.push({ winner: xml[0]!, members: unmatched });
-    } else {
-      for (const id of unmatched) groups.push({ winner: id, members: [id] });
+      return groups;
     }
-  } else {
-    for (const id of unmatched) groups.push({ winner: id, members: [id] });
+  }
+
+  // Biri fatura no’lu grupta, diğeri unmatched complementary ise aynı faturaya bağla
+  // (PDF f6-header-party / XML ubl-xml id farkı veya tek taraflı extract).
+  const stillUnmatched: string[] = [];
+  for (const id of unmatched) {
+    const complementary = complementaryInvoiceIds(id, typeByFile);
+    const oppositeGroups = groups.filter((group) =>
+      group.members.every((member) => complementary.has(String(typeByFile.get(member))))
+    );
+    if (oppositeGroups.length === 1) {
+      const target = oppositeGroups[0]!;
+      target.members.push(id);
+      target.winner = pickInvoiceRepresentationWinner(target.members, typeByFile);
+    } else {
+      stillUnmatched.push(id);
+    }
+  }
+  for (const id of stillUnmatched) {
+    groups.push({ winner: id, members: [id] });
   }
 
   return groups;
+}
+
+function isPdfInvoiceType(type: DocumentTypeValue | undefined): boolean {
+  return type === DocumentType.INVOICE || type === DocumentType.EXPORT_INVOICE;
+}
+
+function complementaryInvoiceIds(
+  fileId: string,
+  typeByFile: Map<string, DocumentTypeValue>
+): Set<string> {
+  const type = typeByFile.get(fileId);
+  if (type === DocumentType.E_INVOICE_XML) {
+    return new Set([DocumentType.INVOICE, DocumentType.EXPORT_INVOICE]);
+  }
+  if (isPdfInvoiceType(type)) {
+    return new Set([DocumentType.E_INVOICE_XML]);
+  }
+  return new Set();
 }
 
 /**
