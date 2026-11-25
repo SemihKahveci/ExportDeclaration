@@ -225,16 +225,12 @@ function pickInvoiceRepresentationWinner(
   })[0]!;
 }
 
-/**
- * Aynı ticari faturanın PDF + e-Fatura XML temsillerini tek kaynakta birleştir.
- * Farklı fatura numaraları ayrı kalır ve mevcut stack davranışı sürer.
- */
-export function selectDistinctInvoiceFiles(
+function invoiceRepresentationGroups(
   documentSet: DeclarationDocumentSet,
   fields: Record<string, DeclarationFieldCandidate[]>,
   fileIds: string[]
-): string[] {
-  if (fileIds.length < 2) return fileIds;
+): Array<{ winner: string; members: string[] }> {
+  if (fileIds.length === 0) return [];
   const typeByFile = invoiceTypeByFile(documentSet);
   const byInvoiceNo = new Map<string, string[]>();
   const unmatched: string[] = [];
@@ -250,9 +246,9 @@ export function selectDistinctInvoiceFiles(
     byInvoiceNo.set(invoiceNo, group);
   }
 
-  const winners = new Set<string>();
-  for (const group of byInvoiceNo.values()) {
-    winners.add(pickInvoiceRepresentationWinner(group, typeByFile));
+  const groups: Array<{ winner: string; members: string[] }> = [];
+  for (const members of byInvoiceNo.values()) {
+    groups.push({ winner: pickInvoiceRepresentationWinner(members, typeByFile), members });
   }
 
   if (unmatched.length === 2) {
@@ -262,31 +258,95 @@ export function selectDistinctInvoiceFiles(
       return type === DocumentType.INVOICE || type === DocumentType.EXPORT_INVOICE;
     });
     if (xml.length === 1 && pdf.length === 1) {
-      winners.add(xml[0]!);
+      groups.push({ winner: xml[0]!, members: unmatched });
     } else {
-      for (const id of unmatched) winners.add(id);
+      for (const id of unmatched) groups.push({ winner: id, members: [id] });
     }
   } else {
-    for (const id of unmatched) winners.add(id);
+    for (const id of unmatched) groups.push({ winner: id, members: [id] });
   }
 
+  return groups;
+}
+
+/**
+ * Aynı ticari faturanın PDF + e-Fatura XML temsillerini tek kaynakta birleştir.
+ * Farklı fatura numaraları ayrı kalır ve mevcut stack davranışı sürer.
+ */
+export function selectDistinctInvoiceFiles(
+  documentSet: DeclarationDocumentSet,
+  fields: Record<string, DeclarationFieldCandidate[]>,
+  fileIds: string[]
+): string[] {
+  if (fileIds.length < 2) return fileIds;
+  const winners = new Set(invoiceRepresentationGroups(documentSet, fields, fileIds).map((group) => group.winner));
   return fileIds.filter((id) => winners.has(id));
 }
 
+function hasFilledCandidateValue(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  return true;
+}
+
+/**
+ * Kaybeden temsil (genelde PDF): kazananın doldurduğu goods alanlarında elenir;
+ * kazanan boş bıraktıysa PDF adayı kalır. Kazananda olmayan ekstra satırlar eklenmez.
+ */
 function dropSuppressedInvoiceGoods(
+  documentSet: DeclarationDocumentSet,
   fields: Record<string, DeclarationFieldCandidate[]>,
   keptFileIds: string[],
   allGoodsFileIds: string[]
 ): Record<string, DeclarationFieldCandidate[]> {
   const suppressed = new Set(allGoodsFileIds.filter((id) => !keptFileIds.includes(id)));
   if (suppressed.size === 0) return fields;
+
+  const winnerBySuppressed = new Map<string, string>();
+  for (const group of invoiceRepresentationGroups(documentSet, fields, allGoodsFileIds)) {
+    for (const member of group.members) {
+      if (member !== group.winner && suppressed.has(member)) {
+        winnerBySuppressed.set(member, group.winner);
+      }
+    }
+  }
+
+  const winnerLineIndexes = new Map<string, Set<number>>();
+  const winnerFilledFields = new Map<string, Set<string>>();
+  for (const winnerId of new Set(winnerBySuppressed.values())) {
+    const lines = new Set<number>();
+    const filled = new Set<string>();
+    for (const [field, candidates] of Object.entries(fields)) {
+      const match = GOODS_LINE_FIELD_RE.exec(field);
+      if (!match) continue;
+      const fromWinner = candidates.filter((candidate) => candidate.uploadedFileId === winnerId);
+      if (fromWinner.length === 0) continue;
+      lines.add(Number(match[1]));
+      if (fromWinner.some((candidate) => hasFilledCandidateValue(candidate.value))) {
+        filled.add(field);
+      }
+    }
+    winnerLineIndexes.set(winnerId, lines);
+    winnerFilledFields.set(winnerId, filled);
+  }
+
   const next: Record<string, DeclarationFieldCandidate[]> = {};
   for (const [field, candidates] of Object.entries(fields)) {
-    if (!GOODS_LINE_FIELD_RE.test(field)) {
+    const match = GOODS_LINE_FIELD_RE.exec(field);
+    if (!match) {
       next[field] = candidates;
       continue;
     }
-    const kept = candidates.filter((candidate) => !suppressed.has(candidate.uploadedFileId));
+    const lineIndex = Number(match[1]);
+    const kept = candidates.filter((candidate) => {
+      if (!suppressed.has(candidate.uploadedFileId)) return true;
+      const winnerId = winnerBySuppressed.get(candidate.uploadedFileId);
+      if (!winnerId) return false;
+      if (!winnerLineIndexes.get(winnerId)?.has(lineIndex)) return false;
+      if (winnerFilledFields.get(winnerId)?.has(field)) return false;
+      return hasFilledCandidateValue(candidate.value);
+    });
     if (kept.length > 0) next[field] = kept;
   }
   return next;
@@ -330,7 +390,7 @@ export function stackMultiInvoiceFields(
     GOODS_LINE_FIELD_RE.test(field) && namespaced[field]?.some((candidate) => candidate.uploadedFileId === fileId)
   ));
   const distinctGoods = selectDistinctInvoiceFiles(documentSet, namespaced, withGoods);
-  const cleaned = dropSuppressedInvoiceGoods(namespaced, distinctGoods, withGoods);
+  const cleaned = dropSuppressedInvoiceGoods(documentSet, namespaced, distinctGoods, withGoods);
   if (distinctGoods.length < 2) return cleaned;
 
   const shift = new Map<string, number>();

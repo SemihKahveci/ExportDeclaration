@@ -5,7 +5,7 @@ import { HttpError } from "../../common/middlewares/errorHandler.js";
 import type { DocumentTypeValue } from "../../common/enums/documentType.js";
 import { DeclarationStatus } from "../../common/enums/declarationStatus.js";
 import { env } from "../../config/env.js";
-import { buildNormalizedDeclaration } from "../normalization/fieldResolver.service.js";
+import { buildNormalizedDeclaration, fillMissingGoodsLineFields } from "../normalization/fieldResolver.service.js";
 import type { ExtractedSource, NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
 import {
   validateMandatoryInvoicePresent,
@@ -605,8 +605,28 @@ export async function runNormalize(companyId: mongoose.Types.ObjectId, declarati
         && Array.isArray((source.data as { goodsLines?: unknown } | undefined)?.goodsLines)
         && ((source.data as { goodsLines: unknown[] }).goodsLines.length > 0)
       );
-      // PDF + e-Fatura XML aynı faturadaysa kalemler XML'de kalır; PDF satırları eklenmez/ezilmez.
-      if (!(xmlOwnsGoods && normalized.goodsLines.length > 0)) {
+      // PDF + e-Fatura XML: satır yapısı XML'de kalır; PDF yalnızca eksik alanları doldurur.
+      if (xmlOwnsGoods && normalized.goodsLines.length > 0) {
+        for (let i = 0; i < normalized.goodsLines.length; i++) {
+          const pdfLine = effective.goodsLines[i];
+          if (!pdfLine) continue;
+          const before = { ...normalized.goodsLines[i]! };
+          fillMissingGoodsLineFields(normalized.goodsLines[i]!, pdfLine);
+          for (const [field, trace] of Object.entries(effective.trace)) {
+            const match = /^goodsLines\.(\d+)\.(.+)$/.exec(field);
+            if (!match || Number(match[1]) !== i) continue;
+            const key = match[2] as keyof typeof before;
+            const wasEmpty = before[key] === undefined || before[key] === null || before[key] === "";
+            if (!wasEmpty) continue;
+            (sourceTrace as Record<string, any>)[`goodsLines.${i}.${match[2]}`] = {
+              ...trace,
+              processingRunId: String(run._id),
+              uploadedFileId: String(invoiceDoc._id)
+            };
+          }
+        }
+        genericGoodsPromoted = true;
+      } else {
         if (!genericGoodsPromoted) {
           normalized.goodsLines = [];
           genericGoodsPromoted = true;

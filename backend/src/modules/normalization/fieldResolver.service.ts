@@ -41,18 +41,51 @@ function setPartyNested(
   }
 }
 
+const GOODS_LINE_FILL_KEYS = [
+  "hsCode",
+  "productCode",
+  "description",
+  "quantity",
+  "unit",
+  "unitPrice",
+  "lineTotal",
+  "origin",
+  "grossKg",
+  "netKg",
+  "invoiceNo",
+  "packageType",
+  "manufacturerNo",
+  "manufacturerType"
+] as const;
+
+/** Birincil kaynak satırına, yalnızca boş alanları ikincil kaynaktan doldur. */
+export function fillMissingGoodsLineFields(target: GoodsLine, source: GoodsLine): void {
+  for (const key of GOODS_LINE_FILL_KEYS) {
+    if (!isEmpty(target[key]) || isEmpty(source[key])) continue;
+    (target as Record<string, unknown>)[key] = source[key];
+  }
+}
+
 function resolveGoodsLines(sources: ExtractedSource[]): { lines: GoodsLine[]; source: DocumentTypeValue | null } {
+  let primary: { lines: GoodsLine[]; source: DocumentTypeValue } | undefined;
   for (const sourceType of goodsLineSourcePriority) {
     const matches = sources.filter((x) => x.type === sourceType);
     for (const source of matches) {
       const raw = source.data?.goodsLines;
-      if (Array.isArray(raw) && raw.length > 0) {
-        const lines = raw.map((row, idx) => normalizeGoodsLine(row as Record<string, unknown>, idx + 1));
-        return { lines, source: sourceType };
+      if (!Array.isArray(raw) || raw.length === 0) continue;
+      const lines = raw.map((row, idx) => normalizeGoodsLine(row as Record<string, unknown>, idx + 1));
+      if (!primary) {
+        primary = { lines, source: sourceType };
+        continue;
+      }
+      // XML satır yapısı korunur; PDF vb. yalnızca eksik alanları doldurur (çift satır yok).
+      for (let i = 0; i < primary.lines.length; i++) {
+        const filler = lines[i];
+        if (filler) fillMissingGoodsLineFields(primary.lines[i]!, filler);
       }
     }
   }
-  return { lines: [], source: null };
+  return primary ?? { lines: [], source: null };
 }
 
 function normalizeGoodsLine(row: Record<string, unknown>, fallbackLineNo: number): GoodsLine {
