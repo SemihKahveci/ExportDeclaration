@@ -220,6 +220,35 @@ export function lookupEvrimQuantityUnitFromTables(value: string | undefined | nu
   return alias?.ediKodu;
 }
 
+/** UI kontrol metni: EDI/alias → okunur birim adı (Excel kodu değişmez). */
+export function lookupEvrimQuantityUnitLabelFromTables(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  const raw = value.trim();
+  if (!raw) return undefined;
+  const seed: Record<string, string> = {
+    C62: "Adet",
+    NIU: "Adet",
+    EA: "Adet",
+    ADET: "Adet",
+    KGM: "Kilogram",
+    KG: "Kilogram",
+    MTK: "Metrekare",
+    SET: "Set",
+    LTR: "Litre",
+    MTR: "Metre",
+  };
+  const tables = loadEvrimVeriTables();
+  const code = lookupEvrimQuantityUnitFromTables(raw) ?? raw.toUpperCase();
+  const friendly = seed[code] ?? seed[raw.toUpperCase()];
+  if (friendly) return friendly;
+  const row = tables?.miktarByEdi.get(code)
+    ?? tables?.miktarByAlias.get(normalizeKey(raw))
+    ?? tables?.miktarByAlias.get(raw.toLowerCase());
+  if (row?.aciklamaTr && row.aciklamaTr.length > 2) return row.aciklamaTr;
+  if (row?.aciklamaIng && row.aciklamaIng.length > 2) return row.aciklamaIng;
+  return row?.aciklamaTr;
+}
+
 export function lookupEvrimPackageTypeFromTables(value: string | undefined | null): string | undefined {
   if (!value) return undefined;
   const raw = value.trim();

@@ -1,6 +1,7 @@
 import {
   lookupEvrimPackageTypeFromTables,
   lookupEvrimQuantityUnitFromTables,
+  lookupEvrimQuantityUnitLabelFromTables,
 } from "./evrimVeriTables.js";
 
 /**
@@ -67,4 +68,10 @@ export function mapEvrimIhracatQuantityUnit(value: string): string {
   if (fromTables) return fromTables;
   return EVRIM_IHRACAT_QUANTITY_UNIT_CODES[key(value) as keyof typeof EVRIM_IHRACAT_QUANTITY_UNIT_CODES]
     ?? value.toLocaleUpperCase("tr-TR");
+}
+
+/** Yazım ekranı: birim kodunun Türkçe karşılığı. Excel hâlâ kod basar. */
+export function labelEvrimQuantityUnit(value: string | undefined | null): string {
+  if (!value?.trim()) return "";
+  return lookupEvrimQuantityUnitLabelFromTables(value) ?? value.trim();
 }

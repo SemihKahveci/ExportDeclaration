@@ -8,7 +8,11 @@ import {
   resolveEvrimVeriXlsxPath,
 } from "../../src/modules/export-code-tables/evrimVeriTables.js";
 import { mapEvrimCountryNo } from "../../src/modules/export-code-tables/evrimCountryCodes.js";
-import { mapEvrimIhracatQuantityUnit, mapEvrimPackageType } from "../../src/modules/export-code-tables/exportCodeTables.js";
+import {
+  labelEvrimQuantityUnit,
+  mapEvrimIhracatQuantityUnit,
+  mapEvrimPackageType,
+} from "../../src/modules/export-code-tables/exportCodeTables.js";
 
 const path = resolveEvrimVeriXlsxPath();
 assert.ok(path, "evrim-veri.xlsx bulunamadı");
@@ -34,5 +38,9 @@ assert.equal(lookupEvrimPackageTypeFromTables("BI"), "BI");
 assert.equal(mapEvrimCountryNo("CHINA"), "720");
 assert.equal(mapEvrimIhracatQuantityUnit("niu"), "C62");
 assert.equal(mapEvrimPackageType("BX"), "BX");
+assert.equal(labelEvrimQuantityUnit("EA"), "Adet");
+assert.equal(labelEvrimQuantityUnit("NIU"), "Adet");
+assert.equal(labelEvrimQuantityUnit("KGM"), "Kilogram");
+assert.equal(mapEvrimIhracatQuantityUnit("EA"), "C62");
 
 console.log("evrim-veri tables ok", tables!.sourcePath);
