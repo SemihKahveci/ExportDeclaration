@@ -40,7 +40,8 @@ assert.equal(String(sheet.G1?.v ?? ""), "");
 assert.equal(sheet.I1?.v, "001");
 assert.equal(sheet.I1?.t, "s");
 assert.equal(sheet.K1?.v, "BI");
-assert.equal(sheet.L1?.v, 853690950000);
+assert.equal(sheet.L1?.v, "853690950000");
+assert.equal(sheet.L1?.t, "s");
 assert.equal(sheet.P1?.v, 3206);
 assert.equal(sheet.Q1?.v, "OG.RVT.BAR.24.040.065");
 assert.equal(sheet.T1?.v, "T");
@@ -51,4 +52,16 @@ assert.equal(sheet.AB1?.v, "VED2026000000225");
 assert.equal(String(sheet.A2?.v ?? ""), "");
 const headerish = Object.values(sheet).some((cell) => typeof cell === "object" && cell && "v" in cell && cell.v === "Ticari Tanım");
 assert.equal(headerish, false);
+
+// Baştaki 0 sayı formatında kaybolmasın — L metin kalsın
+const leadingZero: NormalizedDeclaration = {
+  ...normalized,
+  goodsLines: [{ ...normalized.goodsLines![0]!, hsCode: "012345678901" }],
+};
+const wbZero = buildDeclarationWorkbook(leadingZero, buildExportDeclarationContract(leadingZero), { senderEvrimId: 3206 });
+const sheetZero = XLSX.read(wbZero.buffer, { type: "buffer" }).Sheets.Sayfa1!;
+assert.equal(sheetZero.L1?.v, "012345678901");
+assert.equal(sheetZero.L1?.t, "s");
+assert.notEqual(typeof sheetZero.L1?.v, "number");
+
 console.log("declaration workbook contract ok");

@@ -111,13 +111,11 @@ function lineManufacturerType(line: GoodsLine): "I" | "T" | string {
   return manufacturerTypeFor(line.origin);
 }
 
-function gtipValue(hsCode: string | undefined): number | string {
+/** GTİP her zaman metin: General/sayı formatı baştaki 0’ı düşürmesin. */
+function gtipValue(hsCode: string | undefined): string {
   const digits = (hsCode ?? "").replace(/\D/g, "");
-  if (/^\d{12}$/.test(digits)) {
-    const n = Number(digits);
-    return Number.isSafeInteger(n) ? n : digits;
-  }
-  return hsCode?.trim() || "";
+  if (digits) return digits;
+  return (hsCode ?? "").trim();
 }
 
 function buildRow(
@@ -186,12 +184,15 @@ export function buildDeclarationWorkbook(
   const rows = lines.map((line, index) => buildRow(line, index, normalized, options, senderEvrimId));
 
   const sheet = XLSX.utils.aoa_to_sheet(rows);
-  // Menşe metin kalsın (001 → Excel "1" olmasın)
+  // Menşe ve GTİP metin kalsın (001 / 01… başı Excel’de düşmesin)
   for (let r = 0; r < rows.length; r++) {
-    const addr = XLSX.utils.encode_cell({ c: EVRIM_IHRACAT_EXCEL_COLUMNS.origin, r });
-    if (sheet[addr] && typeof sheet[addr].v === "string") {
-      sheet[addr].t = "s";
-      sheet[addr].z = "@";
+    for (const col of [EVRIM_IHRACAT_EXCEL_COLUMNS.origin, EVRIM_IHRACAT_EXCEL_COLUMNS.hsCode] as const) {
+      const addr = XLSX.utils.encode_cell({ c: col, r });
+      const cell = sheet[addr];
+      if (!cell || cell.v === undefined || cell.v === "") continue;
+      cell.t = "s";
+      cell.v = String(cell.v);
+      cell.z = "@";
     }
   }
 
