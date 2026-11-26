@@ -59,6 +59,12 @@ export interface DeclarationWorkbookOptions {
   /** Gönderici VKN — senderEvrimId yoksa Firma tablosundan çözülür */
   senderTaxNo?: string;
   senderNameHint?: string;
+  /** Ayarlar › İhracat Excel: K kolonu kaynağı */
+  kapKaynak?: "fatura" | "sabit";
+  /** kapKaynak=sabit iken tüm satırlara yazılacak Evrim kap kodu */
+  kapSabit?: string;
+  /** W kolonu — ambalaj (Ayarlar’dan); boşsa yazılmaz */
+  ambalaj?: string;
 }
 
 type PriceLane = "fob" | "cif";
@@ -153,8 +159,12 @@ function buildRow(
   }
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.origin] = origin;
   // J Kap Adedi: paket kuralı — yazılmaz
-  // K: kap kodu tabloda varsa Kod, yoksa XML değeri olduğu gibi
-  row[EVRIM_IHRACAT_EXCEL_COLUMNS.packageType] = linePackageType(line, normalized.packageInfo?.packageType);
+  // K: ayar sabit ise o; değilse faturadaki kap (tabloda Kod’a map)
+  if (options.kapKaynak === "sabit" && options.kapSabit?.trim()) {
+    row[EVRIM_IHRACAT_EXCEL_COLUMNS.packageType] = options.kapSabit.trim().toUpperCase();
+  } else {
+    row[EVRIM_IHRACAT_EXCEL_COLUMNS.packageType] = linePackageType(line, normalized.packageInfo?.packageType);
+  }
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.hsCode] = gtipValue(line.hsCode);
   // M BrutKG şimdilik boş
   if (netKg != null) row[EVRIM_IHRACAT_EXCEL_COLUMNS.netKg] = netKg;
@@ -164,6 +174,10 @@ function buildRow(
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.manufacturerType] = lineManufacturerType(line);
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.exportInvoiceNo] = invoiceNo;
   row[EVRIM_IHRACAT_EXCEL_COLUMNS.invoiceNo] = invoiceNo;
+  // W: Ayarlar › ambalaj (yoksa boş bırak — Evrim aktarımı kalemleri baştan yazar)
+  if (options.ambalaj?.trim()) {
+    row[EVRIM_IHRACAT_EXCEL_COLUMNS.packageBrand] = options.ambalaj.trim();
+  }
 
   if (index === 0) {
     row[EVRIM_IHRACAT_EXCEL_COLUMNS.invoiceCurrency] = normalized.header?.currency?.trim().toUpperCase() || "";

@@ -64,4 +64,14 @@ assert.equal(sheetZero.L1?.v, "012345678901");
 assert.equal(sheetZero.L1?.t, "s");
 assert.notEqual(typeof sheetZero.L1?.v, "number");
 
+const withAyar = buildDeclarationWorkbook(normalized, buildExportDeclarationContract(normalized), {
+  senderEvrimId: 3206,
+  kapKaynak: "sabit",
+  kapSabit: "bx",
+  ambalaj: "ADDR",
+});
+const sheetAyar = XLSX.read(withAyar.buffer, { type: "buffer" }).Sheets.Sayfa1!;
+assert.equal(sheetAyar.K1?.v, "BX");
+assert.equal(sheetAyar.W1?.v, "ADDR");
+
 console.log("declaration workbook contract ok");

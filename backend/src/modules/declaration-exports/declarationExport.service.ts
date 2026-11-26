@@ -12,6 +12,8 @@ import type { UblIhracatAdapterOptions, UblIhracatIssue } from "../ubl-ihracat/u
 import { overlayHumanSupplements, resolveCustomsMasterData } from "../customs-master-data/customsMasterData.service.js";
 import { resolvePersistentCustomsSupplements } from "../customs-supplements/customsSupplement.service.js";
 import { recordExportAudit } from "../export-audit/exportAudit.service.js";
+import { resolveKapAmbalajForExport } from "../ihracat-excel-ayar/ihracatExcelAyar.service.js";
+import { lookupEvrimFirmaNoByVkn } from "../export-code-tables/evrimVeriTables.js";
 
 export interface EvrimExcelExportInput {
   supplements?: ExportDeclarationSupplements;
@@ -91,11 +93,25 @@ export async function exportDeclarationWorkbook(
     return { ready: false, issues: contract.readiness.issues };
   }
 
+  const senderEvrimId = lookupEvrimFirmaNoByVkn(
+    normalized.parties?.seller?.taxNo,
+    normalized.parties?.seller?.name
+  );
+  const kapAmbalaj = await resolveKapAmbalajForExport({
+    companyId,
+    gonderenNo: senderEvrimId,
+    tasimaSekli: declaration.operation?.transportMode ?? normalized.transport?.mode,
+  });
   const workbook = buildDeclarationWorkbook(normalized, contract, {
+    senderEvrimId,
     senderTaxNo: normalized.parties?.seller?.taxNo,
     senderNameHint: normalized.parties?.seller?.name,
+    kapKaynak: kapAmbalaj.kapKaynak,
+    kapSabit: kapAmbalaj.kapSabit,
+    ambalaj: kapAmbalaj.ambalaj,
   });
-  const filename = `${safeFilenamePart(contract.invoice.invoiceNo)}-beyanname.xlsx`;
+  const refName = safeFilenamePart(declaration.operation?.ref || contract.invoice.invoiceNo);
+  const filename = `${refName}_evrim.xlsx`;
   await recordExportAudit({
     companyId, declarationId, format: "EVRIM_EXCEL",
     normalizedSnapshot: normalized,
