@@ -2,6 +2,7 @@ import type { Declaration as BackendDeclaration } from "@/api/types/declaration.
 import type { DocumentType, NormalizedDeclaration, UploadedDocument } from "@/api/types/document.types";
 import { mergeNormalizedFromApi } from "@/api/types/document.types";
 import { isWeightUnit } from "@/domain/weightUnit";
+import { buildFaturaAciklamasi } from "./buildFaturaAciklamasi";
 import type {
   BeyannameDocCheckItem,
   BeyannameFormFields,
@@ -263,15 +264,15 @@ export function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDe
     "Dolaşım Belgesi No": norm.documents?.circulationDocumentNo ?? "",
     "Menşe Belgesi No": norm.documents?.originDocumentNo ?? "",
 
-    // Fatura açıklaması elle doldurulur (örnek HTML); UBL Note otomatik basılmaz.
-    "Açıklama / Not Alanı": "",
+    // Parse Note + kap/kilo/VKN → örnek HTML’deki fatura açıklaması formatı
+    "Açıklama / Not Alanı": buildFaturaAciklamasi(norm),
   };
   const extras = evrim.draftFields;
   if (extras && typeof extras === "object" && !Array.isArray(extras)) {
     for (const [key, stored] of Object.entries(extras as Record<string, unknown>)) {
-      // Açıklama elle; draft’ta varsa kullanıcı kaydı korunur. Diğer boş alanlar draft’tan dolar.
+      // Kullanıcı kaydı (draft) parse özetinin üzerine yazar.
       if (typeof stored !== "string" || !stored) continue;
-      if (!values[key]) values[key] = stored;
+      if (key === "Açıklama / Not Alanı" || !values[key]) values[key] = stored;
     }
   }
   return values;

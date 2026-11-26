@@ -353,9 +353,39 @@ export async function listDeclarations(
   );
 }
 
+/** Eski kayıtlarda UBL Note’lar normalize’a yazılmamış olabilir — belgeden doldur. */
+async function hydrateInvoiceNotesIfMissing(
+  companyId: mongoose.Types.ObjectId,
+  declarationId: mongoose.Types.ObjectId,
+  normalized: NormalizedDeclaration
+): Promise<{ normalized: NormalizedDeclaration; changed: boolean }> {
+  if (Array.isArray(normalized.invoiceNotes) && normalized.invoiceNotes.some((n) => String(n ?? "").trim())) {
+    return { normalized, changed: false };
+  }
+  const docs = await UploadedDocumentModel.find({
+    companyId,
+    declarationId,
+    extractionStatus: "SUCCESS",
+    type: { $in: ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"] },
+  })
+    .select({ extractedData: 1, type: 1 })
+    .lean();
+  for (const type of ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"] as const) {
+    for (const doc of docs) {
+      if (doc.type !== type) continue;
+      const raw = (doc.extractedData as { invoiceNotes?: unknown } | undefined)?.invoiceNotes;
+      if (!Array.isArray(raw)) continue;
+      const notes = raw.map((item) => String(item ?? "").trim()).filter(Boolean);
+      if (notes.length === 0) continue;
+      return { normalized: { ...normalized, invoiceNotes: notes }, changed: true };
+    }
+  }
+  return { normalized, changed: false };
+}
+
 /**
  * Detay açılışında gönderici/alıcı Evrim ID’lerini önceden çöz (FE boş flash olmasın).
- * VKN → Evrim Firma tablosu öncelikli; fatura açıklaması elle kalır.
+ * VKN → Evrim Firma tablosu öncelikli.
  */
 function hydrateEvrimPartyDraftFields(normalized: NormalizedDeclaration): {
   normalized: NormalizedDeclaration;
@@ -427,9 +457,20 @@ export async function getDeclaration(companyId: mongoose.Types.ObjectId, id: str
 
   let normalized = d.normalizedData as NormalizedDeclaration | undefined;
   if (normalized) {
-    const hydrated = hydrateEvrimPartyDraftFields(normalized);
-    if (hydrated.changed) {
-      normalized = hydrated.normalized;
+    let changed = false;
+    const withNotes = await hydrateInvoiceNotesIfMissing(
+      companyId,
+      d._id as mongoose.Types.ObjectId,
+      normalized
+    );
+    normalized = withNotes.normalized;
+    changed = changed || withNotes.changed;
+
+    const withParties = hydrateEvrimPartyDraftFields(normalized);
+    normalized = withParties.normalized;
+    changed = changed || withParties.changed;
+
+    if (changed) {
       await DeclarationModel.updateOne(
         { _id: d._id, companyId },
         { $set: { normalizedData: normalized } }

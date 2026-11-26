@@ -544,21 +544,22 @@ export default function ExportWritingPanel({
         <div className="ey-card-h">
           <div>
             <h3 id="ey-b2a"><span className="ey-adim tamam">3</span>Fatura açıklaması</h3>
-            <p className="ey-sub">Elle doldurulur · menşe / kap / kilo notları buraya yazılabilir</p>
+            <p className="ey-sub">Menşe, imalatçı, kap ve kilo bilgileri bu yazıdan da okunur · parse’dan doldurulur, düzenlenebilir</p>
           </div>
         </div>
         <div className="ey-card-b">
           <textarea
             disabled={locked}
             className="ey-mono"
-            placeholder="Fatura açıklamasını buraya yazın…"
+            placeholder="Parse notu / kap-kilo özeti burada görünür…"
             style={{
               width: '100%',
-              minHeight: 72,
-              fontSize: 12,
-              color: 'var(--text)',
-              background: 'var(--surface)',
-              border: '1px solid var(--line-strong)',
+              minHeight: 88,
+              fontSize: 12.5,
+              fontWeight: 500,
+              color: 'var(--text-strong)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line)',
               borderRadius: 10,
               padding: '10.5px 12.25px',
               lineHeight: 1.6,
