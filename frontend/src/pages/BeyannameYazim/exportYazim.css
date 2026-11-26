@@ -294,7 +294,8 @@
   max-width: 100%;
 }
 
-.ey-tipwrap .ey-ed {
+.ey-tipwrap .ey-ed,
+.ey-tipwrap select {
   max-width: 100%;
   overflow-x: auto;
 }

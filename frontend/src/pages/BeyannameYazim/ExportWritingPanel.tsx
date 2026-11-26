@@ -723,19 +723,26 @@ export default function ExportWritingPanel({
                     </td>
                     <td className="r ey-num">{item.kiymet || '—'}</td>
                     <td className={needMense ? 'sorun' : undefined}>
-                      <select
-                        disabled={locked || !codesReady}
-                        className={needMense ? undefined : 'ey-ed ey-mono'}
-                        value={menseSelect}
-                        onChange={(e) => onLineChange(index, { mense: e.target.value })}
-                        onBlur={onLineBlur}
+                      <TipWrap
+                        text={menseOpt?.label || (!codesReady ? rawMense : '') || menseSelect}
+                        minLen={10}
                       >
-                        <option value="">Menşe seçin</option>
-                        {!menseValue && rawMense && !codesReady && (
-                          <option value={rawMense}>{rawMense}</option>
-                        )}
-                        {codes.mense.map((opt) => <option key={opt.ulkeNo} value={opt.ulkeNo}>{opt.label}</option>)}
-                      </select>
+                        <select
+                          disabled={locked || !codesReady}
+                          className={needMense ? undefined : 'ey-ed ey-mono'}
+                          style={{ maxWidth: 148 }}
+                          value={menseSelect}
+                          onChange={(e) => onLineChange(index, { mense: e.target.value })}
+                          onBlur={onLineBlur}
+                          title={menseOpt?.label || undefined}
+                        >
+                          <option value="">Menşe seçin</option>
+                          {!menseValue && rawMense && !codesReady && (
+                            <option value={rawMense}>{rawMense}</option>
+                          )}
+                          {codes.mense.map((opt) => <option key={opt.ulkeNo} value={opt.ulkeNo}>{opt.label}</option>)}
+                        </select>
+                      </TipWrap>
                       {needMense
                         ? <span className="ey-kay" style={{ color: '#7a5a16' }}>{item.mense && item.mense !== '—' ? `"${item.mense}" Evrim'de eşleşmedi` : 'Kalemde ve açıklamada yok'}</span>
                         : <span className="ey-kay">{menseOpt?.yUlke || menseOpt?.ulke || (!codesReady ? rawMense : menseValue)}</span>}
