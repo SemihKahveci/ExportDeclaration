@@ -544,7 +544,7 @@ export default function ExportWritingPanel({
         <div className="ey-card-h">
           <div>
             <h3 id="ey-b2a"><span className="ey-adim tamam">3</span>Fatura açıklaması</h3>
-            <p className="ey-sub">Menşe, imalatçı, kap ve kilo bilgileri bu yazıdan da okunur · parse’dan doldurulur, düzenlenebilir</p>
+            <p className="ey-sub">Menşe, imalatçı, kap ve kilo bilgileri bu yazıdan da okunur</p>
           </div>
         </div>
         <div className="ey-card-b">
