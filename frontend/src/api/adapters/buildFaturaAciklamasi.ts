@@ -27,9 +27,6 @@ export function buildKapKgLine(pkg: NormalizedDeclaration['packageInfo']): strin
 export function withDenSuffix(unvan: string): string {
   const name = upperTr(unvan).replace(/'DEN\s*$/i, '').replace(/’DEN\s*$/i, '').trim();
   if (!name) return '';
-  if (/[AEIİOÖUÜ]\s*$/i.test(name) || /A\.?\s*Ş\.?\s*$/i.test(name) || /AS\s*$/i.test(name)) {
-    return `${name}'DEN`;
-  }
   return `${name}'DEN`;
 }
 
@@ -59,13 +56,18 @@ function joinedNotes(norm: NormalizedDeclaration): string {
     .join(' | ');
 }
 
+function allLineNos(norm: NormalizedDeclaration): number[] {
+  return (norm.goodsLines ?? [])
+    .map((g) => g.lineNo)
+    .filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0);
+}
+
 /** Note içinden "N. SATIRDAKİ … TEDARİK … VERGİ NO" kalıplarını çıkar. */
 export function extractTedarikHits(notesText: string): TedarikHit[] {
   if (!notesText.trim()) return [];
   const upper = upperTr(notesText);
   const hits: TedarikHit[] = [];
 
-  // "4. SATIRDAKİ ÜRÜNLER ÖRNEK PLASTİK …'DEN TEDARİK EDİLMİŞTİR. VERGİ NO: 1111111111"
   const fullRe =
     /(\d+(?:\s*[./]\s*\d+)*)\s*\.?\s*SATIR(?:DAK[İI]|LAR(?:DA)?)\s*(?:ÜRÜNLER(?:[İI])?)?\s+(.+?)(?:'DEN|’DEN|DEN)\s+TEDAR[İI]K\s+ED[İI]LM[İI][ŞS]T[İI]R\.?\s*(?:VERG[İI]\s*NO\s*[:：]?\s*(\d{10,11}))?/gi;
   for (const m of upper.matchAll(fullRe)) {
@@ -74,10 +76,8 @@ export function extractTedarikHits(notesText: string): TedarikHit[] {
     const vergiNo = String(m[3] ?? '').replace(/\D/g, '');
     if (unvan || vergiNo) hits.push({ lineNos, unvan, vergiNo });
   }
-
   if (hits.length) return hits;
 
-  // "1-5 ... 1400384363" / "4.SATIRDAKİ ... 1111111111"
   const rangeRe = /(\d+)\s*[-–]\s*(\d+)[^\d]{0,80}?(\d{10,11})/g;
   for (const m of upper.matchAll(rangeRe)) {
     const from = Number(m[1]);
@@ -94,15 +94,12 @@ export function extractTedarikHits(notesText: string): TedarikHit[] {
     hits.push({ lineNos, unvan: '', vergiNo: m[2]! });
   }
 
-  // Genel "VERGİ NO: …" + mümkünse firma adı (gönderici değil, tedarikçi cümlesi)
   if (!hits.length) {
     const vkn = upper.match(/VERG[İI]\s*NO\s*[:：]?\s*(\d{10,11})/)?.[1];
     const name =
       upper.match(/([A-ZÇĞİÖŞÜ0-9.\/&\-\s]{5,80}?(?:A\.?\s*Ş\.?|LTD\.?(?:\s*ŞT[İI])?))\s*(?:'DEN|’DEN|DEN)?\s*TEDAR/i)?.[1]
       ?? '';
-    if (vkn || name) {
-      hits.push({ lineNos: [], unvan: name.trim(), vergiNo: vkn ?? '' });
-    }
+    if (vkn || name) hits.push({ lineNos: [], unvan: name.trim(), vergiNo: vkn ?? '' });
   }
 
   return hits;
@@ -135,6 +132,14 @@ function resolveKapKg(norm: NormalizedDeclaration, notesText: string): string {
   });
 }
 
+/** Eski/eksik draft: yalnızca TOPLAM KAP satırı → şablon yeniden üretilsin. */
+export function isTotalsOnlyAciklama(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (/SATIRDAK[İI]|TEDAR[İI]K|VERG[İI]\s*NO/i.test(t)) return false;
+  return /^TOPLAM\s+.+(KAP|BR[UÜ]T|NET)/i.test(t) && !t.includes('\n');
+}
+
 /**
  * Yazım “Fatura açıklaması” — örnek HTML cümle şekli ve sırası:
  * 1) N. SATIRDAKİ ÜRÜNLER …'DEN TEDARİK EDİLMİŞTİR. VERGİ NO: …
@@ -143,26 +148,26 @@ function resolveKapKg(norm: NormalizedDeclaration, notesText: string): string {
 export function buildFaturaAciklamasi(norm: NormalizedDeclaration): string {
   const notesText = joinedNotes(norm);
   const lines: string[] = [];
+  const sellerUnvan = String(norm.parties?.seller?.name ?? '').trim();
+  const sellerVkn = String(norm.parties?.seller?.taxNo ?? '').replace(/\D/g, '');
+  const lineNos = allLineNos(norm);
 
   const tedarikHits = extractTedarikHits(notesText);
   for (const hit of tedarikHits) {
-    const unvan = hit.unvan || String(norm.parties?.seller?.name ?? '');
-    const vkn = hit.vergiNo || String(norm.parties?.seller?.taxNo ?? '').replace(/\D/g, '');
+    const unvan = hit.unvan || sellerUnvan;
+    const vkn = hit.vergiNo || sellerVkn;
+    const nos = hit.lineNos.length ? hit.lineNos : lineNos;
     if (!unvan && !vkn) continue;
-    lines.push(buildTedarikLine(hit.lineNos, unvan, vkn));
+    lines.push(buildTedarikLine(nos, unvan, vkn));
   }
 
-  // Note’ta tedarik yoksa: yalnızca yabancı menşe (T) kalemlerde gönderici/Firma ile cümle kur
-  if (!lines.length) {
+  // Note’ta tedarik yoksa: Firma (gönderici) unvan + VKN ile HTML şablon satırı
+  if (!lines.length && (sellerUnvan || sellerVkn)) {
     const foreign = (norm.goodsLines ?? [])
       .filter((g) => g.manufacturerType === 'T')
       .map((g) => g.lineNo)
       .filter((n): n is number => typeof n === 'number' && n > 0);
-    const unvan = String(norm.parties?.seller?.name ?? '').trim();
-    const vkn = String(norm.parties?.seller?.taxNo ?? '').replace(/\D/g, '');
-    if (foreign.length && unvan && vkn) {
-      lines.push(buildTedarikLine(foreign, unvan, vkn));
-    }
+    lines.push(buildTedarikLine(foreign.length ? foreign : lineNos, sellerUnvan, sellerVkn));
   }
 
   const totals = resolveKapKg(norm, notesText);

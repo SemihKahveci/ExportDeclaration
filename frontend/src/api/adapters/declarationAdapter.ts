@@ -2,7 +2,7 @@ import type { Declaration as BackendDeclaration } from "@/api/types/declaration.
 import type { DocumentType, NormalizedDeclaration, UploadedDocument } from "@/api/types/document.types";
 import { mergeNormalizedFromApi } from "@/api/types/document.types";
 import { isWeightUnit } from "@/domain/weightUnit";
-import { buildFaturaAciklamasi } from "./buildFaturaAciklamasi";
+import { buildFaturaAciklamasi, isTotalsOnlyAciklama } from "./buildFaturaAciklamasi";
 import type {
   BeyannameDocCheckItem,
   BeyannameFormFields,
@@ -270,9 +270,14 @@ export function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDe
   const extras = evrim.draftFields;
   if (extras && typeof extras === "object" && !Array.isArray(extras)) {
     for (const [key, stored] of Object.entries(extras as Record<string, unknown>)) {
-      // Kullanıcı kaydı (draft) parse özetinin üzerine yazar.
       if (typeof stored !== "string" || !stored) continue;
-      if (key === "Açıklama / Not Alanı" || !values[key]) values[key] = stored;
+      // Açıklama: yalnızca kullanıcı şablonundan zenginleştirdiyse draft kazanır.
+      // Eski "sadece TOPLAM KAP" draft’ı şablonu ezmesin.
+      if (key === "Açıklama / Not Alanı") {
+        if (!isTotalsOnlyAciklama(stored)) values[key] = stored;
+        continue;
+      }
+      if (!values[key]) values[key] = stored;
     }
   }
   return values;

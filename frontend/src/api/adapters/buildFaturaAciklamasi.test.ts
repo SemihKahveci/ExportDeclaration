@@ -4,6 +4,7 @@ import {
   buildKapKgLine,
   buildTedarikLine,
   extractTedarikHits,
+  isTotalsOnlyAciklama,
   withDenSuffix,
 } from './buildFaturaAciklamasi';
 
@@ -41,20 +42,26 @@ assert.deepEqual(hits[0]!.lineNos, [4]);
 assert.match(hits[0]!.unvan, /ÖRNEK PLASTİK/);
 assert.equal(hits[0]!.vergiNo, '1111111111');
 
-// Uzun Celikel note (TR menşe) → yalnızca kap/kilo satırı; banka/mersis yok
-const celikel = buildFaturaAciklamasi({
+// Note’ta tedarik yok → Firma + tüm satırlar ile şablon (HTML gibi 2 satır)
+const fromFirma = buildFaturaAciklamasi({
   header: {},
   parties: { seller: { name: 'ÇELİKEL ALÜMİNYUM DÖKÜM İMALAT SAN. VE TİC.A.Ş.', taxNo: '2410053479' } },
   trade: {},
   transport: {},
-  packageInfo: { totalPackage: 66, grossKg: 9825.02, netKg: 7204.01 },
-  goodsLines: [{ lineNo: 1, manufacturerType: 'I' }, { lineNo: 2, manufacturerType: 'I' }],
-  invoiceNotes: [
-    'EXW MALLARIMIZ TÜRK MENŞEİLİDİR. TOPLAM KAP : 66 PALET BRÜT KG : 9.825,02 NET KG : 7.204,01 BANKA : ZİRAAT',
+  packageInfo: { totalPackage: 28, grossKg: 4088.72, netKg: 3290.9 },
+  goodsLines: [
+    { lineNo: 1, manufacturerType: 'I' },
+    { lineNo: 2, manufacturerType: 'I' },
   ],
+  invoiceNotes: ['EXW MALLARIMIZ TÜRK MENŞEİLİDİR. TOPLAM KAP : 28 BRÜT KG : 4.088,72 NET KG : 3.290,9 BANKA : ZİRAAT'],
 });
-assert.equal(celikel, 'TOPLAM 66 KAP · BRÜT KG: 9.825,02 · NET KG: 7.204,01');
-assert.doesNotMatch(celikel, /BANKA/);
-assert.doesNotMatch(celikel, /TEDARİK/);
+assert.equal(
+  fromFirma,
+  "1.2. SATIRDAKİ ÜRÜNLER ÇELİKEL ALÜMİNYUM DÖKÜM İMALAT SAN. VE TİC.A.Ş.'DEN TEDARİK EDİLMİŞTİR. VERGİ NO: 2410053479\nTOPLAM 28 KAP · BRÜT KG: 4.088,72 · NET KG: 3.290,9"
+);
+assert.doesNotMatch(fromFirma, /BANKA/);
+
+assert.equal(isTotalsOnlyAciklama('TOPLAM 28 KAP - BRÜT KG: 4.088,72 - NET KG: 3.290,9'), true);
+assert.equal(isTotalsOnlyAciklama(fromFirma), false);
 
 console.log('buildFaturaAciklamasi.test.ts OK');
