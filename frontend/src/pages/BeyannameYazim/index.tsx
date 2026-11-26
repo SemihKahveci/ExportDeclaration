@@ -32,6 +32,7 @@ import {
   type ExportDownloadGateResult,
 } from './exportDownloadGate';
 import { isExportRegime } from './exportRegime';
+import { prefetchEvrimCodeOptions } from './evrimCodeOptionsCache';
 import './exportYazim.css';
 
 const TAB_ITEMS = [
@@ -122,6 +123,10 @@ export default function BeyannameYazimPage() {
       toast(actionError(error, 'CSV indirilemedi'), { duration: 7000 });
     }
   }
+
+  useEffect(() => {
+    prefetchEvrimCodeOptions();
+  }, []);
 
   useEffect(() => {
     Promise.all([

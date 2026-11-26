@@ -3,8 +3,14 @@ import { FileText } from 'lucide-react';
 import type { BeyannameLineItem, BeyannameRecord } from '../../types';
 import { apiGetJson, apiPostJson } from '../../api/apiClient';
 import { applyWeightQuantity } from './writingDraft';
-import { resolveMiktarEdi, type MiktarOption } from './resolveEvrimMiktar';
-import { resolveMenseUlkeNo, type MenseOption } from './resolveEvrimMense';
+import { resolveMiktarEdi } from './resolveEvrimMiktar';
+import { resolveMenseUlkeNo } from './resolveEvrimMense';
+import {
+  isEvrimCodeOptionsReady,
+  loadEvrimCodeOptions,
+  peekEvrimCodeOptions,
+  type EvrimCodeOptions,
+} from './evrimCodeOptionsCache';
 import { parseTrNumber } from '../../utils/parseTrNumber';
 import './exportYazim.css';
 
@@ -16,13 +22,7 @@ type AliciHit = {
   label: string;
   ulke?: string;
 };
-type CodeOptions = {
-  miktar: MiktarOption[];
-  kap: Array<{ kod: string; label: string }>;
-  mense: MenseOption[];
-};
 
-const EMPTY_CODES: CodeOptions = { miktar: [], kap: [], mense: [] };
 const EVRIM_GONDEREN_KEY = 'Gönderici Evrim No';
 const EVRIM_ALICI_KEY = 'Alıcı Evrim No';
 
@@ -78,19 +78,16 @@ export default function ExportWritingPanel({
   const [aliciNo, setAliciNo] = useState<number | null>(() => parseStoredId(fv(fieldValues, EVRIM_ALICI_KEY)));
   const [aliciHits, setAliciHits] = useState<AliciHit[]>([]);
   const [aliciWarn, setAliciWarn] = useState('');
-  const [codes, setCodes] = useState<CodeOptions>(EMPTY_CODES);
+  const [codes, setCodes] = useState<EvrimCodeOptions>(() => peekEvrimCodeOptions());
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const codesReady = isEvrimCodeOptionsReady(codes);
 
   useEffect(() => {
-    void apiGetJson<CodeOptions>('/api/evrim-lookup/code-options')
-      .then((payload) => {
-        setCodes({
-          miktar: Array.isArray(payload?.miktar) ? payload.miktar : [],
-          kap: Array.isArray(payload?.kap) ? payload.kap : [],
-          mense: Array.isArray(payload?.mense) ? payload.mense : [],
-        });
-      })
-      .catch(() => setCodes(EMPTY_CODES));
+    let cancelled = false;
+    void loadEvrimCodeOptions().then((next) => {
+      if (!cancelled) setCodes(next);
+    });
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -189,16 +186,16 @@ export default function ExportWritingPanel({
   }, [codes.miktar, codes.mense, record.id]);
 
   const sorunluIndexes = useMemo(() => {
-    const miktar = codes?.miktar ?? [];
-    const mense = codes?.mense ?? [];
     const set = new Set<number>();
+    // Kod listesi gelmeden "Seçiniz/sorun" gösterme — parse değeri zaten var.
+    if (!codesReady) return set;
     lineItems.forEach((item, index) => {
-      const unitOk = Boolean(resolveMiktarEdi(item.miktarBirimi, miktar));
-      const menseOk = Boolean(resolveMenseUlkeNo(item.mense, mense));
+      const unitOk = Boolean(resolveMiktarEdi(item.miktarBirimi, codes.miktar));
+      const menseOk = Boolean(resolveMenseUlkeNo(item.mense, codes.mense));
       if (!unitOk || !menseOk) set.add(index);
     });
     return set;
-  }, [lineItems, codes]);
+  }, [lineItems, codes, codesReady]);
 
   useEffect(() => {
     onSorunluChange?.(sorunluIndexes.size);
@@ -544,11 +541,16 @@ export default function ExportWritingPanel({
             </thead>
             <tbody>
               {visible.map(({ item, index }) => {
+                const rawUnit = fv({ v: item.miktarBirimi ?? '' }, 'v');
+                const rawMense = fv({ v: item.mense ?? '' }, 'v');
                 const unitValue = resolveMiktarEdi(item.miktarBirimi, codes.miktar);
                 const menseValue = resolveMenseUlkeNo(item.mense, codes.mense);
                 const kapValue = resolveKapValue(item.kapCinsi ?? '', codes.kap);
-                const needUnit = !unitValue;
-                const needMense = !menseValue;
+                // Liste yüklenene kadar ham parse değerini göster; "Seçiniz" flash'ı yok.
+                const unitSelect = unitValue || (!codesReady ? rawUnit : '');
+                const menseSelect = menseValue || (!codesReady ? rawMense : '');
+                const needUnit = codesReady && !unitValue;
+                const needMense = codesReady && !menseValue;
                 const unitOpt = codes.miktar.find((opt) => opt.ediKodu === unitValue);
                 const menseOpt = codes.mense.find((opt) => opt.ulkeNo === menseValue);
                 return (
@@ -596,18 +598,21 @@ export default function ExportWritingPanel({
                     </td>
                     <td className={needUnit ? 'sorun' : undefined}>
                       <select
-                        disabled={locked}
+                        disabled={locked || !codesReady}
                         className={needUnit ? undefined : 'ey-ed ey-mono'}
-                        value={unitValue}
+                        value={unitSelect}
                         onChange={(e) => onLineChange(index, applyWeightQuantity({ ...item, miktarBirimi: e.target.value }))}
                         onBlur={onLineBlur}
                       >
                         <option value="">Seçin</option>
+                        {!unitValue && rawUnit && !codesReady && (
+                          <option value={rawUnit}>{rawUnit}</option>
+                        )}
                         {codes.miktar.map((opt) => <option key={opt.ediKodu} value={opt.ediKodu}>{opt.label}</option>)}
                       </select>
                       {needUnit
                         ? <span className="ey-kay" style={{ color: '#7a5a16' }}>{item.miktarBirimi ? `"${item.miktarBirimi}" Evrim'de yok` : 'Evrim kodu seçin'}</span>
-                        : <span className="ey-kay">{unitOpt?.label?.split(' · ')[1] || unitValue}</span>}
+                        : <span className="ey-kay">{unitOpt?.label?.split(' · ')[1] || (!codesReady ? rawUnit : unitValue)}</span>}
                     </td>
                     <td className="r">
                       <input
@@ -622,18 +627,21 @@ export default function ExportWritingPanel({
                     <td className="r ey-num">{item.kiymet || '—'}</td>
                     <td className={needMense ? 'sorun' : undefined}>
                       <select
-                        disabled={locked}
+                        disabled={locked || !codesReady}
                         className={needMense ? undefined : 'ey-ed ey-mono'}
-                        value={menseValue}
+                        value={menseSelect}
                         onChange={(e) => onLineChange(index, { mense: e.target.value })}
                         onBlur={onLineBlur}
                       >
                         <option value="">Menşe seçin</option>
+                        {!menseValue && rawMense && !codesReady && (
+                          <option value={rawMense}>{rawMense}</option>
+                        )}
                         {codes.mense.map((opt) => <option key={opt.ulkeNo} value={opt.ulkeNo}>{opt.label}</option>)}
                       </select>
                       {needMense
                         ? <span className="ey-kay" style={{ color: '#7a5a16' }}>{item.mense && item.mense !== '—' ? `"${item.mense}" Evrim'de eşleşmedi` : 'Kalemde ve açıklamada yok'}</span>
-                        : <span className="ey-kay">{menseOpt?.yUlke || menseOpt?.ulke || menseValue}</span>}
+                        : <span className="ey-kay">{menseOpt?.yUlke || menseOpt?.ulke || (!codesReady ? rawMense : menseValue)}</span>}
                     </td>
                     <td>
                       <select
