@@ -13,7 +13,13 @@ import { Card, CardHead, CardBody } from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Pill from '../../components/ui/Pill';
 import DocFieldPickerModal from './DocFieldPickerModal';
+import ExportWritingPanel from './ExportWritingPanel';
 import { useToast } from '../../components/ui/Toast';
+
+function isExportRegime(rejim: string): boolean {
+  const text = rejim.trim().toLocaleLowerCase('tr-TR');
+  return text.startsWith('10') || text.includes('ihracat');
+}
 
 // ─── Default-expanded groups ──────────────────────────────────────────────────
 
@@ -635,59 +641,59 @@ export default function WritingTab({
   const totalConflicts = conflictFields.size;
   const filledCount    = Object.values(fieldValues).filter(Boolean).length;
   const mappedCount    = mappings.length;
+  const exportMode = isExportRegime(record.rejim);
 
-  return (
-    <div className="flex gap-4">
-      {/* Left panel */}
-      <div className="w-[280px] shrink-0 flex flex-col gap-3">
-        <Card>
-          <CardHead title="İlgili Kayıt" sub="Evrak hazırlıktan gelen dosya" />
-          <CardBody>
-            <div className="flex flex-col divide-y divide-line">
-              {[
-                { label: 'Referans',  value: record.ref,      mono: true  },
-                { label: 'Tescil No', value: record.tescilNo, mono: true  },
-                { label: 'Müşteri',   value: record.customer, mono: false },
-                { label: 'Rejim',     value: record.rejim,    mono: false },
-              ].map(({ label, value, mono }) => (
-                <div key={label} className="flex items-center justify-between gap-3 py-2.5 text-[12.5px]">
-                  <span className="text-muted font-semibold">{label}</span>
-                  <span className={`text-text-strong text-right ${mono ? 'font-mono text-[12px]' : ''}`}>{value}</span>
-                </div>
-              ))}
-              <div className="flex items-center justify-between gap-3 py-2.5 text-[12.5px]">
-                <span className="text-muted font-semibold">Durum</span>
-                <Pill variant="warn">{record.durumLabel}</Pill>
+  const recordSidePanel = (
+    <div className="w-[280px] shrink-0 flex flex-col gap-3">
+      <Card>
+        <CardHead title="İlgili Kayıt" sub="Evrak hazırlıktan gelen dosya" />
+        <CardBody>
+          <div className="flex flex-col divide-y divide-line">
+            {[
+              { label: 'Referans',  value: record.ref,      mono: true  },
+              { label: 'Tescil No', value: record.tescilNo, mono: true  },
+              { label: 'Müşteri',   value: record.customer, mono: false },
+              { label: 'Rejim',     value: record.rejim,    mono: false },
+            ].map(({ label, value, mono }) => (
+              <div key={label} className="flex items-center justify-between gap-3 py-2.5 text-[12.5px]">
+                <span className="text-muted font-semibold">{label}</span>
+                <span className={`text-text-strong text-right ${mono ? 'font-mono text-[12px]' : ''}`}>{value}</span>
               </div>
+            ))}
+            <div className="flex items-center justify-between gap-3 py-2.5 text-[12.5px]">
+              <span className="text-muted font-semibold">Durum</span>
+              <Pill variant="warn">{record.durumLabel}</Pill>
             </div>
-          </CardBody>
-        </Card>
+          </div>
+        </CardBody>
+      </Card>
 
-        <Card className="flex-1">
-          <CardHead title="Kontrole Dahil Evraklar" />
-          <CardBody>
-            <div className="flex flex-col gap-2">
-              {record.docs.map((doc) => (
-                <label
-                  key={doc.id}
-                  className="flex items-start gap-2.5 bg-surface-2 border border-line-strong rounded-lg px-3 py-2.5 cursor-pointer hover:border-muted-2 transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checkedDocs.has(doc.id)}
-                    onChange={() => toggleDoc(doc.id)}
-                    className="mt-0.5 w-3.5 h-3.5 shrink-0 cursor-pointer"
-                    style={{ accentColor: 'var(--accent-d)' }}
-                  />
-                  <span className="min-w-0">
-                    <span className="text-[12.5px] font-semibold text-text-strong block">{doc.name}</span>
-                    {doc.note && (
-                      <span className="text-[11px] text-muted mt-0.5 block">{doc.note}</span>
-                    )}
-                  </span>
-                </label>
-              ))}
-            </div>
+      <Card className="flex-1">
+        <CardHead title="Kontrole Dahil Evraklar" />
+        <CardBody>
+          <div className="flex flex-col gap-2">
+            {record.docs.map((doc) => (
+              <label
+                key={doc.id}
+                className="flex items-start gap-2.5 bg-surface-2 border border-line-strong rounded-lg px-3 py-2.5 cursor-pointer hover:border-muted-2 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={checkedDocs.has(doc.id)}
+                  onChange={() => toggleDoc(doc.id)}
+                  className="mt-0.5 w-3.5 h-3.5 shrink-0 cursor-pointer"
+                  style={{ accentColor: 'var(--accent-d)' }}
+                />
+                <span className="min-w-0">
+                  <span className="text-[12.5px] font-semibold text-text-strong block">{doc.name}</span>
+                  {doc.note && (
+                    <span className="text-[11px] text-muted mt-0.5 block">{doc.note}</span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
+          {!exportMode && (
             <div className="mt-3 flex justify-end">
               <Button
                 size="sm"
@@ -700,9 +706,38 @@ export default function WritingTab({
                 Tekrar Yaz
               </Button>
             </div>
-          </CardBody>
-        </Card>
+          )}
+        </CardBody>
+      </Card>
+    </div>
+  );
+
+  if (exportMode) {
+    return (
+      <div className="flex gap-4">
+        {recordSidePanel}
+        <div className="flex-1 min-w-0">
+          <ExportWritingPanel
+            record={record}
+            fieldValues={fieldValues}
+            lineItems={lineItems}
+            hasViewedPreview={hasViewedPreview}
+            locked={locked}
+            onFieldChange={handleValueChange}
+            onLineChange={handleLineChange}
+            onLineBlur={() => { void queueLineSave().catch(() => { toast('Kalem alanları kaydedilemedi.'); }); }}
+            onViewDeclaration={onViewDeclaration}
+            onSendToControl={() => void handleSendClick()}
+            onRewrite={onRewrite}
+          />
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex gap-4">
+      {recordSidePanel}
 
       {/* Right panel */}
       <div className="flex-1 min-w-0 flex flex-col gap-3">
