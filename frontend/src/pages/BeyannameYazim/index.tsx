@@ -32,6 +32,7 @@ import {
   type ExportDownloadGateResult,
 } from './exportDownloadGate';
 import { isExportRegime } from './exportRegime';
+import './exportYazim.css';
 
 const TAB_ITEMS = [
   { key: 'yazim',   label: 'Beyanname Yazım', icon: FileText },
@@ -606,10 +607,23 @@ export default function BeyannameYazimPage() {
         </div>
       )}
       {selected && (
-        <Card className="flex flex-col min-h-0 flex-1">
+        <Card className="flex flex-col min-h-0 flex-1 overflow-hidden">
           <CardHead
-            title={`${selected.ref} · ${selected.customer}`}
-            sub={`${selected.transportMode} · ${selected.lineItems.length} kalem · ${selected.rejim}`}
+            title={exportDetail ? undefined : `${selected.ref} · ${selected.customer}`}
+            className={exportDetail ? 'items-start' : undefined}
+            titleNode={exportDetail ? (
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold text-text-strong leading-snug">
+                  <span className="font-mono">{selected.ref}</span>
+                  {' · '}
+                  {selected.customer}
+                </p>
+                <p className="text-[12px] text-muted mt-0.5">
+                  {selected.transportMode} · {selected.lineItems.length} kalem · {selected.rejim}
+                </p>
+              </div>
+            ) : undefined}
+            sub={exportDetail ? undefined : `${selected.transportMode} · ${selected.lineItems.length} kalem · ${selected.rejim}`}
             actions={
               <div className="flex items-center gap-2">
                 {selected.operationFileStatus === 'gtip-eksik' && (
@@ -636,9 +650,13 @@ export default function BeyannameYazimPage() {
                     </Button>
                   </>
                 )}
-                <Pill variant={selected.operationFileStatus === 'ic-kontrol' ? 'accent' : 'warn'}>
-                  {selected.durumLabel}
-                </Pill>
+                {exportDetail ? (
+                  <span className="ey-bdg ey-b-blue"><i />{selected.durumLabel || 'Beyanname Yazımda'}</span>
+                ) : (
+                  <Pill variant={selected.operationFileStatus === 'ic-kontrol' ? 'accent' : 'warn'}>
+                    {selected.durumLabel}
+                  </Pill>
+                )}
               </div>
             }
           />

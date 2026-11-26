@@ -3,6 +3,7 @@ import { FileText } from 'lucide-react';
 import type { BeyannameLineItem, BeyannameRecord } from '../../types';
 import { apiGetJson, apiPostJson } from '../../api/apiClient';
 import { applyWeightQuantity } from './writingDraft';
+import { resolveMiktarEdi, type MiktarOption } from './resolveEvrimMiktar';
 import './exportYazim.css';
 
 type GonderenHit = { gonderenNo: number; unvan: string; vergiNo: string; label: string };
@@ -14,7 +15,7 @@ type AliciHit = {
   ulke?: string;
 };
 type CodeOptions = {
-  miktar: Array<{ ediKodu: string; label: string }>;
+  miktar: MiktarOption[];
   kap: Array<{ kod: string; label: string }>;
   mense: Array<{ ulkeNo: string; label: string }>;
 };
@@ -51,18 +52,6 @@ function parseTrNumber(value: string): number {
   }
   const n = Number(normalized);
   return Number.isFinite(n) ? n : 0;
-}
-
-function resolveMiktarValue(raw: string, options: Array<{ ediKodu: string; label: string }>): string {
-  const text = fv({ v: raw }, 'v');
-  if (!text) return '';
-  if (options.some((opt) => opt.ediKodu === text)) return text;
-  const lower = text.toLocaleLowerCase('tr-TR');
-  const hit = options.find((opt) => {
-    const label = opt.label.toLocaleLowerCase('tr-TR');
-    return label === lower || label.endsWith(`· ${lower}`) || label.includes(lower) || opt.ediKodu.toLowerCase() === lower;
-  });
-  return hit?.ediKodu ?? '';
 }
 
 function resolveMenseValue(raw: string, options: Array<{ ulkeNo: string; label: string }>): string {
@@ -206,14 +195,23 @@ export default function ExportWritingPanel({
   const kalemToplam = lineItems.reduce((sum, item) => sum + parseTrNumber(String(item.kiymet ?? '')), 0);
   const faturaCurrency = doviz || fv(fieldValues, 'Döviz Cinsi') || 'EUR';
 
+  // Parse birimlerini Evrim EDI'ye sabitle (Adet/EA/C62 → C62).
+  useEffect(() => {
+    if (!codes.miktar.length || locked) return;
+    lineItems.forEach((item, index) => {
+      const resolved = resolveMiktarEdi(item.miktarBirimi, codes.miktar);
+      if (resolved && resolved !== item.miktarBirimi) {
+        onLineChange(index, applyWeightQuantity({ ...item, miktarBirimi: resolved }));
+      }
+    });
+  }, [codes.miktar, record.id]);
+
   const sorunluIndexes = useMemo(() => {
     const miktar = codes?.miktar ?? [];
     const mense = codes?.mense ?? [];
     const set = new Set<number>();
     lineItems.forEach((item, index) => {
-      const unitOk = miktar.length === 0
-        ? Boolean(fv({ v: item.miktarBirimi ?? '' }, 'v'))
-        : Boolean(resolveMiktarValue(item.miktarBirimi ?? '', miktar));
+      const unitOk = Boolean(resolveMiktarEdi(item.miktarBirimi, miktar));
       const menseOk = mense.length === 0
         ? Boolean(fv({ v: item.mense ?? '' }, 'v'))
         : Boolean(resolveMenseValue(item.mense ?? '', mense));
@@ -566,11 +564,12 @@ export default function ExportWritingPanel({
             </thead>
             <tbody>
               {visible.map(({ item, index }) => {
-                const unitValue = resolveMiktarValue(item.miktarBirimi ?? '', codes.miktar);
+                const unitValue = resolveMiktarEdi(item.miktarBirimi, codes.miktar);
                 const menseValue = resolveMenseValue(item.mense ?? '', codes.mense);
                 const kapValue = resolveKapValue(item.kapCinsi ?? '', codes.kap);
                 const needUnit = !unitValue;
                 const needMense = !menseValue;
+                const unitOpt = codes.miktar.find((opt) => opt.ediKodu === unitValue);
                 return (
                   <tr key={`${item.lineNo}-${index}`}>
                     <td className="ey-num" style={{ color: 'var(--muted)' }}>{item.lineNo || index + 1}</td>
@@ -625,7 +624,9 @@ export default function ExportWritingPanel({
                         <option value="">Seçin</option>
                         {codes.miktar.map((opt) => <option key={opt.ediKodu} value={opt.ediKodu}>{opt.label}</option>)}
                       </select>
-                      {needUnit && <span className="ey-kay" style={{ color: '#7a5a16' }}>Evrim kodu seçin</span>}
+                      {needUnit
+                        ? <span className="ey-kay" style={{ color: '#7a5a16' }}>{item.miktarBirimi ? `"${item.miktarBirimi}" Evrim'de yok` : 'Evrim kodu seçin'}</span>
+                        : <span className="ey-kay">{unitOpt?.label?.split(' · ')[1] || unitValue}</span>}
                     </td>
                     <td className="r">
                       <input

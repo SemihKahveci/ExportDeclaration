@@ -3,6 +3,7 @@ import {
   listEvrimKapOptions,
   listEvrimMenseOptions,
   listEvrimMiktarOptions,
+  lookupEvrimQuantityUnitLabelFromTables,
   matchEvrimAliciForMusteri,
   searchEvrimAliciForMusteri,
   searchEvrimGonderen,
@@ -78,12 +79,26 @@ export async function getCodeOptions(_req: Request, res: Response): Promise<void
   res.json({
     ok: true,
     data: {
-      miktar: listEvrimMiktarOptions().map((row) => ({
-        ediKodu: row.ediKodu,
-        aciklamaTr: row.aciklamaTr,
-        aciklamaIng: row.aciklamaIng,
-        label: `${row.ediKodu} · ${row.aciklamaTr || row.aciklamaIng || row.cevrimKodu}`,
-      })),
+      miktar: listEvrimMiktarOptions().map((row) => {
+        const friendly =
+          lookupEvrimQuantityUnitLabelFromTables(row.ediKodu)
+          || row.aciklamaTr
+          || row.aciklamaIng
+          || row.cevrimKodu;
+        const aliases = Array.from(new Set(
+          [row.ediKodu, row.aciklamaTr, row.aciklamaIng, row.cevrimKodu, friendly]
+            .map((v) => String(v ?? "").trim())
+            .filter(Boolean)
+        ));
+        return {
+          ediKodu: row.ediKodu,
+          aciklamaTr: row.aciklamaTr,
+          aciklamaIng: row.aciklamaIng,
+          cevrimKodu: row.cevrimKodu,
+          aliases,
+          label: `${row.ediKodu} · ${friendly}`,
+        };
+      }),
       kap: listEvrimKapOptions().map((row) => ({
         kod: row.kod,
         tanim: row.tanim,

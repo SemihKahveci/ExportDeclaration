@@ -1,7 +1,6 @@
 import type { Declaration as BackendDeclaration } from "@/api/types/declaration.types";
 import type { DocumentType, NormalizedDeclaration, UploadedDocument } from "@/api/types/document.types";
 import { mergeNormalizedFromApi } from "@/api/types/document.types";
-import { quantityUnitLabel } from "@/utils/quantityUnitLabels";
 import { isWeightUnit } from "@/domain/weightUnit";
 import type {
   BeyannameDocCheckItem,
@@ -289,7 +288,8 @@ export function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
       kiymet: line.lineTotal != null ? line.lineTotal.toLocaleString("tr-TR") : "—",
       birimFiyat: line.unitPrice != null ? line.unitPrice.toLocaleString("tr-TR") : "—",
       ticariTanim: line.description,
-      miktarBirimi: quantityUnitLabel(line.unit) || line.unit,
+      // Select Evrim EDI kodu ister; etiket FE'de resolve edilir (C62/EA/Adet → C62).
+      miktarBirimi: line.unit || undefined,
       dovizCinsi: norm.header.currency,
       kapCinsi: line.packageType,
       imalatci: line.manufacturerNo != null ? String(line.manufacturerNo) : undefined,

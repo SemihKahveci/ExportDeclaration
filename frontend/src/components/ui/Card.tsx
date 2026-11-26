@@ -11,17 +11,20 @@ export function Card({ children, className = '' }: { children: ReactNode; classN
 }
 
 interface CardHeadProps {
-  title: string;
+  title?: string;
+  titleNode?: ReactNode;
   sub?: string;
   actions?: ReactNode;
   className?: string;
 }
 
-export function CardHead({ title, sub, actions, className = '' }: CardHeadProps) {
+export function CardHead({ title, titleNode, sub, actions, className = '' }: CardHeadProps) {
   return (
     <div className={`flex items-start justify-between gap-4 px-5 py-4 border-b border-line ${className}`}>
       <div className="min-w-0">
-        <h3 className="text-[14px] font-semibold text-text-strong leading-snug">{title}</h3>
+        {titleNode ?? (
+          title ? <h3 className="text-[14px] font-semibold text-text-strong leading-snug">{title}</h3> : null
+        )}
         {sub && <p className="text-[12px] text-muted mt-0.5">{sub}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
