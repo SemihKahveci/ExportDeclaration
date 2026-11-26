@@ -313,7 +313,8 @@ export default function ExportWritingPanel({
     );
   }
 
-  const dovizChanged = Boolean(touched['Döviz Cinsi']) && doviz && fv(fieldValues, 'Döviz Cinsi') && doviz !== 'EUR';
+  const parsedDoviz = fv(fieldValues, 'Döviz Cinsi');
+  const dovizChanged = Boolean(touched['Döviz Cinsi']) && Boolean(doviz) && Boolean(parsedDoviz) && doviz !== parsedDoviz;
   const kalemlerTamam = lineItems.length > 0 && sorunluIndexes.size === 0;
 
   return (
@@ -346,12 +347,12 @@ export default function ExportWritingPanel({
                   onFieldChange('Döviz Cinsi', next);
                 }}
               />
-              {doviz === 'EUR'
-                ? <p className="ey-yard" style={{ color: 'var(--ok)' }}>Faturadan · EUR</p>
-                : dovizChanged
-                  ? <p className="ey-yard" style={{ color: 'var(--warn)' }}>Elle değiştirildi · Excel&apos;e girdiğiniz yazılır.</p>
+              {dovizChanged
+                ? <p className="ey-yard" style={{ color: 'var(--warn)' }}>Elle değiştirildi · Excel&apos;e girdiğiniz yazılır.</p>
+                : doviz
+                  ? <p className="ey-yard" style={{ color: 'var(--ok)' }}>Faturadan · {doviz}</p>
                   : null}
-              <p className="ey-yard">Faturadan gelir; isterseniz elle değiştirin.</p>
+              <p className="ey-yard">Parse edilen faturadan gelir; isterseniz elle değiştirin.</p>
             </div>
 
             <div>

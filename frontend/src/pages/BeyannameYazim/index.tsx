@@ -167,7 +167,20 @@ export default function BeyannameYazimPage() {
     }
     setActiveTab(tab);
     setHasViewedPreview(false);
+    setExportSorunluCount(0);
     setViewMode('detail');
+  }
+
+  function goToList() {
+    setViewMode('list');
+    setHasViewedPreview(false);
+    setExportSorunluCount(0);
+    setDownloadGate(null);
+    setPreviewDocId(null);
+    // Evrak Hazırlık’tan ?declarationId=… ile gelince URL kalırsa tekrar detaya yapışmasın.
+    if (searchParams.has('declarationId') || searchParams.has('ref') || searchParams.has('tab')) {
+      navigate('/beyanname', { replace: true });
+    }
   }
 
   async function handleViewDeclaration() {
@@ -471,11 +484,12 @@ export default function BeyannameYazimPage() {
   return (
     <div className="px-7 pt-4 pb-4 flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header row */}
-      <div className="flex items-start justify-between gap-4 mb-3 shrink-0">
+      <div className="relative z-20 flex items-start justify-between gap-4 mb-3 shrink-0">
         <div>
           <div className="flex items-center gap-4 mb-1.5">
             <button
-              onClick={() => setViewMode('list')}
+              type="button"
+              onClick={goToList}
               className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-accent transition-colors"
             >
               <ChevronLeft size={14} strokeWidth={2.5} />
