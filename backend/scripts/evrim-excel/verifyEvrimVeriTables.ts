@@ -5,7 +5,11 @@ import {
   lookupEvrimFirmaNoByVkn,
   lookupEvrimPackageTypeFromTables,
   lookupEvrimQuantityUnitFromTables,
+  matchEvrimAliciForMusteri,
+  resetEvrimVeriTablesCache,
   resolveEvrimVeriXlsxPath,
+  searchEvrimAliciForMusteri,
+  searchEvrimGonderen,
 } from "../../src/modules/export-code-tables/evrimVeriTables.js";
 import { mapEvrimCountryNo } from "../../src/modules/export-code-tables/evrimCountryCodes.js";
 import {
@@ -14,11 +18,13 @@ import {
   mapEvrimPackageType,
 } from "../../src/modules/export-code-tables/exportCodeTables.js";
 
+resetEvrimVeriTablesCache();
 const path = resolveEvrimVeriXlsxPath();
 assert.ok(path, "evrim-veri.xlsx bulunamadı");
 const tables = loadEvrimVeriTables();
 assert.ok(tables);
 assert.ok(tables!.firmaByVkn.size > 100);
+assert.ok(tables!.aliciByMusteriNo.size > 100);
 assert.ok(tables!.menseByCode.size > 50);
 assert.ok(tables!.kapByKod.size > 50);
 assert.ok(tables!.miktarByEdi.size > 5);
@@ -43,4 +49,18 @@ assert.equal(labelEvrimQuantityUnit("NIU"), "Adet");
 assert.equal(labelEvrimQuantityUnit("KGM"), "Kilogram");
 assert.equal(mapEvrimIhracatQuantityUnit("EA"), "C62");
 
-console.log("evrim-veri tables ok", tables!.sourcePath);
+const gonderen = searchEvrimGonderen("3206");
+assert.ok(gonderen.some((row) => row.gonderenNo === 3206));
+const alicilar = searchEvrimAliciForMusteri(3206, "");
+assert.ok(alicilar.length > 0);
+const unmatched = matchEvrimAliciForMusteri(3206, "BU ALICI YOK XYZ");
+assert.equal(unmatched.status, "not_found");
+
+console.log("evrim-veri tables ok", {
+  path: tables!.sourcePath,
+  firma: tables!.firmaByNo.size,
+  aliciMusteri: tables!.aliciByMusteriNo.size,
+  miktar: tables!.miktarByEdi.size,
+  kap: tables!.kapByKod.size,
+  mense: tables!.menseByCode.size,
+});

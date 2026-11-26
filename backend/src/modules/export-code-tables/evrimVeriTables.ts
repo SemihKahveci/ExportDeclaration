@@ -3,11 +3,21 @@ import path from "node:path";
 import * as XLSX from "xlsx";
 
 /**
- * `backend/data/evrim/evrim-veri.xlsx` — Evrim tanım tabloları (Firma/Miktar/Kap/Mense).
- * Sadece kod dönüşümü için kullanılır; fatura alanlarını değiştirmez.
+ * `backend/data/evrim/evrim-veri.xlsx` — Evrim tanım tabloları
+ * (Firma / alıcı / Miktar / Kap / Mense). Kod dönüşümü + yazım lookup.
  */
 
 export type EvrimFirmaRow = { gonderenNo: number; unvan: string; vergiNo: string };
+export type EvrimAliciRow = {
+  musteriNo: number;
+  musteriAdi: string;
+  aliciNo: number;
+  aliciUnvan: string;
+  adres: string;
+  postaKodu: string;
+  ulkeNo: string;
+  ulke: string;
+};
 export type EvrimMiktarRow = {
   siraNo: number;
   aciklamaTr: string;
@@ -29,6 +39,9 @@ export type EvrimVeriTables = {
   sourcePath: string;
   firmaByVkn: Map<string, EvrimFirmaRow[]>;
   firmaByNo: Map<number, EvrimFirmaRow>;
+  /** Müşteri (gönderici) Evrim ID → alıcı adres kartları */
+  aliciByMusteriNo: Map<number, EvrimAliciRow[]>;
+  aliciByNo: Map<number, EvrimAliciRow[]>;
   miktarByEdi: Map<string, EvrimMiktarRow>;
   miktarByAlias: Map<string, EvrimMiktarRow>;
   kapByKod: Map<string, EvrimKapRow>;
@@ -74,10 +87,13 @@ function normalizeVkn(value: string): string {
   return value.replace(/\D/g, "");
 }
 
-function sheetRows(workbook: XLSX.WorkBook, name: string): Record<string, unknown>[] {
-  const sheet = workbook.Sheets[name];
-  if (!sheet) return [];
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+function sheetRows(workbook: XLSX.WorkBook, ...names: string[]): Record<string, unknown>[] {
+  for (const name of names) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+    return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  }
+  return [];
 }
 
 export function resolveEvrimVeriXlsxPath(): string | undefined {
@@ -134,6 +150,31 @@ export function loadEvrimVeriTables(forcePath?: string): EvrimVeriTables | null 
     }
   }
 
+  const aliciByMusteriNo = new Map<number, EvrimAliciRow[]>();
+  const aliciByNo = new Map<number, EvrimAliciRow[]>();
+  for (const row of sheetRows(workbook, "alıcı", "alici", "Alici")) {
+    const musteriNo = Number(cell(row, "Musteri_No"));
+    const aliciNo = Number(cell(row, "Alici_No"));
+    const aliciUnvan = cell(row, "Alici_Unvan");
+    if (!Number.isFinite(musteriNo) || !Number.isFinite(aliciNo) || !aliciUnvan) continue;
+    const item: EvrimAliciRow = {
+      musteriNo,
+      musteriAdi: cell(row, "Musteri_Adi"),
+      aliciNo,
+      aliciUnvan,
+      adres: cell(row, "Adres"),
+      postaKodu: cell(row, "PostaKodu"),
+      ulkeNo: cell(row, "Ulke_No"),
+      ulke: cell(row, "Ulke"),
+    };
+    const byMusteri = aliciByMusteriNo.get(musteriNo) ?? [];
+    byMusteri.push(item);
+    aliciByMusteriNo.set(musteriNo, byMusteri);
+    const byNo = aliciByNo.get(aliciNo) ?? [];
+    byNo.push(item);
+    aliciByNo.set(aliciNo, byNo);
+  }
+
   const kapByKod = new Map<string, EvrimKapRow>();
   for (const row of sheetRows(workbook, "Kap")) {
     const kod = cell(row, "Kod").toUpperCase();
@@ -170,7 +211,18 @@ export function loadEvrimVeriTables(forcePath?: string): EvrimVeriTables | null 
     }
   }
 
-  cached = { sourcePath, firmaByVkn, firmaByNo, miktarByEdi, miktarByAlias, kapByKod, menseByCode, menseByName };
+  cached = {
+    sourcePath,
+    firmaByVkn,
+    firmaByNo,
+    aliciByMusteriNo,
+    aliciByNo,
+    miktarByEdi,
+    miktarByAlias,
+    kapByKod,
+    menseByCode,
+    menseByName,
+  };
   cachedPath = sourcePath;
   return cached;
 }
@@ -283,4 +335,131 @@ export function lookupEvrimFirmaNoByVkn(
     }))
     .sort((a, b) => b.score - a.score);
   return (scored[0]?.score ? scored[0].row : matches[0])?.gonderenNo;
+}
+
+function textMatchScore(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  const h = normalizeKey(haystack);
+  const n = normalizeKey(needle);
+  if (!h || !n) return 0;
+  if (h === n) return 4;
+  if (h.includes(n) || n.includes(h)) return 2;
+  return 0;
+}
+
+/** Gönderici (Firma) listesinde ad / Evrim ID / VKN araması. */
+export function searchEvrimGonderen(query: string, limit = 25): EvrimFirmaRow[] {
+  const tables = loadEvrimVeriTables();
+  if (!tables) return [];
+  const q = query.trim();
+  const asNo = Number(q);
+  const vkn = normalizeVkn(q);
+  const scored: Array<{ row: EvrimFirmaRow; score: number }> = [];
+  for (const row of tables.firmaByNo.values()) {
+    let score = 0;
+    if (Number.isFinite(asNo) && row.gonderenNo === asNo) score = 5;
+    else if (vkn && row.vergiNo === vkn) score = 4;
+    else score = textMatchScore(row.unvan, q);
+    if (score > 0) scored.push({ row, score });
+  }
+  return scored
+    .sort((a, b) => b.score - a.score || a.row.gonderenNo - b.row.gonderenNo)
+    .slice(0, Math.max(1, limit))
+    .map((item) => item.row);
+}
+
+/** Müşteriye bağlı alıcı adres kartlarında arama. */
+export function searchEvrimAliciForMusteri(
+  musteriNo: number,
+  query = "",
+  limit = 40
+): EvrimAliciRow[] {
+  const tables = loadEvrimVeriTables();
+  if (!tables || !Number.isFinite(musteriNo)) return [];
+  const rows = tables.aliciByMusteriNo.get(musteriNo) ?? [];
+  const q = query.trim();
+  if (!q) return rows.slice(0, Math.max(1, limit));
+  const asNo = Number(q);
+  const scored = rows
+    .map((row) => {
+      let score = 0;
+      if (Number.isFinite(asNo) && row.aliciNo === asNo) score = 5;
+      else {
+        score = Math.max(
+          textMatchScore(row.aliciUnvan, q),
+          textMatchScore(row.adres, q),
+          textMatchScore(row.ulke, q)
+        );
+      }
+      return { row, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.row.aliciNo - b.row.aliciNo);
+  return scored.slice(0, Math.max(1, limit)).map((item) => item.row);
+}
+
+/**
+ * Faturadaki alıcı adı (+ isteğe bağlı adres) ile müşteriye bağlı kart eşleştir.
+ * Tek net eşleşme → kart; birden fazla / hiç → null (UI seçtirir veya “ID yok”).
+ */
+export function matchEvrimAliciForMusteri(
+  musteriNo: number,
+  aliciUnvan: string | undefined | null,
+  adresHint?: string | null
+): { status: "matched"; row: EvrimAliciRow } | { status: "ambiguous"; rows: EvrimAliciRow[] } | { status: "not_found" } {
+  const tables = loadEvrimVeriTables();
+  if (!tables || !Number.isFinite(musteriNo)) return { status: "not_found" };
+  const pool = tables.aliciByMusteriNo.get(musteriNo) ?? [];
+  if (pool.length === 0) return { status: "not_found" };
+  const name = (aliciUnvan ?? "").trim();
+  if (!name) return { status: "not_found" };
+
+  const byName = pool.filter((row) => textMatchScore(row.aliciUnvan, name) >= 2);
+  if (byName.length === 0) return { status: "not_found" };
+  if (byName.length === 1) return { status: "matched", row: byName[0]! };
+
+  const adres = (adresHint ?? "").trim();
+  if (adres) {
+    const byAdres = byName
+      .map((row) => ({ row, score: textMatchScore(row.adres, adres) }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score);
+    if (byAdres.length === 1 || (byAdres[0] && byAdres[0].score > (byAdres[1]?.score ?? 0))) {
+      return { status: "matched", row: byAdres[0]!.row };
+    }
+    if (byAdres.length > 1) return { status: "ambiguous", rows: byAdres.map((item) => item.row) };
+  }
+  return { status: "ambiguous", rows: byName };
+}
+
+export function listEvrimMiktarOptions(): EvrimMiktarRow[] {
+  const tables = loadEvrimVeriTables();
+  if (!tables) return [];
+  return [...tables.miktarByEdi.values()].sort((a, b) => a.siraNo - b.siraNo);
+}
+
+export function listEvrimKapOptions(): EvrimKapRow[] {
+  const tables = loadEvrimVeriTables();
+  if (!tables) return [];
+  const seen = new Set<string>();
+  const rows: EvrimKapRow[] = [];
+  for (const row of tables.kapByKod.values()) {
+    if (seen.has(row.kod)) continue;
+    seen.add(row.kod);
+    rows.push(row);
+  }
+  return rows.sort((a, b) => a.kod.localeCompare(b.kod));
+}
+
+export function listEvrimMenseOptions(): EvrimMenseRow[] {
+  const tables = loadEvrimVeriTables();
+  if (!tables) return [];
+  const seen = new Set<string>();
+  const rows: EvrimMenseRow[] = [];
+  for (const row of tables.menseByCode.values()) {
+    if (seen.has(row.ulkeNo)) continue;
+    seen.add(row.ulkeNo);
+    rows.push(row);
+  }
+  return rows.sort((a, b) => a.ulkeNo.localeCompare(b.ulkeNo));
 }

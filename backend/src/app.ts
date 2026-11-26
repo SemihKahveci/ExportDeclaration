@@ -13,6 +13,7 @@ import { documentRuleRouter } from "./modules/document-rules/documentRule.routes
 import { mailTemplateRouter } from "./modules/mail-templates/mailTemplate.routes.js";
 import { documentProcessRouter } from "./modules/document-processes/documentProcess.routes.js";
 import { declarationApprovalRulesRouter } from "./modules/declaration-approval-rules/declarationApprovalRules.routes.js";
+import { evrimLookupRouter } from "./modules/evrim-lookup/evrimLookup.routes.js";
 import { customerRouter } from "./modules/customers/customer.routes.js";
 import { licenseMiddleware } from "./common/middlewares/licenseMiddleware.js";
 import { licenseRouter } from "./modules/license/license.routes.js";
@@ -48,6 +49,7 @@ app.use("/api/mail-templates", mailTemplateRouter);
 app.use("/api/mail", mailRouter);
 app.use("/api/document-processes", documentProcessRouter);
 app.use("/api/declaration-approval-rules", declarationApprovalRulesRouter);
+app.use("/api/evrim-lookup", evrimLookupRouter);
 app.use("/api/customers", customerRouter);
 app.use("/api/customs-master-data", customsMasterDataRouter);
 app.use("/api/declarations", customsSupplementRouter);
