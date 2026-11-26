@@ -104,13 +104,23 @@ export async function getCodeOptions(_req: Request, res: Response): Promise<void
         tanim: row.tanim,
         label: `${row.kod} · ${row.tanim}`,
       })),
-      mense: listEvrimMenseOptions().map((row) => ({
-        ulkeNo: row.ulkeNo,
-        ulkeKodu: row.ulkeKodu,
-        ulke: row.ulke,
-        yUlke: row.yUlke,
-        label: `${row.ulkeNo} · ${row.ulke || row.yUlke}`,
-      })),
+      mense: listEvrimMenseOptions().map((row) => {
+        const aliases = Array.from(new Set(
+          [row.ulkeNo, row.ulkeKodu, row.ulke, row.yUlke, row.sbUlke, row.ublMensei]
+            .map((v) => String(v ?? "").trim())
+            .filter(Boolean)
+        ));
+        return {
+          ulkeNo: row.ulkeNo,
+          ulkeKodu: row.ulkeKodu,
+          ulke: row.ulke,
+          yUlke: row.yUlke,
+          sbUlke: row.sbUlke,
+          ublMensei: row.ublMensei,
+          aliases,
+          label: `${row.ulkeNo} · ${row.ulke || row.yUlke}`,
+        };
+      }),
     },
   });
 }

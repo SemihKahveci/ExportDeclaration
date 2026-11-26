@@ -4,6 +4,7 @@ import type { BeyannameLineItem, BeyannameRecord } from '../../types';
 import { apiGetJson, apiPostJson } from '../../api/apiClient';
 import { applyWeightQuantity } from './writingDraft';
 import { resolveMiktarEdi, type MiktarOption } from './resolveEvrimMiktar';
+import { resolveMenseUlkeNo, type MenseOption } from './resolveEvrimMense';
 import './exportYazim.css';
 
 type GonderenHit = { gonderenNo: number; unvan: string; vergiNo: string; label: string };
@@ -17,7 +18,7 @@ type AliciHit = {
 type CodeOptions = {
   miktar: MiktarOption[];
   kap: Array<{ kod: string; label: string }>;
-  mense: Array<{ ulkeNo: string; label: string }>;
+  mense: MenseOption[];
 };
 
 const EMPTY_CODES: CodeOptions = { miktar: [], kap: [], mense: [] };
@@ -52,18 +53,6 @@ function parseTrNumber(value: string): number {
   }
   const n = Number(normalized);
   return Number.isFinite(n) ? n : 0;
-}
-
-function resolveMenseValue(raw: string, options: Array<{ ulkeNo: string; label: string }>): string {
-  const text = fv({ v: raw }, 'v');
-  if (!text) return '';
-  if (options.some((opt) => opt.ulkeNo === text)) return text;
-  const lower = text.toLocaleLowerCase('tr-TR');
-  const hit = options.find((opt) => {
-    const label = opt.label.toLocaleLowerCase('tr-TR');
-    return label === lower || label.startsWith(`${lower} ·`) || label.includes(lower) || opt.ulkeNo === text.padStart(3, '0');
-  });
-  return hit?.ulkeNo ?? '';
 }
 
 function resolveKapValue(raw: string, options: Array<{ kod: string; label: string }>): string {
@@ -195,16 +184,25 @@ export default function ExportWritingPanel({
   const kalemToplam = lineItems.reduce((sum, item) => sum + parseTrNumber(String(item.kiymet ?? '')), 0);
   const faturaCurrency = doviz || fv(fieldValues, 'Döviz Cinsi') || 'EUR';
 
-  // Parse birimlerini Evrim EDI'ye sabitle (Adet/EA/C62 → C62).
+  // Parse birim/menşe → Evrim kodları (Adet→C62, CHINA→720).
   useEffect(() => {
-    if (!codes.miktar.length || locked) return;
+    if (locked) return;
+    if (!codes.miktar.length && !codes.mense.length) return;
     lineItems.forEach((item, index) => {
-      const resolved = resolveMiktarEdi(item.miktarBirimi, codes.miktar);
-      if (resolved && resolved !== item.miktarBirimi) {
-        onLineChange(index, applyWeightQuantity({ ...item, miktarBirimi: resolved }));
+      const patch: Partial<typeof item> = {};
+      if (codes.miktar.length) {
+        const resolvedUnit = resolveMiktarEdi(item.miktarBirimi, codes.miktar);
+        if (resolvedUnit && resolvedUnit !== item.miktarBirimi) patch.miktarBirimi = resolvedUnit;
+      }
+      if (codes.mense.length) {
+        const resolvedMense = resolveMenseUlkeNo(item.mense, codes.mense);
+        if (resolvedMense && resolvedMense !== item.mense) patch.mense = resolvedMense;
+      }
+      if (Object.keys(patch).length > 0) {
+        onLineChange(index, applyWeightQuantity({ ...item, ...patch }));
       }
     });
-  }, [codes.miktar, record.id]);
+  }, [codes.miktar, codes.mense, record.id]);
 
   const sorunluIndexes = useMemo(() => {
     const miktar = codes?.miktar ?? [];
@@ -212,9 +210,7 @@ export default function ExportWritingPanel({
     const set = new Set<number>();
     lineItems.forEach((item, index) => {
       const unitOk = Boolean(resolveMiktarEdi(item.miktarBirimi, miktar));
-      const menseOk = mense.length === 0
-        ? Boolean(fv({ v: item.mense ?? '' }, 'v'))
-        : Boolean(resolveMenseValue(item.mense ?? '', mense));
+      const menseOk = Boolean(resolveMenseUlkeNo(item.mense, mense));
       if (!unitOk || !menseOk) set.add(index);
     });
     return set;
@@ -565,11 +561,12 @@ export default function ExportWritingPanel({
             <tbody>
               {visible.map(({ item, index }) => {
                 const unitValue = resolveMiktarEdi(item.miktarBirimi, codes.miktar);
-                const menseValue = resolveMenseValue(item.mense ?? '', codes.mense);
+                const menseValue = resolveMenseUlkeNo(item.mense, codes.mense);
                 const kapValue = resolveKapValue(item.kapCinsi ?? '', codes.kap);
                 const needUnit = !unitValue;
                 const needMense = !menseValue;
                 const unitOpt = codes.miktar.find((opt) => opt.ediKodu === unitValue);
+                const menseOpt = codes.mense.find((opt) => opt.ulkeNo === menseValue);
                 return (
                   <tr key={`${item.lineNo}-${index}`}>
                     <td className="ey-num" style={{ color: 'var(--muted)' }}>{item.lineNo || index + 1}</td>
@@ -650,7 +647,9 @@ export default function ExportWritingPanel({
                         <option value="">Menşe seçin</option>
                         {codes.mense.map((opt) => <option key={opt.ulkeNo} value={opt.ulkeNo}>{opt.label}</option>)}
                       </select>
-                      {needMense && <span className="ey-kay" style={{ color: '#7a5a16' }}>Kalemde ve açıklamada yok</span>}
+                      {needMense
+                        ? <span className="ey-kay" style={{ color: '#7a5a16' }}>{item.mense && item.mense !== '—' ? `"${item.mense}" Evrim'de eşleşmedi` : 'Kalemde ve açıklamada yok'}</span>
+                        : <span className="ey-kay">{menseOpt?.yUlke || menseOpt?.ulke || menseValue}</span>}
                     </td>
                     <td>
                       <select
