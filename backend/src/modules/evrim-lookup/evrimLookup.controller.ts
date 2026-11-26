@@ -86,7 +86,7 @@ export async function getCodeOptions(_req: Request, res: Response): Promise<void
           || row.aciklamaIng
           || row.cevrimKodu;
         const aliases = Array.from(new Set(
-          [row.ediKodu, row.aciklamaTr, row.aciklamaIng, row.cevrimKodu, friendly]
+          [row.ediKodu, row.aciklamaTr, row.aciklamaIng, row.aciklama2, row.cevrimKodu, friendly]
             .map((v) => String(v ?? "").trim())
             .filter(Boolean)
         ));
@@ -94,6 +94,7 @@ export async function getCodeOptions(_req: Request, res: Response): Promise<void
           ediKodu: row.ediKodu,
           aciklamaTr: row.aciklamaTr,
           aciklamaIng: row.aciklamaIng,
+          aciklama2: row.aciklama2,
           cevrimKodu: row.cevrimKodu,
           aliases,
           label: `${row.ediKodu} · ${friendly}`,

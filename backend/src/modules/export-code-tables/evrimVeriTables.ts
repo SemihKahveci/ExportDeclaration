@@ -22,6 +22,7 @@ export type EvrimMiktarRow = {
   siraNo: number;
   aciklamaTr: string;
   aciklamaIng: string;
+  aciklama2: string;
   ediKodu: string;
   cevrimKodu: string;
 };
@@ -139,11 +140,13 @@ export function loadEvrimVeriTables(forcePath?: string): EvrimVeriTables | null 
       siraNo: Number(cell(row, "Sira_No")) || 0,
       aciklamaTr: cell(row, "AciklamaTR"),
       aciklamaIng: cell(row, "AciklamaING"),
+      aciklama2: cell(row, "Aciklama2"),
       ediKodu,
       cevrimKodu: cell(row, "CevrimKodu"),
     };
     miktarByEdi.set(ediKodu, item);
-    for (const alias of [item.aciklamaTr, item.aciklamaIng, item.cevrimKodu, item.ediKodu]) {
+    // Tüm metin sütunları alias (Excel’deki karşılıklar dinamik)
+    for (const alias of [item.aciklamaTr, item.aciklamaIng, item.aciklama2, item.cevrimKodu, item.ediKodu]) {
       if (!alias) continue;
       miktarByAlias.set(normalizeKey(alias), item);
       miktarByAlias.set(alias.toLowerCase(), item);
