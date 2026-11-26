@@ -5,6 +5,7 @@ import { apiGetJson, apiPostJson } from '../../api/apiClient';
 import { applyWeightQuantity } from './writingDraft';
 import { resolveMiktarEdi, type MiktarOption } from './resolveEvrimMiktar';
 import { resolveMenseUlkeNo, type MenseOption } from './resolveEvrimMense';
+import { parseTrNumber } from '../../utils/parseTrNumber';
 import './exportYazim.css';
 
 type GonderenHit = { gonderenNo: number; unvan: string; vergiNo: string; label: string };
@@ -36,23 +37,6 @@ function fv(fields: Record<string, string>, ...keys: string[]): string {
 function parseStoredId(raw: string): number | null {
   const n = Number(String(raw).trim());
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
-}
-
-function parseTrNumber(value: string): number {
-  const raw = fv({ v: value }, 'v').replace(/[^\d,.-]/g, '').replace(/\s/g, '');
-  if (!raw) return 0;
-  const hasComma = raw.includes(',');
-  const hasDot = raw.includes('.');
-  let normalized = raw;
-  if (hasComma && hasDot) {
-    normalized = raw.lastIndexOf(',') > raw.lastIndexOf('.')
-      ? raw.replace(/\./g, '').replace(',', '.')
-      : raw.replace(/,/g, '');
-  } else if (hasComma) {
-    normalized = raw.replace(',', '.');
-  }
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function resolveKapValue(raw: string, options: Array<{ kod: string; label: string }>): string {

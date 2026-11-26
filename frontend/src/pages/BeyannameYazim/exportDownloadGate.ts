@@ -1,25 +1,9 @@
 import type { BeyannameLineItem } from '../../types';
+import { parseTrNumber } from '../../utils/parseTrNumber';
 
 function text(value: unknown): string {
   const raw = value == null ? '' : String(value).trim();
   return raw === '—' || raw === '–' || raw === '-' ? '' : raw;
-}
-
-function parseTrNumber(value: string): number {
-  const raw = text(value).replace(/[^\d,.-]/g, '').replace(/\s/g, '');
-  if (!raw) return 0;
-  const hasComma = raw.includes(',');
-  const hasDot = raw.includes('.');
-  let normalized = raw;
-  if (hasComma && hasDot) {
-    normalized = raw.lastIndexOf(',') > raw.lastIndexOf('.')
-      ? raw.replace(/\./g, '').replace(',', '.')
-      : raw.replace(/,/g, '');
-  } else if (hasComma) {
-    normalized = raw.replace(',', '.');
-  }
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : 0;
 }
 
 export type ExportDownloadIssue =

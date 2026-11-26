@@ -285,8 +285,13 @@ export function toLineItems(norm: NormalizedDeclaration): BeyannameLineItem[] {
       mense: line.origin ?? norm.trade.origin ?? "—",
       brutKg: line.grossKg != null ? line.grossKg.toLocaleString("tr-TR") : "—",
       netKg: weight ? quantity : line.netKg != null ? line.netKg.toLocaleString("tr-TR") : "—",
-      kiymet: line.lineTotal != null ? line.lineTotal.toLocaleString("tr-TR") : "—",
-      birimFiyat: line.unitPrice != null ? line.unitPrice.toLocaleString("tr-TR") : "—",
+      // min 2 hane: 384 → 384,00; 10710 → 10.710,00 (binlik nokta + ondalık virgül)
+      kiymet: line.lineTotal != null
+        ? line.lineTotal.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "—",
+      birimFiyat: line.unitPrice != null
+        ? line.unitPrice.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : "—",
       ticariTanim: line.description,
       // Select Evrim EDI kodu ister; etiket FE'de resolve edilir (C62/EA/Adet → C62).
       miktarBirimi: line.unit || undefined,
