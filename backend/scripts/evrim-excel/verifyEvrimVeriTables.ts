@@ -9,6 +9,7 @@ import {
   resetEvrimVeriTablesCache,
   resolveEvrimVeriXlsxPath,
   searchEvrimAliciForMusteri,
+  matchEvrimGonderen,
   searchEvrimGonderen,
 } from "../../src/modules/export-code-tables/evrimVeriTables.js";
 import { mapEvrimCountryNo } from "../../src/modules/export-code-tables/evrimCountryCodes.js";
@@ -58,6 +59,9 @@ assert.ok(celikelFull.some((row) => row.gonderenNo === 2185), "tam unvan (noktal
 const celikelShort = searchEvrimGonderen("Çelikel Alüminyum");
 assert.ok(celikelShort.some((row) => row.gonderenNo === 2185), "kısmi unvan → 2185");
 assert.equal(lookupEvrimFirmaNoByVkn("2410053479", "Çelikel Alüminyum"), 2185);
+const byVkn = matchEvrimGonderen("2410053479", "başka bir yazı");
+assert.equal(byVkn.status, "matched");
+if (byVkn.status === "matched") assert.equal(byVkn.row.gonderenNo, 2185);
 
 const alicilar = searchEvrimAliciForMusteri(3206, "");
 assert.ok(alicilar.length > 0);

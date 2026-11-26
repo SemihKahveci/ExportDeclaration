@@ -11,6 +11,7 @@ evrimLookupRouter.use(requireReadWriteCapabilities(
 ));
 
 evrimLookupRouter.get("/gonderen", asyncHandler(ctrl.getGonderen));
+evrimLookupRouter.post("/gonderen/match", asyncHandler(ctrl.postMatchGonderen));
 evrimLookupRouter.get("/alici", asyncHandler(ctrl.getAlici));
 evrimLookupRouter.post("/alici/match", asyncHandler(ctrl.postMatchAlici));
 evrimLookupRouter.get("/code-options", asyncHandler(ctrl.getCodeOptions));

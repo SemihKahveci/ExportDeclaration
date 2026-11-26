@@ -219,6 +219,7 @@ export function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDe
 
     "Gönderici / İhracatçı Ünvanı": seller?.name ?? "",
     "Gönderici / İhracatçı Adresi": seller?.address ?? "",
+    "Gönderici VKN": seller?.taxNo ?? "",
     "Alıcı / İthalatçı Ünvanı": buyer?.name ?? "",
     "Alıcı / İthalatçı Adresi": buyer?.address ?? "",
 
@@ -262,14 +263,15 @@ export function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDe
     "Dolaşım Belgesi No": norm.documents?.circulationDocumentNo ?? "",
     "Menşe Belgesi No": norm.documents?.originDocumentNo ?? "",
 
-    "Açıklama / Not Alanı": Array.isArray(norm.invoiceNotes)
-      ? norm.invoiceNotes.filter(Boolean).join("\n")
-      : "",
+    // Fatura açıklaması elle doldurulur (örnek HTML); UBL Note otomatik basılmaz.
+    "Açıklama / Not Alanı": "",
   };
   const extras = evrim.draftFields;
   if (extras && typeof extras === "object" && !Array.isArray(extras)) {
     for (const [key, stored] of Object.entries(extras as Record<string, unknown>)) {
-      if (typeof stored === "string" && !values[key]) values[key] = stored;
+      // Açıklama elle; draft’ta varsa kullanıcı kaydı korunur. Diğer boş alanlar draft’tan dolar.
+      if (typeof stored !== "string" || !stored) continue;
+      if (!values[key]) values[key] = stored;
     }
   }
   return values;
@@ -360,30 +362,12 @@ export function toBeyannameListeItem(d: BackendDeclaration, docs: UploadedDocume
   };
 }
 
-function invoiceNotesFromDocs(docs: UploadedDocument[]): string {
-  for (const doc of docs) {
-    const data = doc.extractedData;
-    if (!data || typeof data !== "object") continue;
-    const notes = (data as { invoiceNotes?: unknown }).invoiceNotes;
-    if (!Array.isArray(notes)) continue;
-    const joined = notes.map((item) => String(item ?? "").trim()).filter(Boolean).join("\n");
-    if (joined) return joined;
-  }
-  return "";
-}
-
 export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[]): BeyannameRecord {
   const norm = mergeNormalizedFromApi(d.normalizedData);
   const op = d.operation;
   const received = docs.filter((doc) => doc.extractionStatus === "SUCCESS").length;
   const formFields = toFormFields(norm);
   const fields = toWritingFields(norm, d.sourceTrace);
-  const fieldValues = toWritingFieldValues(norm, op);
-  // Eski kayıtlar: normalize’da notes yoksa belge extractedData’dan doldur
-  if (!fieldValues["Açıklama / Not Alanı"]) {
-    const fromDocs = invoiceNotesFromDocs(docs);
-    if (fromDocs) fieldValues["Açıklama / Not Alanı"] = fromDocs;
-  }
   return {
     id: d._id,
     ref: refFromId(d),
@@ -399,7 +383,7 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     lineCount: norm.goodsLines.length,
     warningCount: d.status === "ERROR" ? 1 : 0,
     formFields,
-    fieldValues,
+    fieldValues: toWritingFieldValues(norm, op),
     fieldMappings: [],
     fields,
     lineItems: toLineItems(norm),

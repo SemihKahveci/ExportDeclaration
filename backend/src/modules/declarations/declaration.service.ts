@@ -7,6 +7,7 @@ import { DeclarationStatus } from "../../common/enums/declarationStatus.js";
 import { env } from "../../config/env.js";
 import { buildNormalizedDeclaration, fillMissingGoodsLineFields } from "../normalization/fieldResolver.service.js";
 import type { ExtractedSource, NormalizedDeclaration } from "../normalization/normalizedDeclaration.types.js";
+import { matchEvrimAliciForMusteri, matchEvrimGonderen } from "../export-code-tables/evrimVeriTables.js";
 import {
   validateMandatoryInvoicePresent,
   validateNormalizedDeclaration
@@ -352,54 +353,91 @@ export async function listDeclarations(
   );
 }
 
-/** Eski kayıtlarda fatura Note’ları normalize’a hiç yazılmamış olabilir — belgeden doldur. */
-async function hydrateInvoiceNotesIfMissing(
-  companyId: mongoose.Types.ObjectId,
-  declarationId: mongoose.Types.ObjectId,
-  normalized: NormalizedDeclaration | undefined
-): Promise<NormalizedDeclaration | undefined> {
-  if (!normalized) return normalized;
-  if (Array.isArray(normalized.invoiceNotes) && normalized.invoiceNotes.some((n) => String(n ?? "").trim())) {
-    return normalized;
-  }
-  const docs = await UploadedDocumentModel.find({
-    companyId,
-    declarationId,
-    extractionStatus: "SUCCESS",
-    type: { $in: ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"] },
-  })
-    .select({ extractedData: 1, type: 1 })
-    .lean();
-  for (const type of ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"] as const) {
-    for (const doc of docs) {
-      if (doc.type !== type) continue;
-      const raw = (doc.extractedData as { invoiceNotes?: unknown } | undefined)?.invoiceNotes;
-      if (!Array.isArray(raw)) continue;
-      const notes = raw.map((item) => String(item ?? "").trim()).filter(Boolean);
-      if (notes.length === 0) continue;
-      const next = { ...normalized, invoiceNotes: notes };
-      await DeclarationModel.updateOne(
-        { _id: declarationId, companyId },
-        { $set: { "normalizedData.invoiceNotes": notes } }
-      );
-      return next;
+/**
+ * Detay açılışında gönderici/alıcı Evrim ID’lerini önceden çöz (FE boş flash olmasın).
+ * VKN → Evrim Firma tablosu öncelikli; fatura açıklaması elle kalır.
+ */
+function hydrateEvrimPartyDraftFields(normalized: NormalizedDeclaration): {
+  normalized: NormalizedDeclaration;
+  changed: boolean;
+} {
+  const seller = normalized.parties?.seller;
+  const buyer = normalized.parties?.buyer;
+  const evrimHeader = { ...(normalized.evrimHeader ?? {}) } as Record<string, unknown>;
+  const draftFields = {
+    ...((evrimHeader.draftFields && typeof evrimHeader.draftFields === "object" && !Array.isArray(evrimHeader.draftFields))
+      ? (evrimHeader.draftFields as Record<string, unknown>)
+      : {}),
+  };
+  let changed = false;
+
+  const existingGonderen = Number(draftFields["Gönderici Evrim No"]);
+  let gonderenNo = Number.isFinite(existingGonderen) && existingGonderen > 0 ? existingGonderen : undefined;
+
+  if (gonderenNo == null) {
+    const match = matchEvrimGonderen(seller?.taxNo, seller?.name);
+    if (match.status === "matched") {
+      gonderenNo = match.row.gonderenNo;
+      draftFields["Gönderici Evrim No"] = String(match.row.gonderenNo);
+      if (match.row.unvan) {
+        normalized = {
+          ...normalized,
+          parties: {
+            ...normalized.parties,
+            seller: { ...seller, name: match.row.unvan, taxNo: match.row.vergiNo || seller?.taxNo },
+          },
+        };
+      }
+      changed = true;
     }
   }
-  return normalized;
+
+  const existingAlici = Number(draftFields["Alıcı Evrim No"]);
+  if (gonderenNo != null && !(Number.isFinite(existingAlici) && existingAlici > 0) && buyer?.name) {
+    const alici = matchEvrimAliciForMusteri(gonderenNo, buyer.name, buyer.address);
+    if (alici.status === "matched") {
+      draftFields["Alıcı Evrim No"] = String(alici.row.aliciNo);
+      normalized = {
+        ...normalized,
+        parties: {
+          ...normalized.parties,
+          buyer: {
+            ...buyer,
+            name: alici.row.aliciUnvan || buyer.name,
+            address: alici.row.adres || buyer.address,
+            country: alici.row.ulke || buyer.country,
+          },
+        },
+      };
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    evrimHeader.draftFields = draftFields;
+    normalized = { ...normalized, evrimHeader };
+  }
+  return { normalized, changed };
 }
 
 export async function getDeclaration(companyId: mongoose.Types.ObjectId, id: string): Promise<DeclarationDto> {
   if (!mongoose.isValidObjectId(id)) throw new HttpError(400, "Geçersiz beyanname id.");
   const d = await DeclarationModel.findOne({ _id: id, companyId }).lean();
   if (!d) throw new HttpError(404, "Beyanname bulunamadı.");
-  const hydratedNorm = await hydrateInvoiceNotesIfMissing(
-    companyId,
-    d._id as mongoose.Types.ObjectId,
-    d.normalizedData as NormalizedDeclaration | undefined
-  );
-  const row = hydratedNorm && hydratedNorm !== d.normalizedData
-    ? { ...d, normalizedData: hydratedNorm }
-    : d;
+
+  let normalized = d.normalizedData as NormalizedDeclaration | undefined;
+  if (normalized) {
+    const hydrated = hydrateEvrimPartyDraftFields(normalized);
+    if (hydrated.changed) {
+      normalized = hydrated.normalized;
+      await DeclarationModel.updateOne(
+        { _id: d._id, companyId },
+        { $set: { normalizedData: normalized } }
+      );
+    }
+  }
+
+  const row = normalized ? { ...d, normalizedData: normalized } : d;
   const missing = await missingDocumentsByDeclaration(companyId, [row]);
   return withMissingDocuments(toDeclarationDto(row as unknown as DeclarationDoc), missing.get(String(d._id)));
 }

@@ -39,6 +39,13 @@ function parseStoredId(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
+function partyLabel(no: number | null, unvan: string): string {
+  const name = unvan.trim();
+  if (no != null && name) return `${no} – ${name}`;
+  if (no != null) return String(no);
+  return name;
+}
+
 function resolveKapValue(raw: string, options: Array<{ kod: string; label: string }>): string {
   const text = fv({ v: raw }, 'v');
   if (!text) return '';
@@ -78,15 +85,22 @@ export default function ExportWritingPanel({
 }: ExportWritingPanelProps) {
   const [filtre, setFiltre] = useState<'tumu' | 'sorun'>('tumu');
   const [doviz, setDoviz] = useState(fv(fieldValues, 'Döviz Cinsi') || 'EUR');
-  const [gonderenQ, setGonderenQ] = useState(fv(fieldValues, 'Gönderici / İhracatçı Ünvanı'));
-  const [gonderenNo, setGonderenNo] = useState<number | null>(() => parseStoredId(fv(fieldValues, EVRIM_GONDEREN_KEY)));
+  const initialGonderenNo = parseStoredId(fv(fieldValues, EVRIM_GONDEREN_KEY));
+  const initialAliciNo = parseStoredId(fv(fieldValues, EVRIM_ALICI_KEY));
+  const [gonderenNo, setGonderenNo] = useState<number | null>(() => initialGonderenNo);
+  const [gonderenQ, setGonderenQ] = useState(() =>
+    partyLabel(initialGonderenNo, fv(fieldValues, 'Gönderici / İhracatçı Ünvanı'))
+  );
   const [gonderenHits, setGonderenHits] = useState<GonderenHit[]>([]);
-  const [aliciQ, setAliciQ] = useState(fv(fieldValues, 'Alıcı / İthalatçı Ünvanı'));
-  const [aliciNo, setAliciNo] = useState<number | null>(() => parseStoredId(fv(fieldValues, EVRIM_ALICI_KEY)));
+  const [aliciNo, setAliciNo] = useState<number | null>(() => initialAliciNo);
+  const [aliciQ, setAliciQ] = useState(() =>
+    partyLabel(initialAliciNo, fv(fieldValues, 'Alıcı / İthalatçı Ünvanı'))
+  );
   const [aliciHits, setAliciHits] = useState<AliciHit[]>([]);
   const [aliciWarn, setAliciWarn] = useState('');
   const [codes, setCodes] = useState<EvrimCodeOptions>(() => peekEvrimCodeOptions());
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [firmaAdByNo, setFirmaAdByNo] = useState<Record<string, string>>({});
   const codesReady = isEvrimCodeOptionsReady(codes);
 
   useEffect(() => {
@@ -98,62 +112,88 @@ export default function ExportWritingPanel({
   }, []);
 
   useEffect(() => {
+    const nextGonderenNo = parseStoredId(fv(fieldValues, EVRIM_GONDEREN_KEY));
+    const nextAliciNo = parseStoredId(fv(fieldValues, EVRIM_ALICI_KEY));
+    const gonderenName = fv(fieldValues, 'Gönderici / İhracatçı Ünvanı');
+    const aliciName = fv(fieldValues, 'Alıcı / İthalatçı Ünvanı');
     setDoviz(fv(fieldValues, 'Döviz Cinsi') || 'EUR');
-    setGonderenQ(fv(fieldValues, 'Gönderici / İhracatçı Ünvanı'));
-    setAliciQ(fv(fieldValues, 'Alıcı / İthalatçı Ünvanı'));
-    setGonderenNo(parseStoredId(fv(fieldValues, EVRIM_GONDEREN_KEY)));
-    setAliciNo(parseStoredId(fv(fieldValues, EVRIM_ALICI_KEY)));
+    setGonderenNo(nextGonderenNo);
+    setAliciNo(nextAliciNo);
+    // Asla boşaltma: fatura adı veya ID–unvan hemen görünsün
+    setGonderenQ((prev) => partyLabel(nextGonderenNo, gonderenName) || prev);
+    setAliciQ((prev) => partyLabel(nextAliciNo, aliciName) || prev);
+    if (nextGonderenNo != null && gonderenName) {
+      setFirmaAdByNo((prev) => ({ ...prev, [String(nextGonderenNo)]: gonderenName }));
+    }
     setGonderenHits([]);
     setAliciHits([]);
     setAliciWarn('');
     setTouched({});
   }, [record.id]);
 
+  // Parent hydrate / draftFields ile ID gelince input’u anında güncelle
+  useEffect(() => {
+    const nextGonderenNo = parseStoredId(fv(fieldValues, EVRIM_GONDEREN_KEY));
+    const nextAliciNo = parseStoredId(fv(fieldValues, EVRIM_ALICI_KEY));
+    const gonderenName = fv(fieldValues, 'Gönderici / İhracatçı Ünvanı');
+    const aliciName = fv(fieldValues, 'Alıcı / İthalatçı Ünvanı');
+    if (nextGonderenNo != null) {
+      setGonderenNo(nextGonderenNo);
+      setGonderenQ(partyLabel(nextGonderenNo, gonderenName));
+      if (gonderenName) setFirmaAdByNo((prev) => ({ ...prev, [String(nextGonderenNo)]: gonderenName }));
+    } else if (gonderenName) {
+      setGonderenQ((prev) => prev || gonderenName);
+    }
+    if (nextAliciNo != null) {
+      setAliciNo(nextAliciNo);
+      setAliciQ(partyLabel(nextAliciNo, aliciName));
+    } else if (aliciName) {
+      setAliciQ((prev) => prev || aliciName);
+    }
+  }, [
+    fieldValues[EVRIM_GONDEREN_KEY],
+    fieldValues[EVRIM_ALICI_KEY],
+    fieldValues['Gönderici / İhracatçı Ünvanı'],
+    fieldValues['Alıcı / İthalatçı Ünvanı'],
+  ]);
+
+  // Backend hydrate etmemişse: VKN (Evrim Firma) öncelikli eşle — sonucu gelene kadar mevcut yazıyı tut
   useEffect(() => {
     if (gonderenNo != null) return;
     const name = fv(fieldValues, 'Gönderici / İhracatçı Ünvanı');
-    if (!name) return;
+    const taxNo = fv(fieldValues, 'Gönderici VKN');
+    if (!name && !taxNo) return;
     let cancelled = false;
 
-    async function resolveGonderen() {
-      // 1) Tam / kısmi unvan (backend noktalama farkını yumuşatır)
-      const byName = await apiGetJson<{ items: GonderenHit[] }>(
-        `/api/evrim-lookup/gonderen?q=${encodeURIComponent(name)}&limit=8`
-      ).catch(() => null);
-      let items = byName?.items ?? [];
-
-      // 2) Tam unvan tutmazsa anlamlı ilk kelimelerle tekrar dene ("Çelikel Alüminyum")
-      if (items.length === 0) {
-        const short = name
-          .split(/\s+/)
-          .filter((part) => part.length >= 3)
-          .slice(0, 2)
-          .join(' ');
-        if (short && short !== name) {
-          const retry = await apiGetJson<{ items: GonderenHit[] }>(
-            `/api/evrim-lookup/gonderen?q=${encodeURIComponent(short)}&limit=8`
-          ).catch(() => null);
-          items = retry?.items ?? [];
+    void apiPostJson<
+      | { status: 'matched'; row: GonderenHit }
+      | { status: 'ambiguous'; rows: GonderenHit[] }
+      | { status: 'not_found' }
+    >('/api/evrim-lookup/gonderen/match', { taxNo, name })
+      .then((result) => {
+        if (cancelled || !result) return;
+        if (result.status === 'matched') {
+          const hit = result.row;
+          const label = hit.label || partyLabel(hit.gonderenNo, hit.unvan);
+          setGonderenNo(hit.gonderenNo);
+          setGonderenQ(label);
+          setFirmaAdByNo((prev) => ({ ...prev, [String(hit.gonderenNo)]: hit.unvan }));
+          onFieldChange(EVRIM_GONDEREN_KEY, String(hit.gonderenNo));
+          onFieldChange('Gönderici / İhracatçı Ünvanı', hit.unvan);
+          if (hit.vergiNo) onFieldChange('Gönderici VKN', hit.vergiNo);
+          return;
         }
-      }
+        if (result.status === 'ambiguous') {
+          setGonderenHits(result.rows.map((row) => ({
+            ...row,
+            label: row.label || partyLabel(row.gonderenNo, row.unvan),
+          })));
+        }
+      })
+      .catch(() => undefined);
 
-      if (cancelled || items.length === 0) return;
-      if (items.length > 1) {
-        // Birden fazla ise listeyi aç; kullanıcı seçsin
-        setGonderenHits(items);
-        setGonderenQ(name);
-        return;
-      }
-      const hit = items[0]!;
-      setGonderenNo(hit.gonderenNo);
-      setGonderenQ(hit.label);
-      onFieldChange(EVRIM_GONDEREN_KEY, String(hit.gonderenNo));
-      onFieldChange('Gönderici / İhracatçı Ünvanı', hit.unvan);
-    }
-
-    void resolveGonderen();
     return () => { cancelled = true; };
-  }, [record.id]);
+  }, [record.id, gonderenNo]);
 
   useEffect(() => {
     if (gonderenNo == null || aliciNo != null) return;
@@ -175,7 +215,7 @@ export default function ExportWritingPanel({
         if (result.status === 'matched') {
           const row = result.row;
           setAliciNo(row.aliciNo);
-          setAliciQ(`${row.aliciNo} – ${row.aliciUnvan}`);
+          setAliciQ(partyLabel(row.aliciNo, row.aliciUnvan));
           setAliciWarn('');
           onFieldChange(EVRIM_ALICI_KEY, String(row.aliciNo));
           onFieldChange('Alıcı / İthalatçı Ünvanı', row.aliciUnvan);
@@ -185,7 +225,7 @@ export default function ExportWritingPanel({
         if (result.status === 'ambiguous') {
           setAliciHits(result.rows.map((row) => ({
             ...row,
-            label: `${row.aliciNo} – ${row.aliciUnvan}`,
+            label: partyLabel(row.aliciNo, row.aliciUnvan),
           })));
           setAliciWarn(`${result.rows.length} kart bulundu · doğru adresi seçin`);
           return;
@@ -194,7 +234,7 @@ export default function ExportWritingPanel({
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [record.id, gonderenNo]);
+  }, [record.id, gonderenNo, aliciNo]);
 
   const faturaToplam = parseTrNumber(fv(fieldValues, 'Toplam Fatura Bedeli'));
   const kalemToplam = lineItems.reduce((sum, item) => sum + parseTrNumber(String(item.kiymet ?? '')), 0);
@@ -385,10 +425,12 @@ export default function ExportWritingPanel({
                       type="button"
                       onClick={() => {
                         setGonderenNo(hit.gonderenNo);
-                        setGonderenQ(hit.label);
+                        setGonderenQ(hit.label || partyLabel(hit.gonderenNo, hit.unvan));
+                        setFirmaAdByNo((prev) => ({ ...prev, [String(hit.gonderenNo)]: hit.unvan }));
                         setGonderenHits([]);
                         onFieldChange(EVRIM_GONDEREN_KEY, String(hit.gonderenNo));
                         onFieldChange('Gönderici / İhracatçı Ünvanı', hit.unvan);
+                        if (hit.vergiNo) onFieldChange('Gönderici VKN', hit.vergiNo);
                       }}
                     >
                       {hit.label}
@@ -502,20 +544,21 @@ export default function ExportWritingPanel({
         <div className="ey-card-h">
           <div>
             <h3 id="ey-b2a"><span className="ey-adim tamam">3</span>Fatura açıklaması</h3>
-            <p className="ey-sub">Menşe, imalatçı, kap ve kilo bilgileri bu yazıdan da okunur</p>
+            <p className="ey-sub">Elle doldurulur · menşe / kap / kilo notları buraya yazılabilir</p>
           </div>
         </div>
         <div className="ey-card-b">
           <textarea
             disabled={locked}
             className="ey-mono"
+            placeholder="Fatura açıklamasını buraya yazın…"
             style={{
               width: '100%',
               minHeight: 72,
               fontSize: 12,
               color: 'var(--text)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--line)',
+              background: 'var(--surface)',
+              border: '1px solid var(--line-strong)',
               borderRadius: 10,
               padding: '10.5px 12.25px',
               lineHeight: 1.6,
@@ -701,6 +744,12 @@ export default function ExportWritingPanel({
                           : imalatciTipiFromMense(item.mense, codes.mense);
                         const id = item.imalatci || (gonderenNo != null ? String(gonderenNo) : '');
                         const fromSender = !item.imalatci && gonderenNo != null;
+                        const ad = id
+                          ? (firmaAdByNo[id]
+                            || (fromSender || (gonderenNo != null && id === String(gonderenNo))
+                              ? fv(fieldValues, 'Gönderici / İhracatçı Ünvanı')
+                              : ''))
+                          : '';
                         if (!tip && !id) {
                           return <span style={{ color: 'var(--muted)' }}>Menşe / gönderici bekleniyor</span>;
                         }
@@ -710,7 +759,9 @@ export default function ExportWritingPanel({
                               <span className={`ey-bdg ${tip === 'I' ? 'ey-b-ok' : 'ey-b-blue'}`}>{tip}</span>
                             ) : null}
                             {' '}
-                            {id ? <span className="ey-mono">{id}</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
+                            {id
+                              ? <span className="ey-mono">{ad ? `${id} – ${ad}` : id}</span>
+                              : <span style={{ color: 'var(--muted)' }}>—</span>}
                             <span className="ey-kay">
                               {item.imalatci
                                 ? 'kalem'

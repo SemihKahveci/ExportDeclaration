@@ -549,6 +549,35 @@ export default function WritingTab({
     lineItemsRef.current = record.lineItems.map(applyWeightQuantity);
   }, [record.id]);
 
+  // getRecord hydrate: aynı id ile Evrim ID / unvan gelince formu güncelle (boş flash olmasın)
+  useEffect(() => {
+    setFieldValues((prev) => {
+      const incoming = record.fieldValues;
+      let changed = false;
+      const next = { ...prev };
+      for (const key of [
+        'Gönderici Evrim No',
+        'Alıcı Evrim No',
+        'Gönderici / İhracatçı Ünvanı',
+        'Gönderici VKN',
+        'Alıcı / İthalatçı Ünvanı',
+        'Alıcı / İthalatçı Adresi',
+      ] as const) {
+        const value = incoming[key];
+        if (value && value !== prev[key]) {
+          next[key] = value;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [
+    record.fieldValues['Gönderici Evrim No'],
+    record.fieldValues['Alıcı Evrim No'],
+    record.fieldValues['Gönderici / İhracatçı Ünvanı'],
+    record.fieldValues['Alıcı / İthalatçı Ünvanı'],
+  ]);
+
   if (saveDraftRef) {
     saveDraftRef.current = () => saveWritingDraft(record.id, fieldValues, lineItemsRef.current);
   }

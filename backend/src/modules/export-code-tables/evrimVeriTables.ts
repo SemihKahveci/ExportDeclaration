@@ -390,6 +390,45 @@ export function searchEvrimGonderen(query: string, limit = 25): EvrimFirmaRow[] 
     .map((item) => item.row);
 }
 
+export function getEvrimFirmaByNo(gonderenNo: number): EvrimFirmaRow | undefined {
+  if (!Number.isFinite(gonderenNo)) return undefined;
+  return loadEvrimVeriTables()?.firmaByNo.get(gonderenNo);
+}
+
+/**
+ * Gönderici eşlemesi: önce Evrim Firma VKN (kesin), yoksa unvan.
+ * Tek net aday → matched; birden fazla → ambiguous.
+ */
+export function matchEvrimGonderen(
+  taxNo?: string | null,
+  nameHint?: string | null
+):
+  | { status: "matched"; row: EvrimFirmaRow }
+  | { status: "ambiguous"; rows: EvrimFirmaRow[] }
+  | { status: "not_found" } {
+  const vkn = normalizeVkn(taxNo ?? "");
+  if (vkn) {
+    const byVkn = lookupEvrimFirmaNoByVkn(vkn, nameHint ?? undefined);
+    if (byVkn != null) {
+      const row = getEvrimFirmaByNo(byVkn);
+      if (row) return { status: "matched", row };
+    }
+  }
+  const name = String(nameHint ?? "").trim();
+  if (!name) return { status: "not_found" };
+  const tables = loadEvrimVeriTables();
+  if (!tables) return { status: "not_found" };
+  const scored = [...tables.firmaByNo.values()]
+    .map((row) => ({ row, score: textMatchScore(row.unvan, name) }))
+    .filter((item) => item.score >= 2)
+    .sort((a, b) => b.score - a.score || a.row.gonderenNo - b.row.gonderenNo);
+  if (scored.length === 0) return { status: "not_found" };
+  if (scored.length === 1 || (scored[0]!.score > (scored[1]?.score ?? 0))) {
+    return { status: "matched", row: scored[0]!.row };
+  }
+  return { status: "ambiguous", rows: scored.slice(0, 8).map((item) => item.row) };
+}
+
 /** Müşteriye bağlı alıcı adres kartlarında arama. */
 export function searchEvrimAliciForMusteri(
   musteriNo: number,

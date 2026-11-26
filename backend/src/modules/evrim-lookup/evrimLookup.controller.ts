@@ -5,6 +5,7 @@ import {
   listEvrimMiktarOptions,
   lookupEvrimQuantityUnitLabelFromTables,
   matchEvrimAliciForMusteri,
+  matchEvrimGonderen,
   searchEvrimAliciForMusteri,
   searchEvrimGonderen,
 } from "../export-code-tables/evrimVeriTables.js";
@@ -73,6 +74,45 @@ export async function postMatchAlici(req: Request, res: Response): Promise<void>
   }
   const result = matchEvrimAliciForMusteri(musteriNo, aliciUnvan, adres || undefined);
   res.json({ ok: true, data: result });
+}
+
+/** VKN (Evrim Firma) öncelikli gönderici eşlemesi. */
+export async function postMatchGonderen(req: Request, res: Response): Promise<void> {
+  const taxNo = String((req.body as { taxNo?: unknown })?.taxNo ?? "").trim();
+  const name = String((req.body as { name?: unknown })?.name ?? "").trim();
+  const result = matchEvrimGonderen(taxNo || undefined, name || undefined);
+  if (result.status === "matched") {
+    const row = result.row;
+    res.json({
+      ok: true,
+      data: {
+        status: "matched",
+        row: {
+          gonderenNo: row.gonderenNo,
+          unvan: row.unvan,
+          vergiNo: row.vergiNo,
+          label: `${row.gonderenNo} – ${row.unvan}`,
+        },
+      },
+    });
+    return;
+  }
+  if (result.status === "ambiguous") {
+    res.json({
+      ok: true,
+      data: {
+        status: "ambiguous",
+        rows: result.rows.map((row) => ({
+          gonderenNo: row.gonderenNo,
+          unvan: row.unvan,
+          vergiNo: row.vergiNo,
+          label: `${row.gonderenNo} – ${row.unvan}`,
+        })),
+      },
+    });
+    return;
+  }
+  res.json({ ok: true, data: { status: "not_found" } });
 }
 
 export async function getCodeOptions(_req: Request, res: Response): Promise<void> {
