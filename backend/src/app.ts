@@ -14,6 +14,7 @@ import { mailTemplateRouter } from "./modules/mail-templates/mailTemplate.routes
 import { documentProcessRouter } from "./modules/document-processes/documentProcess.routes.js";
 import { declarationApprovalRulesRouter } from "./modules/declaration-approval-rules/declarationApprovalRules.routes.js";
 import { evrimLookupRouter } from "./modules/evrim-lookup/evrimLookup.routes.js";
+import { ihracatExcelAyarRouter } from "./modules/ihracat-excel-ayar/ihracatExcelAyar.routes.js";
 import { customerRouter } from "./modules/customers/customer.routes.js";
 import { licenseMiddleware } from "./common/middlewares/licenseMiddleware.js";
 import { licenseRouter } from "./modules/license/license.routes.js";
@@ -50,6 +51,7 @@ app.use("/api/mail", mailRouter);
 app.use("/api/document-processes", documentProcessRouter);
 app.use("/api/declaration-approval-rules", declarationApprovalRulesRouter);
 app.use("/api/evrim-lookup", evrimLookupRouter);
+app.use("/api/ihracat-excel-ayar", ihracatExcelAyarRouter);
 app.use("/api/customers", customerRouter);
 app.use("/api/customs-master-data", customsMasterDataRouter);
 app.use("/api/declarations", customsSupplementRouter);

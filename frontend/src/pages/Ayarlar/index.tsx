@@ -19,6 +19,8 @@ import UserDrawer from './UserDrawer';
 import DocProcessesTab from './DocProcessesTab';
 import DocDrawer from './DocDrawer';
 import ApprovalRulesTab from './ApprovalRulesTab';
+import ExcelAyarTab from './ExcelAyarTab';
+import { getIhracatExcelAyar, type IhracatExcelAyar } from '../../api/ihracatExcelAyarApi';
 
 const SHOW_DOC_PROCESSES = false;
 
@@ -26,6 +28,7 @@ const ALL_TABS = [
   { key: 'users',           label: 'Kullanıcılar ve Yetkileri'  },
   ...(SHOW_DOC_PROCESSES ? [{ key: 'docs', label: 'Doküman Süreçleri' }] : []),
   { key: 'approval-rules',  label: 'Beyanname Onay Kuralları'    },
+  { key: 'excel-ayar',      label: 'İhracat Excel Aktarımı'      },
 ];
 
 type LocalPerms = UsersTabLocalPerms;
@@ -78,6 +81,7 @@ export default function AyarlarPage() {
   });
 
   const [approvalRules, setApprovalRules] = useState<DeclarationApprovalRules>(DEFAULT_DECLARATION_APPROVAL_RULES);
+  const [excelAyar, setExcelAyar] = useState<IhracatExcelAyar>({ genel: [], musteri: [] });
   const [docs, setDocs] = useState<DocProcess[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -94,10 +98,12 @@ export default function AyarlarPage() {
       usersPromise,
       documentsService.getDocProcesses(),
       declarationApprovalRulesService.get(),
-    ]).then(([appUsers, docProcs, rules]) => {
+      getIhracatExcelAyar().catch(() => ({ genel: [], musteri: [] } as IhracatExcelAyar)),
+    ]).then(([appUsers, docProcs, rules, excel]) => {
       setUsers(appUsers);
       setDocs(docProcs);
       setApprovalRules(rules);
+      setExcelAyar(excel);
       if (appUsers.length > 0) setLocalPerms(defaultPerms(appUsers[0]));
       setLoading(false);
     }).catch((err) => {
@@ -262,7 +268,7 @@ export default function AyarlarPage() {
         <div>
           <h1 className="text-[23px] font-extrabold text-text-strong tracking-tight">Ayarlar</h1>
           <p className="text-[12.5px] text-muted mt-1">
-            Kullanıcı yetkileri ve onay kuralları.
+            Kullanıcı yetkileri, onay kuralları ve ihracat Excel aktarımı.
           </p>
         </div>
       </div>
@@ -308,6 +314,10 @@ export default function AyarlarPage() {
               saving={saving}
               onSave={handleSaveApprovalRules}
             />
+          )}
+
+          {activeTab === 'excel-ayar' && (
+            <ExcelAyarTab ayar={excelAyar} onChange={setExcelAyar} />
           )}
         </>
       )}
