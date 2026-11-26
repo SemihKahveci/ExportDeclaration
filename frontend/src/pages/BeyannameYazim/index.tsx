@@ -27,6 +27,10 @@ import {
 import { sendGtipReminder } from '../../api/mailApi';
 import DeclarationSheet, { type DeclarationSheetData } from './DeclarationSheet';
 import Modal from '../../components/ui/Modal';
+import {
+  evaluateExportDownloadGate,
+  type ExportDownloadGateResult,
+} from './exportDownloadGate';
 
 const TAB_ITEMS = [
   { key: 'yazim',   label: 'Beyanname Yazım', icon: FileText },
@@ -78,6 +82,7 @@ export default function BeyannameYazimPage() {
   const [returnNote, setReturnNote] = useState('');
   const [returning, setReturning] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadGate, setDownloadGate] = useState<ExportDownloadGateResult | null>(null);
   const [gtipFaultOpen, setGtipFaultOpen] = useState(false);
   const [gtipFaults, setGtipFaults] = useState<GtipFaultRow[]>([]);
   const sawRewritePending = useRef(false);
@@ -262,10 +267,14 @@ export default function BeyannameYazimPage() {
     }
   }
 
-  async function handleDownloadExcel() {
+  async function runExcelDownload() {
     if (!selected || downloading) return;
     setDownloading(true);
+    setDownloadGate(null);
     try {
+      if (saveDraftRef.current) {
+        try { await saveDraftRef.current(); } catch { /* indirme yine denensin */ }
+      }
       const { blob, filename } = await downloadDeclarationExcel(selected.id);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -273,11 +282,24 @@ export default function BeyannameYazimPage() {
       anchor.download = filename;
       anchor.click();
       URL.revokeObjectURL(url);
+      toast(`Evrim'e aktarıma hazır · ${filename}`);
     } catch (error) {
       toast(actionError(error, 'Beyanname excel indirilemedi'), { duration: 7000 });
     } finally {
       setDownloading(false);
     }
+  }
+
+  async function handleDownloadExcel() {
+    if (!selected || downloading) return;
+    const fields = sheetRef.current?.fields ?? selected.fieldValues;
+    const lines = sheetRef.current?.lines ?? selected.lineItems;
+    const gate = evaluateExportDownloadGate(lines, fields);
+    if (gate.issues.length === 0) {
+      await runExcelDownload();
+      return;
+    }
+    setDownloadGate(gate);
   }
 
   async function handleRewrite() {
@@ -635,6 +657,38 @@ export default function BeyannameYazimPage() {
             placeholder="Yazıma neden geri gönderildiğini yazın"
           />
         </label>
+      </Modal>
+      <Modal
+        open={downloadGate != null}
+        onClose={() => !downloading && setDownloadGate(null)}
+        title="Beyanname İndir · uygunsuzluk var"
+        footer={
+          <>
+            <Button onClick={() => setDownloadGate(null)} disabled={downloading}>Vazgeç</Button>
+            {downloadGate?.allowForce ? (
+              <Button variant="primary" disabled={downloading} onClick={() => void runExcelDownload()}>
+                {downloading ? 'İndiriliyor…' : 'Yine de İndir'}
+              </Button>
+            ) : (
+              <Button variant="primary" disabled title="Önce birim ve menşe seçimlerini tamamlayın">
+                İndir
+              </Button>
+            )}
+          </>
+        }
+      >
+        <div className="space-y-3 text-[13px]">
+          <p className="text-muted">
+            {downloadGate?.blocking
+              ? 'Eksik seçimler var. Excel indirmeden önce kalemlerdeki birim ve menşe alanlarını tamamlayın.'
+              : 'Kalem toplamı fatura toplamından farklı. İsterseniz yine de indirebilirsiniz.'}
+          </p>
+          <ul className="list-disc pl-5 space-y-1 text-text-strong">
+            {(downloadGate?.issues ?? []).map((issue, index) => (
+              <li key={`${issue.kind}-${index}`}>{issue.message}</li>
+            ))}
+          </ul>
+        </div>
       </Modal>
       <GtipFaultListModal
         open={gtipFaultOpen}
