@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, Send, FileText, Layers, Loader2, ChevronLeft, Bell, Download, RotateCcw } from 'lucide-react';
+import { Save, Send, FileText, Layers, Loader2, ChevronLeft, Bell, Download, RotateCcw, Eye, RefreshCw } from 'lucide-react';
 import type { BeyannameListeItem, BeyannameRecord } from '../../types';
 import { beyannameService, beyannameListeService } from '../../services/declarations';
 import StatCard from '../../components/ui/StatCard';
@@ -31,6 +31,7 @@ import {
   evaluateExportDownloadGate,
   type ExportDownloadGateResult,
 } from './exportDownloadGate';
+import { isExportRegime } from './exportRegime';
 
 const TAB_ITEMS = [
   { key: 'yazim',   label: 'Beyanname Yazım', icon: FileText },
@@ -83,6 +84,7 @@ export default function BeyannameYazimPage() {
   const [returning, setReturning] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [downloadGate, setDownloadGate] = useState<ExportDownloadGateResult | null>(null);
+  const [exportSorunluCount, setExportSorunluCount] = useState(0);
   const [gtipFaultOpen, setGtipFaultOpen] = useState(false);
   const [gtipFaults, setGtipFaults] = useState<GtipFaultRow[]>([]);
   const sawRewritePending = useRef(false);
@@ -192,10 +194,21 @@ export default function BeyannameYazimPage() {
 
   async function handleSendToControl(options?: { holdConfirmed?: boolean }) {
     if (!selected) return;
+    if (isExportRegime(selected.rejim) && !hasViewedPreview) {
+      toast('Önce ön kontrolü açın');
+      return;
+    }
+    if (isExportRegime(selected.rejim) && exportSorunluCount > 0) {
+      toast('Önce kalemlerdeki seçimleri tamamlayın');
+      return;
+    }
     if (selected.operationFileStatus === 'beklemede' && !options?.holdConfirmed) {
       if (!(await confirmIfHeld(true))) return;
     }
     try {
+      if (saveDraftRef.current) {
+        try { await saveDraftRef.current(); } catch { /* geçiş yine denensin */ }
+      }
       // Sayfadaki GTİP satırları kaydedildikten sonra kontrol edilir.
       // Kayıtla tutuyorsa onay penceresi açılmaz; tutmuyorsa mevcut hata kalır.
       const updated = await beyannameService.transitionWriting(selected.id, {
@@ -452,6 +465,8 @@ export default function BeyannameYazimPage() {
     );
   }
 
+  const exportDetail = Boolean(selected && isExportRegime(selected.rejim));
+
   // ── Detail view ────────────────────────────────────────────────────────────
   return (
     <div className="px-7 pt-4 pb-4 flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
@@ -466,7 +481,7 @@ export default function BeyannameYazimPage() {
               <ChevronLeft size={14} strokeWidth={2.5} />
               <span>Beyanname Listesine Dön</span>
             </button>
-            {selected && (
+            {selected && !exportDetail && (
               <button
                 onClick={() => navigate(`/evrak-hazirlik?declarationId=${encodeURIComponent(selected.id)}&ref=${encodeURIComponent(selected.ref)}`)}
                 className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-accent transition-colors"
@@ -481,7 +496,7 @@ export default function BeyannameYazimPage() {
           </h1>
         </div>
         <div className="flex items-center gap-2 mt-6">
-          {selected && (
+          {selected && !exportDetail && (
             <Button
               variant="default"
               icon={FileText}
@@ -490,12 +505,35 @@ export default function BeyannameYazimPage() {
               Evrak Hazırlık
             </Button>
           )}
-          <Button variant="default" icon={Download} onClick={() => void handleDownloadExcel()} disabled={downloading}>
-            Beyanname İndir
-          </Button>
           {activeTab === 'yazim' && (
             <Button variant="default" icon={Save} onClick={() => void handleTaslakKaydet()} writeCap="beyanname.write">
               Taslak Kaydet
+            </Button>
+          )}
+          {exportDetail && activeTab === 'yazim' && (
+            <Button variant="default" icon={Eye} onClick={() => void handleViewDeclaration()} disabled={Boolean(rewriting || selected?.parsing)}>
+              Ön kontrol
+            </Button>
+          )}
+          <Button variant="default" icon={Download} onClick={() => void handleDownloadExcel()} disabled={downloading}>
+            Beyanname İndir
+          </Button>
+          {exportDetail && activeTab === 'yazim' && (
+            <Button
+              variant="primary"
+              icon={Send}
+              onClick={() => void handleSendToControl()}
+              disabled={Boolean(rewriting || selected?.parsing) || !hasViewedPreview || exportSorunluCount > 0}
+              title={
+                exportSorunluCount > 0
+                  ? 'Önce kalemlerdeki seçimleri tamamlayın'
+                  : !hasViewedPreview
+                    ? 'Önce ön kontrolü açın'
+                    : undefined
+              }
+              writeCap="beyanname.write"
+            >
+              Kontrole Gönder
             </Button>
           )}
           {activeTab === 'kontrol' && (
@@ -511,7 +549,8 @@ export default function BeyannameYazimPage() {
         </div>
       </div>
 
-      {/* Stat cards */}
+      {/* Stat cards — ihracat detay tasarımında yok */}
+      {!exportDetail && (
       <div className="grid grid-cols-5 gap-3 mb-3 shrink-0">
         {stats ? (
           <>
@@ -540,6 +579,7 @@ export default function BeyannameYazimPage() {
           Array.from({ length: 5 }).map((_, i) => <StatCard key={i} value="—" label="" />)
         )}
       </div>
+      )}
 
       {/* Main content card — fills remaining height, inner content scrolls */}
       {selected?.returnNotice && (
@@ -588,22 +628,41 @@ export default function BeyannameYazimPage() {
               </div>
             }
           />
-          <Tabs
-            tabs={TAB_ITEMS}
-            active={activeTab}
-            onChange={(k) => {
-              const next=k as 'yazim'|'kontrol';
-              if(next==='kontrol' && selected.operationFileStatus!=='ic-kontrol'){
-                toast('Önce beyannameyi MT kontrole gönderin');
-                return;
-              }
-              setActiveTab(next);
-            }}
-            className="px-5 shrink-0"
-          />
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+          <div className="relative shrink-0">
+            <Tabs
+              tabs={TAB_ITEMS}
+              active={activeTab}
+              onChange={(k) => {
+                const next=k as 'yazim'|'kontrol';
+                if(next==='kontrol' && selected.operationFileStatus!=='ic-kontrol'){
+                  toast('Önce beyannameyi MT kontrole gönderin');
+                  return;
+                }
+                setActiveTab(next);
+              }}
+              className="px-5"
+            />
+            {exportDetail && activeTab === 'yazim' && (
+              <div className="absolute right-5 top-1/2 -translate-y-1/2">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={RefreshCw}
+                  onClick={() => void handleRewrite()}
+                  disabled={Boolean(rewriting || selected.parsing)}
+                  writeCap="beyanname.write"
+                  title="Bu faturayı yeniden parse eder. İşlem bitene kadar yazım kapalı kalır."
+                >
+                  Tekrar Yaz
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className={`flex-1 min-h-0 overflow-y-auto ${exportDetail && activeTab === 'yazim' ? 'p-0' : 'px-6 py-5'}`}>
             {(rewriting || selected.parsing) && (
-              <Note variant="warn">Parse devam ediyor. Beyanname yazımı işlem bitene kadar kapalı.</Note>
+              <div className={exportDetail ? 'px-4 pt-3' : undefined}>
+                <Note variant="warn">Parse devam ediyor. Beyanname yazımı işlem bitene kadar kapalı.</Note>
+              </div>
             )}
             {activeTab === 'yazim' ? (
               <div className={rewriting || selected.parsing ? 'pointer-events-none opacity-60' : undefined}>
@@ -616,6 +675,7 @@ export default function BeyannameYazimPage() {
                   onViewDeclaration={handleViewDeclaration}
                   onSendToControl={handleSendToControl}
                   onRewrite={() => void handleRewrite()}
+                  onSorunluChange={setExportSorunluCount}
                 />
               </div>
             ) : (

@@ -14,12 +14,8 @@ import Button from '../../components/ui/Button';
 import Pill from '../../components/ui/Pill';
 import DocFieldPickerModal from './DocFieldPickerModal';
 import ExportWritingPanel from './ExportWritingPanel';
+import { isExportRegime } from './exportRegime';
 import { useToast } from '../../components/ui/Toast';
-
-function isExportRegime(rejim: string): boolean {
-  const text = rejim.trim().toLocaleLowerCase('tr-TR');
-  return text.startsWith('10') || text.includes('ihracat');
-}
 
 // ─── Default-expanded groups ──────────────────────────────────────────────────
 
@@ -491,6 +487,7 @@ interface WritingTabProps {
   onViewDeclaration: () => void;
   onSendToControl: () => void;
   onRewrite: () => void;
+  onSorunluChange?: (count: number) => void;
 }
 
 // ─── Modal state ──────────────────────────────────────────────────────────────
@@ -514,6 +511,7 @@ export default function WritingTab({
   onViewDeclaration,
   onSendToControl,
   onRewrite,
+  onSorunluChange,
 }: WritingTabProps) {
   const { toast } = useToast();
 
@@ -714,24 +712,16 @@ export default function WritingTab({
 
   if (exportMode) {
     return (
-      <div className="flex gap-4">
-        {recordSidePanel}
-        <div className="flex-1 min-w-0">
-          <ExportWritingPanel
-            record={record}
-            fieldValues={fieldValues}
-            lineItems={lineItems}
-            hasViewedPreview={hasViewedPreview}
-            locked={locked}
-            onFieldChange={handleValueChange}
-            onLineChange={handleLineChange}
-            onLineBlur={() => { void queueLineSave().catch(() => { toast('Kalem alanları kaydedilemedi.'); }); }}
-            onViewDeclaration={onViewDeclaration}
-            onSendToControl={() => void handleSendClick()}
-            onRewrite={onRewrite}
-          />
-        </div>
-      </div>
+      <ExportWritingPanel
+        record={record}
+        fieldValues={fieldValues}
+        lineItems={lineItems}
+        locked={locked}
+        onFieldChange={handleValueChange}
+        onLineChange={handleLineChange}
+        onLineBlur={() => { void queueLineSave().catch(() => { toast('Kalem alanları kaydedilemedi.'); }); }}
+        onSorunluChange={onSorunluChange}
+      />
     );
   }
 

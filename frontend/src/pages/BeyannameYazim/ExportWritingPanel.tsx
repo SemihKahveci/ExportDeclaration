@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, RefreshCw, Send } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import type { BeyannameLineItem, BeyannameRecord } from '../../types';
 import { apiGetJson, apiPostJson } from '../../api/apiClient';
-import Button from '../../components/ui/Button';
-import { Card, CardBody, CardHead } from '../../components/ui/Card';
 import { applyWeightQuantity } from './writingDraft';
+import './exportYazim.css';
 
 type GonderenHit = { gonderenNo: number; unvan: string; vergiNo: string; label: string };
 type AliciHit = {
@@ -35,6 +34,23 @@ function fv(fields: Record<string, string>, ...keys: string[]): string {
 function parseStoredId(raw: string): number | null {
   const n = Number(String(raw).trim());
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+function parseTrNumber(value: string): number {
+  const raw = fv({ v: value }, 'v').replace(/[^\d,.-]/g, '').replace(/\s/g, '');
+  if (!raw) return 0;
+  const hasComma = raw.includes(',');
+  const hasDot = raw.includes('.');
+  let normalized = raw;
+  if (hasComma && hasDot) {
+    normalized = raw.lastIndexOf(',') > raw.lastIndexOf('.')
+      ? raw.replace(/\./g, '').replace(',', '.')
+      : raw.replace(/,/g, '');
+  } else if (hasComma) {
+    normalized = raw.replace(',', '.');
+  }
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function resolveMiktarValue(raw: string, options: Array<{ ediKodu: string; label: string }>): string {
@@ -74,28 +90,22 @@ interface ExportWritingPanelProps {
   record: BeyannameRecord;
   fieldValues: Record<string, string>;
   lineItems: BeyannameLineItem[];
-  hasViewedPreview: boolean;
   locked?: boolean;
   onFieldChange: (name: string, value: string) => void;
   onLineChange: (index: number, patch: Partial<BeyannameLineItem>) => void;
   onLineBlur: () => void;
-  onViewDeclaration: () => void;
-  onSendToControl: () => void;
-  onRewrite: () => void;
+  onSorunluChange?: (count: number) => void;
 }
 
 export default function ExportWritingPanel({
   record,
   fieldValues,
   lineItems,
-  hasViewedPreview,
   locked = false,
   onFieldChange,
   onLineChange,
   onLineBlur,
-  onViewDeclaration,
-  onSendToControl,
-  onRewrite,
+  onSorunluChange,
 }: ExportWritingPanelProps) {
   const [filtre, setFiltre] = useState<'tumu' | 'sorun'>('tumu');
   const [doviz, setDoviz] = useState(fv(fieldValues, 'Döviz Cinsi') || 'EUR');
@@ -107,6 +117,7 @@ export default function ExportWritingPanel({
   const [aliciHits, setAliciHits] = useState<AliciHit[]>([]);
   const [aliciWarn, setAliciWarn] = useState('');
   const [codes, setCodes] = useState<CodeOptions>(EMPTY_CODES);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     void apiGetJson<CodeOptions>('/api/evrim-lookup/code-options')
@@ -129,9 +140,9 @@ export default function ExportWritingPanel({
     setGonderenHits([]);
     setAliciHits([]);
     setAliciWarn('');
+    setTouched({});
   }, [record.id]);
 
-  // VKN / ünvan ile göndericiyi otomatik öner; alıcıyı eşlemeyi dene.
   useEffect(() => {
     if (gonderenNo != null) return;
     const name = fv(fieldValues, 'Gönderici / İhracatçı Ünvanı');
@@ -139,7 +150,7 @@ export default function ExportWritingPanel({
     let cancelled = false;
     void apiGetJson<{ items: GonderenHit[] }>(`/api/evrim-lookup/gonderen?q=${encodeURIComponent(name)}&limit=5`)
       .then((result) => {
-        if (cancelled || result.items.length !== 1) return;
+        if (cancelled || !result?.items || result.items.length !== 1) return;
         const hit = result.items[0];
         setGonderenNo(hit.gonderenNo);
         setGonderenQ(hit.label);
@@ -166,7 +177,7 @@ export default function ExportWritingPanel({
       adres,
     })
       .then((result) => {
-        if (cancelled) return;
+        if (cancelled || !result) return;
         if (result.status === 'matched') {
           const row = result.row;
           setAliciNo(row.aliciNo);
@@ -191,12 +202,9 @@ export default function ExportWritingPanel({
     return () => { cancelled = true; };
   }, [record.id, gonderenNo]);
 
-  const faturaToplam = Number(String(fv(fieldValues, 'Toplam Fatura Bedeli')).replace(/\./g, '').replace(',', '.')) || 0;
-  const kalemToplam = lineItems.reduce((sum, item) => {
-    const raw = String(item.kiymet ?? '').replace(/\./g, '').replace(',', '.');
-    const n = Number(raw);
-    return sum + (Number.isFinite(n) ? n : 0);
-  }, 0);
+  const faturaToplam = parseTrNumber(fv(fieldValues, 'Toplam Fatura Bedeli'));
+  const kalemToplam = lineItems.reduce((sum, item) => sum + parseTrNumber(String(item.kiymet ?? '')), 0);
+  const faturaCurrency = doviz || fv(fieldValues, 'Döviz Cinsi') || 'EUR';
 
   const sorunluIndexes = useMemo(() => {
     const miktar = codes?.miktar ?? [];
@@ -214,9 +222,17 @@ export default function ExportWritingPanel({
     return set;
   }, [lineItems, codes]);
 
+  useEffect(() => {
+    onSorunluChange?.(sorunluIndexes.size);
+  }, [sorunluIndexes.size, onSorunluChange]);
+
   const visible = lineItems
     .map((item, index) => ({ item, index }))
     .filter(({ index }) => filtre === 'tumu' || sorunluIndexes.has(index));
+
+  const invoiceDocs = record.docs.filter((doc) =>
+    /fatura|invoice|xml|pdf/i.test(doc.name) || doc.status === 'geldi'
+  ).slice(0, 4);
 
   async function searchGonderen(q: string) {
     setGonderenQ(q);
@@ -229,7 +245,7 @@ export default function ExportWritingPanel({
     }
     try {
       const result = await apiGetJson<{ items: GonderenHit[] }>(`/api/evrim-lookup/gonderen?q=${encodeURIComponent(q)}&limit=12`);
-      setGonderenHits(result.items);
+      setGonderenHits(result?.items ?? []);
     } catch {
       setGonderenHits([]);
     }
@@ -249,88 +265,113 @@ export default function ExportWritingPanel({
       const result = await apiGetJson<{ items: AliciHit[] }>(
         `/api/evrim-lookup/alici?musteriNo=${gonderenNo}&q=${encodeURIComponent(q)}&limit=20`
       );
-      setAliciHits(result.items);
-      if (result.items.length === 0) setAliciWarn('ID yok · adres bulunamadı');
-      else if (result.items.length > 1) setAliciWarn(`${result.items.length} kart bulundu · doğru adresi seçin`);
+      const items = result?.items ?? [];
+      setAliciHits(items);
+      if (items.length === 0) setAliciWarn('ID yok · adres bulunamadı');
+      else if (items.length > 1) setAliciWarn(`${items.length} kart bulundu · doğru adresi seçin`);
     } catch {
       setAliciHits([]);
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="default"
-            icon={RefreshCw}
-            onClick={onRewrite}
-            disabled={locked}
-            writeCap="beyanname.write"
-            title="Faturayı yeniden parse eder"
-          >
-            Tekrar Yaz
-          </Button>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="default" icon={Eye} onClick={onViewDeclaration} disabled={locked}>
-            Ön kontrol
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            icon={Send}
-            disabled={locked || !hasViewedPreview || sorunluIndexes.size > 0}
-            title={
-              sorunluIndexes.size > 0
-                ? 'Önce kalemlerdeki seçimleri tamamlayın'
-                : !hasViewedPreview
-                  ? 'Önce ön kontrolü açın'
-                  : undefined
-            }
-            onClick={onSendToControl}
-            writeCap="beyanname.write"
-          >
-            Kontrole Gönder
-          </Button>
-        </div>
-      </div>
+  function markTouched(key: string) {
+    setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card>
-          <CardHead title="1 · Başlık bilgileri" sub="İsteğe bağlı · girilmek zorunda değil" />
-          <CardBody className="space-y-3">
-            <label className="block text-[12px] text-muted space-y-1">
-              <span>Fatura döviz birimi</span>
+  function fieldRow(
+    key: string,
+    label: string,
+    alt: string,
+    opts: { mono?: boolean; suffix?: string } = {}
+  ) {
+    const changed = Boolean(touched[key]);
+    return (
+      <div className="ey-satir">
+        <label className="ey-k">
+          {label}
+          {alt ? <span style={{ fontWeight: 400, color: 'var(--muted-2)', fontSize: 11 }}> · {alt}</span> : null}
+        </label>
+        <span className="ey-v">
+          <input
+            disabled={locked}
+            className={`ey-inp ey-num${opts.mono ? ' ey-mono' : ''}${changed ? ' ey-warn' : ''}`}
+            style={opts.suffix ? { paddingRight: 40 } : undefined}
+            title={changed ? 'Elle değiştirildi' : undefined}
+            value={fieldValues[key] ?? ''}
+            onChange={(e) => {
+              markTouched(key);
+              onFieldChange(key, e.target.value);
+            }}
+          />
+          {opts.suffix ? (
+            <span style={{ position: 'absolute', right: 10.5, fontSize: 12, color: 'var(--muted)', pointerEvents: 'none' }}>
+              {opts.suffix}
+            </span>
+          ) : null}
+        </span>
+      </div>
+    );
+  }
+
+  const dovizChanged = Boolean(touched['Döviz Cinsi']) && doviz && fv(fieldValues, 'Döviz Cinsi') && doviz !== 'EUR';
+  const kalemlerTamam = lineItems.length > 0 && sorunluIndexes.size === 0;
+
+  return (
+    <div className="ey-body">
+      <div className="ey-esit">
+        <section className="ey-card" aria-labelledby="ey-b1">
+          <div className="ey-card-h">
+            <div>
+              <h3 id="ey-b1"><span className="ey-adim tamam">1</span>Başlık bilgileri</h3>
+              <p className="ey-sub">İsteğe bağlı · girilmek zorunda değil</p>
+            </div>
+          </div>
+          <div className="ey-card-b" style={{ display: 'flex', flexDirection: 'column', gap: 12.25 }}>
+            <div>
+              <label className="ey-lbl" htmlFor="ey-doviz">
+                Fatura döviz birimi <span style={{ fontWeight: 400, color: 'var(--muted-2)' }}>· isteğe bağlı</span>
+              </label>
               <input
+                id="ey-doviz"
                 disabled={locked}
-                className={`h-8 w-28 rounded-lg border px-2 font-mono text-[12.5px] uppercase ${doviz && fv(fieldValues, 'Döviz Cinsi') && doviz !== fv(fieldValues, 'Döviz Cinsi') ? 'border-warn bg-warn-tint' : 'border-line bg-surface'}`}
+                className={`ey-inp ey-mono${dovizChanged ? ' ey-warn' : ''}`}
+                style={{ width: 120, textTransform: 'uppercase' }}
                 maxLength={3}
                 value={doviz}
+                placeholder="EUR"
                 onChange={(e) => {
                   const next = e.target.value.toUpperCase();
+                  markTouched('Döviz Cinsi');
                   setDoviz(next);
                   onFieldChange('Döviz Cinsi', next);
                 }}
               />
-            </label>
-            <label className="block text-[12px] text-muted space-y-1">
-              <span>Gönderici (ihracatçı)</span>
+              {doviz === 'EUR'
+                ? <p className="ey-yard" style={{ color: 'var(--ok)' }}>Faturadan · EUR</p>
+                : dovizChanged
+                  ? <p className="ey-yard" style={{ color: 'var(--warn)' }}>Elle değiştirildi · Excel&apos;e girdiğiniz yazılır.</p>
+                  : null}
+              <p className="ey-yard">Faturadan gelir; isterseniz elle değiştirin.</p>
+            </div>
+
+            <div>
+              <label className="ey-lbl" htmlFor="ey-gon">
+                Gönderici (ihracatçı) <span style={{ fontWeight: 400, color: 'var(--muted-2)' }}>· isteğe bağlı</span>
+              </label>
               <input
+                id="ey-gon"
                 disabled={locked}
-                className="h-8 w-full rounded-lg border border-line bg-surface px-2 text-[12.5px]"
+                className="ey-inp"
                 value={gonderenQ}
                 placeholder="Ad veya Evrim ID"
                 onChange={(e) => void searchGonderen(e.target.value)}
               />
               {gonderenHits.length > 0 && (
-                <div className="max-h-36 overflow-auto rounded-lg border border-line bg-surface">
+                <div className="ey-hitlist" style={{ marginTop: 4 }}>
                   {gonderenHits.map((hit) => (
                     <button
                       key={hit.gonderenNo}
                       type="button"
-                      className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-surface-2 border-b border-line last:border-0"
                       onClick={() => {
                         setGonderenNo(hit.gonderenNo);
                         setGonderenQ(hit.label);
@@ -344,24 +385,36 @@ export default function ExportWritingPanel({
                   ))}
                 </div>
               )}
-              {gonderenNo != null && <p className="text-[12px] text-ok">Evrim ID: {gonderenNo}</p>}
-            </label>
-            <label className="block text-[12px] text-muted space-y-1">
-              <span>Alıcı (yurt dışı)</span>
-              <input
-                className="h-8 w-full rounded-lg border border-line bg-surface px-2 text-[12.5px]"
-                value={aliciQ}
-                placeholder={gonderenNo ? 'Ad veya Evrim ID' : 'Önce gönderici seçin'}
-                disabled={locked || !gonderenNo}
-                onChange={(e) => void searchAlici(e.target.value)}
-              />
+              {gonderenNo != null
+                ? <p className="ey-yard" style={{ color: 'var(--ok)' }}>Evrim ID: {gonderenNo}</p>
+                : <p className="ey-yard">Ad ya da Evrim ID&apos;siyle aranır. ID&apos;si yoksa faturadaki ad yazılır.</p>}
+            </div>
+
+            <div>
+              <label className="ey-lbl" htmlFor="ey-ali">
+                Alıcı (yurt dışı) <span style={{ fontWeight: 400, color: 'var(--muted-2)' }}>· isteğe bağlı</span>
+              </label>
+              {aliciWarn.includes('ID yok') && !aliciNo ? (
+                <div className="ey-inp" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-2)' }}>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aliciQ || '—'}</span>
+                  <span className="ey-bdg ey-b-warn"><i />Evrim ID&apos;si yok</span>
+                </div>
+              ) : (
+                <input
+                  id="ey-ali"
+                  className="ey-inp"
+                  value={aliciQ}
+                  placeholder={gonderenNo ? 'Ad veya Evrim ID' : 'Önce gönderici seçin'}
+                  disabled={locked || !gonderenNo}
+                  onChange={(e) => void searchAlici(e.target.value)}
+                />
+              )}
               {aliciHits.length > 0 && (
-                <div className="max-h-36 overflow-auto rounded-lg border border-line bg-surface">
+                <div className="ey-hitlist" style={{ marginTop: 4 }}>
                   {aliciHits.map((hit) => (
                     <button
                       key={`${hit.aliciNo}-${hit.adres}`}
                       type="button"
-                      className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-surface-2 border-b border-line last:border-0"
                       onClick={() => {
                         setAliciNo(hit.aliciNo);
                         setAliciQ(hit.label);
@@ -373,87 +426,141 @@ export default function ExportWritingPanel({
                       }}
                     >
                       <div>{hit.label}</div>
-                      {hit.adres && <div className="text-[11px] text-muted mt-0.5">{hit.adres}</div>}
+                      {hit.adres && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{hit.adres}</div>}
                     </button>
                   ))}
                 </div>
               )}
-              {aliciNo != null && <p className="text-[12px] text-ok">Evrim ID: {aliciNo}</p>}
+              {aliciNo != null && <p className="ey-yard" style={{ color: 'var(--ok)' }}>Evrim ID: {aliciNo}</p>}
               {aliciWarn && (
-                <p className="text-[12px] text-warn">
+                <p className="ey-yard" style={{ color: 'var(--warn)' }}>
                   {aliciWarn}
-                  <span className="text-muted"> · indirmeyi engellemez</span>
+                  <span style={{ color: 'var(--muted)' }}> · indirmeyi engellemez</span>
                 </p>
               )}
-            </label>
-          </CardBody>
-        </Card>
+            </div>
+          </div>
+        </section>
 
-        <Card>
-          <CardHead title="2 · Fatura bilgileri" sub="Faturada ne yazıyorsa · düzenlenebilir" />
-          <CardBody className="grid grid-cols-2 gap-3">
-            {([
-              ['Fatura No', 'Fatura No'],
-              ['Fatura Tarihi', 'Fatura Tarihi'],
-              ['Toplam Fatura Bedeli', 'Fatura toplamı'],
-              ['Teslim Şekli', 'Teslim şekli'],
-              ['Kap Adedi', 'Kap adedi'],
-              ['Kap Cinsi', 'Kap cinsi'],
-              ['Brüt Kilo', 'Brüt kilo'],
-              ['Net Kilo', 'Net kilo'],
-            ] as const).map(([key, label]) => (
-              <label key={key} className="block text-[12px] text-muted space-y-1">
-                <span>{label}</span>
-                <input
-                  disabled={locked}
-                  className="h-8 w-full rounded-lg border border-line bg-surface px-2 text-[12.5px] text-text"
-                  value={fieldValues[key] ?? ''}
-                  onChange={(e) => onFieldChange(key, e.target.value)}
-                />
-              </label>
-            ))}
-          </CardBody>
-        </Card>
+        <section className="ey-card" aria-labelledby="ey-b2">
+          <div className="ey-card-h">
+            <div>
+              <h3 id="ey-b2"><span className="ey-adim tamam">2</span>Fatura bilgileri</h3>
+              <p className="ey-sub">Faturada ne yazıyorsa o gelir · alanlar elle değiştirilebilir, değişen alan turuncu görünür</p>
+            </div>
+          </div>
+          <div className="ey-card-b">
+            {invoiceDocs.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 7, marginBottom: 10.5 }}>
+                {invoiceDocs.map((doc) => {
+                  const isXml = /xml/i.test(doc.name);
+                  return (
+                    <div key={doc.id} className="ey-dosya">
+                      <FileText size={16} style={{ color: 'var(--accent)', marginTop: 1, flex: 'none' }} />
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span className="ey-mono" style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>{doc.name}</span>
+                        <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginTop: 1.75 }}>{doc.note || (isXml ? 'ana kaynak' : 'tamamlayıcı')}</span>
+                      </span>
+                      <span className="ey-bdg ey-b-acc">{isXml ? 'XML' : 'PDF'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: '0 21px' }}>
+              <div>
+                {fieldRow('Fatura No', 'Fatura no', '', { mono: true })}
+                {fieldRow('Taşıma Şekli', 'Taşıma şekli', 'dosyadan')}
+                {fieldRow('Fatura Tarihi', 'Fatura tarihi', "Evrim'e yazılmaz")}
+                {fieldRow('Toplam Fatura Bedeli', 'Fatura toplamı', '', { suffix: faturaCurrency })}
+                {fieldRow('Teslim Şekli', 'Teslim şekli', '', { mono: true })}
+              </div>
+              <div>
+                {fieldRow('Kap Adedi', 'Kap adedi', 'açıklama')}
+                {fieldRow('Kap Cinsi', 'Kap cinsi', '', { mono: true })}
+                {fieldRow('Brüt Kilo', 'Brüt kilo', 'açıklama')}
+                {fieldRow('Net Kilo', 'Net kilo', 'açıklama')}
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <Card>
-        <CardHead title="3 · Fatura açıklaması" sub="Menşe, imalatçı, kap ve kilo bu yazıdan da okunur" />
-        <CardBody>
+      <section className="ey-card" aria-labelledby="ey-b2a">
+        <div className="ey-card-h">
+          <div>
+            <h3 id="ey-b2a"><span className="ey-adim tamam">3</span>Fatura açıklaması</h3>
+            <p className="ey-sub">Menşe, imalatçı, kap ve kilo bilgileri bu yazıdan da okunur</p>
+          </div>
+        </div>
+        <div className="ey-card-b">
           <textarea
             disabled={locked}
-            className="w-full min-h-[88px] rounded-lg border border-line bg-surface px-3 py-2 text-[12.5px] text-text"
+            className="ey-mono"
+            style={{
+              width: '100%',
+              minHeight: 72,
+              fontSize: 12,
+              color: 'var(--text)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 10,
+              padding: '10.5px 12.25px',
+              lineHeight: 1.6,
+              resize: 'vertical',
+            }}
             value={fieldValues['Açıklama / Not Alanı'] ?? ''}
             onChange={(e) => onFieldChange('Açıklama / Not Alanı', e.target.value)}
           />
-        </CardBody>
-      </Card>
+        </div>
+      </section>
 
-      <Card>
-        <CardHead
-          title="4 · Kalemler"
-          sub={`${lineItems.length} kalem · seçim gereken: ${sorunluIndexes.size}`}
-          actions={
-            <div className="flex gap-1">
-              {(['tumu', 'sorun'] as const).map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`h-7 px-2.5 rounded-lg text-[12px] border ${filtre === key ? 'border-accent bg-accent-tint text-accent font-semibold' : 'border-line text-muted'}`}
-                  onClick={() => setFiltre(key)}
-                >
-                  {key === 'tumu' ? 'Tümü' : 'Seçim gerekiyor'}
-                </button>
-              ))}
-            </div>
-          }
-        />
-        <CardBody className="p-0 overflow-auto">
-          <table className="w-full text-left min-w-[1100px]">
+      <section className="ey-card" aria-labelledby="ey-b3">
+        <div className="ey-card-h">
+          <div>
+            <h3 id="ey-b3">
+              <span className={`ey-adim${kalemlerTamam ? ' tamam' : ''}`}>4</span>
+              Kalemler
+            </h3>
+            <p className="ey-sub">
+              {lineItems.length} kalem · {sorunluIndexes.size
+                ? `${sorunluIndexes.size} kalemde seçim gerekiyor`
+                : 'hepsi Evrim kodlarıyla eşleşti'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>Göster:</span>
+            <button type="button" className={`ey-btn${filtre === 'tumu' ? ' secili' : ''}`} onClick={() => setFiltre('tumu')}>
+              Tümü {lineItems.length}
+            </button>
+            <button
+              type="button"
+              className={`ey-btn${filtre === 'sorun' ? ' secili' : ''}`}
+              disabled={sorunluIndexes.size === 0}
+              onClick={() => setFiltre('sorun')}
+            >
+              Seçim gerekiyor {sorunluIndexes.size}
+            </button>
+          </div>
+        </div>
+
+        <div className="ey-tsar">
+          <table>
             <thead>
-              <tr className="border-b border-line bg-surface-2">
-                {['No', 'Ticari tanım', 'Mal kodu', 'GTİP', 'Miktar', 'Birim', 'Birim fiyat', 'Toplam', 'Menşe', 'Kap', 'Net KG', 'İmalatçı'].map((h) => (
-                  <th key={h} className="px-2 py-2 text-[10.5px] font-bold uppercase tracking-wide text-muted-2 whitespace-nowrap">{h}</th>
-                ))}
+              <tr>
+                <th>#</th>
+                <th>Ticari tanım</th>
+                <th>Mal kodu</th>
+                <th>GTİP</th>
+                <th className="r">Miktar</th>
+                <th>Birim</th>
+                <th className="r">Birim fiyat</th>
+                <th className="r">Toplam fiyat</th>
+                <th>Menşe</th>
+                <th>Kap cinsi</th>
+                <th className="r">Net KG</th>
+                <th>İmalatçı</th>
               </tr>
             </thead>
             <tbody>
@@ -464,24 +571,52 @@ export default function ExportWritingPanel({
                 const needUnit = !unitValue;
                 const needMense = !menseValue;
                 return (
-                  <tr key={`${item.lineNo}-${index}`} className="border-b border-line align-top">
-                    <td className="px-2 py-2 text-[12px] text-muted">{item.lineNo || index + 1}</td>
-                    <td className="px-2 py-2">
-                      <input disabled={locked} className="w-44 h-7 rounded border border-line bg-surface px-1.5 text-[12px]" value={item.ticariTanim ?? ''} onChange={(e) => onLineChange(index, { ticariTanim: e.target.value })} onBlur={onLineBlur} />
+                  <tr key={`${item.lineNo}-${index}`}>
+                    <td className="ey-num" style={{ color: 'var(--muted)' }}>{item.lineNo || index + 1}</td>
+                    <td>
+                      <input
+                        disabled={locked}
+                        className="ey-ed"
+                        style={{ width: 230 }}
+                        value={item.ticariTanim ?? item.description ?? ''}
+                        onChange={(e) => onLineChange(index, { ticariTanim: e.target.value })}
+                        onBlur={onLineBlur}
+                      />
                     </td>
-                    <td className="px-2 py-2">
-                      <input disabled={locked} className="w-28 h-7 rounded border border-line bg-surface px-1.5 text-[12px] font-mono" value={item.malzemeNo ?? ''} onChange={(e) => onLineChange(index, { malzemeNo: e.target.value })} onBlur={onLineBlur} />
+                    <td>
+                      <input
+                        disabled={locked}
+                        className="ey-ed ey-mono"
+                        style={{ width: 130 }}
+                        value={item.malzemeNo ?? ''}
+                        onChange={(e) => onLineChange(index, { malzemeNo: e.target.value })}
+                        onBlur={onLineBlur}
+                      />
                     </td>
-                    <td className="px-2 py-2">
-                      <input disabled={locked} className="w-32 h-7 rounded border border-line bg-surface px-1.5 text-[12px] font-mono" value={item.gtip ?? ''} onChange={(e) => onLineChange(index, { gtip: e.target.value })} onBlur={onLineBlur} />
+                    <td>
+                      <input
+                        disabled={locked}
+                        className="ey-ed ey-mono"
+                        style={{ width: 125 }}
+                        value={item.gtip === '—' ? '' : (item.gtip ?? '')}
+                        onChange={(e) => onLineChange(index, { gtip: e.target.value })}
+                        onBlur={onLineBlur}
+                      />
                     </td>
-                    <td className="px-2 py-2">
-                      <input disabled={locked} className="w-20 h-7 rounded border border-line bg-surface px-1.5 text-[12px] text-right" value={item.quantity ?? ''} onChange={(e) => onLineChange(index, applyWeightQuantity({ ...item, quantity: e.target.value }))} onBlur={onLineBlur} />
+                    <td className="r">
+                      <input
+                        disabled={locked}
+                        className="ey-ed r ey-num"
+                        style={{ width: 72 }}
+                        value={item.quantity === '—' ? '' : (item.quantity ?? '')}
+                        onChange={(e) => onLineChange(index, applyWeightQuantity({ ...item, quantity: e.target.value }))}
+                        onBlur={onLineBlur}
+                      />
                     </td>
-                    <td className="px-2 py-2">
+                    <td className={needUnit ? 'sorun' : undefined}>
                       <select
                         disabled={locked}
-                        className={`w-28 h-7 rounded border px-1 text-[12px] ${needUnit ? 'border-warn bg-warn-tint' : 'border-line bg-surface'}`}
+                        className={needUnit ? undefined : 'ey-ed ey-mono'}
                         value={unitValue}
                         onChange={(e) => onLineChange(index, applyWeightQuantity({ ...item, miktarBirimi: e.target.value }))}
                         onBlur={onLineBlur}
@@ -489,27 +624,36 @@ export default function ExportWritingPanel({
                         <option value="">Seçin</option>
                         {codes.miktar.map((opt) => <option key={opt.ediKodu} value={opt.ediKodu}>{opt.label}</option>)}
                       </select>
+                      {needUnit && <span className="ey-kay" style={{ color: '#7a5a16' }}>Evrim kodu seçin</span>}
                     </td>
-                    <td className="px-2 py-2">
-                      <input disabled={locked} className="w-24 h-7 rounded border border-line bg-surface px-1.5 text-[12px] text-right" value={item.birimFiyat ?? ''} onChange={(e) => onLineChange(index, { birimFiyat: e.target.value })} onBlur={onLineBlur} />
+                    <td className="r">
+                      <input
+                        disabled={locked}
+                        className="ey-ed r ey-num"
+                        style={{ width: 82 }}
+                        value={item.birimFiyat === '—' ? '' : (item.birimFiyat ?? '')}
+                        onChange={(e) => onLineChange(index, { birimFiyat: e.target.value })}
+                        onBlur={onLineBlur}
+                      />
                     </td>
-                    <td className="px-2 py-2 text-[12px] text-right whitespace-nowrap">{item.kiymet || '—'}</td>
-                    <td className="px-2 py-2">
+                    <td className="r ey-num">{item.kiymet || '—'}</td>
+                    <td className={needMense ? 'sorun' : undefined}>
                       <select
                         disabled={locked}
-                        className={`w-28 h-7 rounded border px-1 text-[12px] ${needMense ? 'border-warn bg-warn-tint' : 'border-line bg-surface'}`}
+                        className={needMense ? undefined : 'ey-ed ey-mono'}
                         value={menseValue}
                         onChange={(e) => onLineChange(index, { mense: e.target.value })}
                         onBlur={onLineBlur}
                       >
-                        <option value="">Seçin</option>
+                        <option value="">Menşe seçin</option>
                         {codes.mense.map((opt) => <option key={opt.ulkeNo} value={opt.ulkeNo}>{opt.label}</option>)}
                       </select>
+                      {needMense && <span className="ey-kay" style={{ color: '#7a5a16' }}>Kalemde ve açıklamada yok</span>}
                     </td>
-                    <td className="px-2 py-2">
+                    <td>
                       <select
                         disabled={locked}
-                        className="w-24 h-7 rounded border border-line bg-surface px-1 text-[12px]"
+                        className="ey-ed ey-mono"
                         value={kapValue}
                         onChange={(e) => onLineChange(index, { kapCinsi: e.target.value })}
                         onBlur={onLineBlur}
@@ -517,24 +661,58 @@ export default function ExportWritingPanel({
                         <option value="">—</option>
                         {codes.kap.map((opt) => <option key={opt.kod} value={opt.kod}>{opt.label}</option>)}
                       </select>
+                      <span className="ey-kay">{kapValue ? 'XML' : 'faturada yok'}</span>
                     </td>
-                    <td className="px-2 py-2 text-[12px] text-right whitespace-nowrap">{item.netKg || '—'}</td>
-                    <td className="px-2 py-2 text-[12px] whitespace-nowrap">{item.imalatci || '—'}{item.imalatciTipi ? ` · ${item.imalatciTipi}` : ''}</td>
+                    <td className="r ey-num">
+                      {item.netKg && item.netKg !== '—' ? item.netKg : <span style={{ color: 'var(--muted)' }}>—</span>}
+                    </td>
+                    <td>
+                      {item.imalatci ? (
+                        <>
+                          {item.imalatciTipi && (
+                            <span className={`ey-bdg ${item.imalatciTipi === 'I' ? 'ey-b-ok' : 'ey-b-blue'}`}>{item.imalatciTipi}</span>
+                          )}{' '}
+                          <span className="ey-mono">{item.imalatci}</span>
+                        </>
+                      ) : (
+                        <span style={{ color: 'var(--muted)' }}>Menşeye göre</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={7}>{filtre === 'sorun' ? 'Seçim gereken kalemler' : 'Toplam'}</td>
+                <td className="r ey-num">
+                  {kalemToplam.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {faturaCurrency}
+                </td>
+                <td colSpan={4} style={{ fontWeight: 400, color: 'var(--muted)', fontSize: 12 }}>
+                  {filtre === 'sorun'
+                    ? ''
+                    : faturaToplam > 0 && Math.abs(kalemToplam - faturaToplam) > 0.05
+                      ? <span style={{ color: 'var(--warn)' }}>Fatura toplamından {(kalemToplam - faturaToplam).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {faturaCurrency} farklı</span>
+                      : 'Fatura toplamıyla aynı'}
+                </td>
+              </tr>
+            </tfoot>
           </table>
-          <div className="px-4 py-3 text-[12.5px] border-t border-line flex justify-between gap-3">
-            <span className="text-muted">Kalem toplamı: <strong className="text-text-strong">{kalemToplam.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
-            <span className={faturaToplam > 0 && Math.abs(kalemToplam - faturaToplam) > 0.05 ? 'text-warn' : 'text-ok'}>
-              {faturaToplam > 0 && Math.abs(kalemToplam - faturaToplam) > 0.05
-                ? `Fatura toplamından ${(kalemToplam - faturaToplam).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} farklı`
-                : 'Fatura toplamıyla aynı / kontrol yok'}
-            </span>
-          </div>
-        </CardBody>
-      </Card>
+        </div>
+        <div className="ey-legend">
+          <span>Hücreye tıklayıp değiştirebilirsiniz</span>
+          <span>Gri yazı: değerin nereden geldiği</span>
+          <span>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--warn-tint)', border: '1px solid #e8d0a2', verticalAlign: -1 }} /> Seçim gerekiyor
+          </span>
+          <span>
+            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 3, background: 'var(--accent-tint)', verticalAlign: -1 }} /> Kullanıcı seçti / değiştirdi
+          </span>
+          <span>
+            <span className="ey-bdg ey-b-ok">I</span> imalatçı · <span className="ey-bdg ey-b-blue">T</span> tedarikçi
+          </span>
+        </div>
+      </section>
     </div>
   );
 }
