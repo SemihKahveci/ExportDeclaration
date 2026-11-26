@@ -63,7 +63,7 @@ export default function Button({
       disabled={isDisabled}
       title={writeBlocked ? (title || 'Bu işlem için yetkiniz yok (yalnızca görüntüleme)') : title}
       className={[
-        'inline-flex items-center justify-center font-medium rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 select-none',
+        'inline-flex items-center justify-center font-semibold rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 select-none',
         VARIANT_STYLES[variant],
         SIZE_STYLES[size],
         isDisabled ? 'opacity-40 pointer-events-none' : '',

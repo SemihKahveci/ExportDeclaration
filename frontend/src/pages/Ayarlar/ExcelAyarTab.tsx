@@ -132,13 +132,16 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
     }
   }
 
+  const fieldLbl = 'block text-[11px] font-bold uppercase tracking-[.05em] text-muted mb-1.5';
+  const fieldCtrl = 'w-full h-9 rounded-lg border border-line-strong bg-surface px-2.5 text-[13px] text-text focus:outline-none focus:border-accent';
+
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-[15px] font-bold text-text-strong">İhracat Excel Aktarımı</h2>
-        <p className="text-[12.5px] text-muted mt-1">
-          Evrim Excel K (kap cinsi) ve W (ambalaj) kolonları için taşıma şekline göre kurallar.
-          Öncelik: müşteriye özel → genel.
+        <p className="text-[12.5px] text-muted mt-1 max-w-[620px] leading-relaxed">
+          Evrim Excel K (kap cinsi) ve W (ambalaj) kolonları. İmalatçı (P/T) burada ayarlanmaz —
+          menşeye göre tip (TR→I, diğer→T), ID yoksa gönderici yazılır. Öncelik: müşteriye özel → genel.
         </p>
       </div>
 
@@ -165,10 +168,10 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
         />
         <CardBody className="space-y-3">
           {genel.length === 0 && (
-            <p className="text-[12.5px] text-muted">Henüz genel kural yok.</p>
+            <p className="text-[13px] text-muted">Henüz genel kural yok.</p>
           )}
           {genel.map((row) => (
-            <div key={row.key} className="rounded-xl border border-line bg-surface-2 p-3 space-y-3">
+            <div key={row.key} className="rounded-[10px] border border-line bg-surface p-3.5 space-y-3 shadow-card">
               <div className="flex flex-wrap gap-2" role="group" aria-label="Taşıma şekli">
                 {TASIMA.map((mode) => {
                   const on = row.tasimaSekilleri.includes(mode);
@@ -177,7 +180,7 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
                       key={mode}
                       type="button"
                       aria-pressed={on}
-                      className={`h-7 px-2.5 rounded-lg text-[12px] border ${on ? 'border-accent bg-accent-tint text-accent font-semibold' : 'border-line text-muted'}`}
+                      className={`h-8 px-3 rounded-lg text-[12.5px] font-semibold border ${on ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong text-muted bg-surface'}`}
                       onClick={() => toggleMode(row.key, mode)}
                     >
                       {on ? '✓ ' : ''}{mode}
@@ -185,11 +188,11 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
                   );
                 })}
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <label className="text-[12px] text-muted space-y-1">
-                  <span>Kap cinsi · K</span>
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                <label>
+                  <span className={fieldLbl}>Kap cinsi · K</span>
                   <select
-                    className="w-full h-8 rounded-lg border border-line bg-surface px-2 text-[12.5px] text-text"
+                    className={fieldCtrl}
                     value={row.kapKaynak === 'fatura' ? 'fatura' : row.kapSabit || 'BI'}
                     onChange={(e) => {
                       const value = e.target.value;
@@ -206,15 +209,15 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
                     ))}
                   </select>
                 </label>
-                <label className="text-[12px] text-muted space-y-1">
-                  <span>Ambalaj · W</span>
+                <label>
+                  <span className={fieldLbl}>Ambalaj · W</span>
                   <input
-                    className="w-full h-8 rounded-lg border border-line bg-surface px-2 text-[12.5px] font-mono text-text"
+                    className={`${fieldCtrl} font-mono`}
                     value={row.ambalaj}
                     onChange={(e) => setGenel((prev) => prev.map((item) => item.key === row.key ? { ...item, ambalaj: e.target.value } : item))}
                   />
                 </label>
-                <div className="flex items-end justify-end">
+                <div className="flex justify-end pb-0.5">
                   <Button
                     size="sm"
                     variant="default"
@@ -228,7 +231,7 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
             </div>
           ))}
           {uncovered.length > 0 && (
-            <p className="text-[12px] text-warn">
+            <p className="text-[12.5px] font-semibold text-warn">
               {uncovered.join(', ')} için genel kural yok; kap faturadan alınır, ambalaj boş kalır.
             </p>
           )}
@@ -260,11 +263,11 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
         />
         <CardBody className="space-y-3">
           {draft && (
-            <div className="rounded-xl border border-accent/40 bg-accent-tint/30 p-3 space-y-3">
-              <label className="block text-[12px] text-muted space-y-1">
-                <span>Müşteri (Evrim gönderici)</span>
+            <div className="rounded-[10px] border border-accent/40 bg-accent-tint/30 p-3.5 space-y-3">
+              <label>
+                <span className={fieldLbl}>Müşteri (Evrim gönderici)</span>
                 <input
-                  className="w-full h-8 rounded-lg border border-line bg-surface px-2 text-[12.5px]"
+                  className={fieldCtrl}
                   placeholder="Ad veya Evrim ID"
                   value={gonderenQ}
                   onChange={(e) => void searchGonderen(e.target.value)}
@@ -276,7 +279,7 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
                     <button
                       key={hit.gonderenNo}
                       type="button"
-                      className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-surface-2 border-b border-line last:border-0"
+                      className="w-full text-left px-3 py-2 text-[13px] hover:bg-surface-2 border-b border-line last:border-0"
                       onClick={() => {
                         setDraft((prev) => prev ? { ...prev, gonderenNo: hit.gonderenNo, gonderenUnvan: hit.unvan } : prev);
                         setGonderenQ(hit.label);
@@ -289,7 +292,7 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
                 </div>
               )}
               {draft.gonderenNo > 0 && (
-                <p className="text-[12px] text-ok">{draft.gonderenNo} – {draft.gonderenUnvan}</p>
+                <p className="text-[12.5px] font-semibold text-ok">{draft.gonderenNo} – {draft.gonderenUnvan}</p>
               )}
               <div className="flex flex-wrap gap-2">
                 {TASIMA.map((mode) => {
@@ -298,7 +301,7 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
                     <button
                       key={mode}
                       type="button"
-                      className={`h-7 px-2.5 rounded-lg text-[12px] border ${on ? 'border-accent bg-accent-tint text-accent font-semibold' : 'border-line text-muted'}`}
+                      className={`h-8 px-3 rounded-lg text-[12.5px] font-semibold border ${on ? 'border-accent bg-accent-tint text-accent' : 'border-line-strong text-muted bg-surface'}`}
                       onClick={() => setDraft((prev) => {
                         if (!prev) return prev;
                         const has = prev.tasimaSekilleri.includes(mode);
@@ -312,29 +315,35 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
                 })}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <select
-                  className="h-8 rounded-lg border border-line bg-surface px-2 text-[12.5px]"
-                  value={draft.kapKaynak === 'fatura' ? 'fatura' : draft.kapSabit || 'BI'}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setDraft((prev) => prev ? (
-                      value === 'fatura'
-                        ? { ...prev, kapKaynak: 'fatura', kapSabit: '' }
-                        : { ...prev, kapKaynak: 'sabit', kapSabit: value }
-                    ) : prev);
-                  }}
-                >
-                  <option value="fatura">Faturadaki</option>
-                  {['BI', 'BX', 'PO', 'PX'].map((kod) => (
-                    <option key={kod} value={kod}>Sabit · {kod}</option>
-                  ))}
-                </select>
-                <input
-                  className="h-8 rounded-lg border border-line bg-surface px-2 text-[12.5px] font-mono"
-                  placeholder="Ambalaj (W)"
-                  value={draft.ambalaj}
-                  onChange={(e) => setDraft((prev) => prev ? { ...prev, ambalaj: e.target.value } : prev)}
-                />
+                <label>
+                  <span className={fieldLbl}>Kap cinsi · K</span>
+                  <select
+                    className={fieldCtrl}
+                    value={draft.kapKaynak === 'fatura' ? 'fatura' : draft.kapSabit || 'BI'}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setDraft((prev) => prev ? (
+                        value === 'fatura'
+                          ? { ...prev, kapKaynak: 'fatura', kapSabit: '' }
+                          : { ...prev, kapKaynak: 'sabit', kapSabit: value }
+                      ) : prev);
+                    }}
+                  >
+                    <option value="fatura">Faturadaki</option>
+                    {['BI', 'BX', 'PO', 'PX'].map((kod) => (
+                      <option key={kod} value={kod}>Sabit · {kod}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span className={fieldLbl}>Ambalaj · W</span>
+                  <input
+                    className={`${fieldCtrl} font-mono`}
+                    placeholder="Ambalaj (W)"
+                    value={draft.ambalaj}
+                    onChange={(e) => setDraft((prev) => prev ? { ...prev, ambalaj: e.target.value } : prev)}
+                  />
+                </label>
               </div>
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="default" onClick={() => { setDraft(null); setGonderenHits([]); setGonderenQ(''); }}>Vazgeç</Button>
@@ -344,13 +353,13 @@ export default function ExcelAyarTab({ ayar, onChange }: ExcelAyarTabProps) {
           )}
 
           {musteri.length === 0 && !draft && (
-            <p className="text-[12.5px] text-muted">Müşteriye özel kural yok.</p>
+            <p className="text-[13px] text-muted">Müşteriye özel kural yok.</p>
           )}
           {musteri.map((row) => (
-            <div key={row.id} className="flex items-start justify-between gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2.5">
+            <div key={row.id} className="flex items-start justify-between gap-3 rounded-[10px] border border-line bg-surface px-3.5 py-3 shadow-card">
               <div>
-                <p className="text-[13px] font-semibold text-text-strong">{row.gonderenNo} – {row.gonderenUnvan || 'Müşteri'}</p>
-                <p className="text-[12px] text-muted mt-0.5">
+                <p className="text-[14px] font-bold text-text-strong">{row.gonderenNo} – {row.gonderenUnvan || 'Müşteri'}</p>
+                <p className="text-[12.5px] text-muted mt-0.5">
                   {row.tasimaSekilleri.join(', ')} · Kap: {row.kapKaynak === 'fatura' ? 'Faturadaki' : row.kapSabit} · W: {row.ambalaj || '—'}
                 </p>
               </div>

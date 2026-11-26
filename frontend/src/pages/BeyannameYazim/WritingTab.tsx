@@ -653,13 +653,13 @@ export default function WritingTab({
               { label: 'Müşteri',   value: record.customer, mono: false },
               { label: 'Rejim',     value: record.rejim,    mono: false },
             ].map(({ label, value, mono }) => (
-              <div key={label} className="flex items-center justify-between gap-3 py-2.5 text-[12.5px]">
-                <span className="text-muted font-semibold">{label}</span>
-                <span className={`text-text-strong text-right ${mono ? 'font-mono text-[12px]' : ''}`}>{value}</span>
+              <div key={label} className="flex items-center justify-between gap-3 py-2 text-[13px]">
+                <span className="text-muted font-bold">{label}</span>
+                <span className={`text-text-strong text-right ${mono ? 'font-mono text-[12.5px]' : ''}`}>{value}</span>
               </div>
             ))}
-            <div className="flex items-center justify-between gap-3 py-2.5 text-[12.5px]">
-              <span className="text-muted font-semibold">Durum</span>
+            <div className="flex items-center justify-between gap-3 py-2 text-[13px]">
+              <span className="text-muted font-bold">Durum</span>
               <Pill variant="warn">{record.durumLabel}</Pill>
             </div>
           </div>
@@ -683,9 +683,9 @@ export default function WritingTab({
                   style={{ accentColor: 'var(--accent-d)' }}
                 />
                 <span className="min-w-0">
-                  <span className="text-[12.5px] font-semibold text-text-strong block">{doc.name}</span>
+                  <span className="text-[13px] font-semibold text-text-strong block">{doc.name}</span>
                   {doc.note && (
-                    <span className="text-[11px] text-muted mt-0.5 block">{doc.note}</span>
+                    <span className="text-[11.5px] text-muted mt-0.5 block">{doc.note}</span>
                   )}
                 </span>
               </label>

@@ -44,7 +44,7 @@ export default function Pill({ variant = 'gray', children }: PillProps) {
   return (
     <span
       className={[
-        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium leading-none',
+        'inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-full text-[11.5px] font-semibold leading-none',
         !isHat ? s.bg : '',
         !isHat ? s.text : '',
       ].join(' ')}
