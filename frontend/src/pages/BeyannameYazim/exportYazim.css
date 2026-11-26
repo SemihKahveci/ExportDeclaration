@@ -287,6 +287,43 @@
   font-size: 13px;
 }
 
+/* Uzun hücre: hover’da tam metin popup (eski yazım tablosu gibi) */
+.ey-tipwrap {
+  position: relative;
+  display: block;
+  max-width: 100%;
+}
+
+.ey-tipwrap .ey-ed {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ey-tip {
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  display: none;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: #eaf3f1;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 8px 20px -8px rgba(13, 36, 34, 0.45);
+}
+
+.ey-tipwrap:hover .ey-tip {
+  display: block;
+}
+
 .ey-tsar tbody tr:hover td {
   background: color-mix(in srgb, var(--surface-2) 60%, transparent);
 }

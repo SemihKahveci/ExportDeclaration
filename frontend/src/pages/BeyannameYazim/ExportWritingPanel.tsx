@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { FileText } from 'lucide-react';
 import type { BeyannameLineItem, BeyannameRecord } from '../../types';
 import { apiGetJson, apiPostJson } from '../../api/apiClient';
@@ -60,6 +60,18 @@ function imalatciTipiFromMense(menseRaw: string | undefined, options: Parameters
   const ulkeNo = resolveMenseUlkeNo(menseRaw, options);
   if (!ulkeNo) return '';
   return ulkeNo === '052' ? 'I' : 'T';
+}
+
+/** Sığmayan hücre metni — hover’da tam hali (WritingTab popup’ı). */
+function TipWrap({ text, minLen = 16, children }: { text: string; minLen?: number; children: ReactNode }) {
+  const full = text.trim();
+  const show = full.length > minLen;
+  return (
+    <div className="ey-tipwrap">
+      {children}
+      {show ? <div className="ey-tip">{full}</div> : null}
+    </div>
+  );
 }
 
 interface ExportWritingPanelProps {
@@ -636,34 +648,40 @@ export default function ExportWritingPanel({
                   <tr key={`${item.lineNo}-${index}`}>
                     <td className="ey-num" style={{ color: 'var(--muted)' }}>{item.lineNo || index + 1}</td>
                     <td>
-                      <input
-                        disabled={locked}
-                        className="ey-ed"
-                        style={{ width: 230 }}
-                        value={item.ticariTanim ?? item.description ?? ''}
-                        onChange={(e) => onLineChange(index, { ticariTanim: e.target.value })}
-                        onBlur={onLineBlur}
-                      />
+                      <TipWrap text={item.ticariTanim ?? item.description ?? ''} minLen={18}>
+                        <input
+                          disabled={locked}
+                          className="ey-ed"
+                          style={{ width: 230 }}
+                          value={item.ticariTanim ?? item.description ?? ''}
+                          onChange={(e) => onLineChange(index, { ticariTanim: e.target.value })}
+                          onBlur={onLineBlur}
+                        />
+                      </TipWrap>
                     </td>
                     <td>
-                      <input
-                        disabled={locked}
-                        className="ey-ed ey-mono"
-                        style={{ width: 130 }}
-                        value={item.malzemeNo ?? ''}
-                        onChange={(e) => onLineChange(index, { malzemeNo: e.target.value })}
-                        onBlur={onLineBlur}
-                      />
+                      <TipWrap text={item.malzemeNo ?? ''} minLen={14}>
+                        <input
+                          disabled={locked}
+                          className="ey-ed ey-mono"
+                          style={{ width: 130 }}
+                          value={item.malzemeNo ?? ''}
+                          onChange={(e) => onLineChange(index, { malzemeNo: e.target.value })}
+                          onBlur={onLineBlur}
+                        />
+                      </TipWrap>
                     </td>
                     <td>
-                      <input
-                        disabled={locked}
-                        className="ey-ed ey-mono"
-                        style={{ width: 125 }}
-                        value={item.gtip === '—' ? '' : (item.gtip ?? '')}
-                        onChange={(e) => onLineChange(index, { gtip: e.target.value })}
-                        onBlur={onLineBlur}
-                      />
+                      <TipWrap text={item.gtip === '—' ? '' : (item.gtip ?? '')} minLen={14}>
+                        <input
+                          disabled={locked}
+                          className="ey-ed ey-mono"
+                          style={{ width: 125 }}
+                          value={item.gtip === '—' ? '' : (item.gtip ?? '')}
+                          onChange={(e) => onLineChange(index, { gtip: e.target.value })}
+                          onBlur={onLineBlur}
+                        />
+                      </TipWrap>
                     </td>
                     <td className="r">
                       <input
@@ -754,14 +772,15 @@ export default function ExportWritingPanel({
                         if (!tip && !id) {
                           return <span style={{ color: 'var(--muted)' }}>Menşe / gönderici bekleniyor</span>;
                         }
+                        const label = ad ? `${id} – ${ad}` : id;
                         return (
-                          <>
+                          <TipWrap text={label} minLen={18}>
                             {tip ? (
                               <span className={`ey-bdg ${tip === 'I' ? 'ey-b-ok' : 'ey-b-blue'}`}>{tip}</span>
                             ) : null}
                             {' '}
                             {id
-                              ? <span className="ey-mono">{ad ? `${id} – ${ad}` : id}</span>
+                              ? <span className="ey-mono">{label}</span>
                               : <span style={{ color: 'var(--muted)' }}>—</span>}
                             <span className="ey-kay">
                               {item.imalatci
@@ -772,7 +791,7 @@ export default function ExportWritingPanel({
                                     ? 'menşe tipi · ID göndericiden'
                                     : 'menşeye göre'}
                             </span>
-                          </>
+                          </TipWrap>
                         );
                       })()}
                     </td>
