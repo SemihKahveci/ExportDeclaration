@@ -101,8 +101,25 @@ function normalizeGoodsLine(row: Record<string, unknown>, fallbackLineNo: number
     lineTotal: numberOrUndef(row.lineTotal ?? row.LineTotal),
     origin: stringOrUndef(row.origin ?? row.Origin),
     grossKg: numberOrUndef(row.grossKg ?? row.GrossKg),
-    netKg: numberOrUndef(row.netKg ?? row.NetKg)
+    netKg: numberOrUndef(row.netKg ?? row.NetKg),
+    invoiceNo: stringOrUndef(row.invoiceNo ?? row.InvoiceNo),
+    packageType: stringOrUndef(row.packageType ?? row.PackageType),
+    manufacturerNo: numberOrUndef(row.manufacturerNo ?? row.ManufacturerNo),
+    manufacturerType: stringOrUndef(row.manufacturerType ?? row.ManufacturerType),
   };
+}
+
+function resolveInvoiceNotes(sources: ExtractedSource[]): string[] {
+  for (const sourceType of sourcePriorityRules.invoiceNotes ?? ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"]) {
+    const matches = sources.filter((x) => x.type === sourceType);
+    for (const source of matches) {
+      const raw = source.data?.invoiceNotes;
+      if (!Array.isArray(raw)) continue;
+      const notes = raw.map((item) => String(item ?? "").trim()).filter(Boolean);
+      if (notes.length > 0) return notes;
+    }
+  }
+  return [];
 }
 
 function stringOrUndef(v: unknown): string | undefined {
@@ -176,6 +193,12 @@ export function buildNormalizedDeclaration(sources: ExtractedSource[]): {
   normalized.goodsLines = lines;
   if (lines.length > 0) {
     trace["goodsLines"] = { value: lines, source };
+  }
+
+  const invoiceNotes = resolveInvoiceNotes(sources);
+  if (invoiceNotes.length > 0) {
+    normalized.invoiceNotes = invoiceNotes;
+    trace.invoiceNotes = { value: invoiceNotes, source: resolveField("invoiceNotes", sources).sourceType };
   }
 
   const evrim = sources.find((s) => s.data.evrimHeader)?.data.evrimHeader;

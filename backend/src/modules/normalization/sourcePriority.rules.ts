@@ -28,7 +28,9 @@ export const sourcePriorityRules: Record<string, DocumentTypeValue[]> = {
   "packageInfo.totalPackage": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"],
   "packageInfo.packageType": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"],
   "packageInfo.grossKg": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"],
-  "packageInfo.netKg": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"]
+  "packageInfo.netKg": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE", "PACKING_LIST"],
+
+  "invoiceNotes": ["E_INVOICE_XML", "INVOICE", "EXPORT_INVOICE"]
 };
 
 /** Kalem satırları: e-fatura XML > PDF fatura > EXPORT_INVOICE. */

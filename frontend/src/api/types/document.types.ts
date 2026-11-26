@@ -95,6 +95,7 @@ export interface NormalizedDeclaration {
     netKg?: number;
   };
   goodsLines: GoodsLine[];
+  invoiceNotes?: string[];
 }
 
 export function emptyNormalized(): NormalizedDeclaration {
@@ -126,9 +127,15 @@ export function mergeNormalizedFromApi(raw: unknown): NormalizedDeclaration {
         origin: row.origin,
         grossKg: row.grossKg,
         netKg: row.netKg,
-        invoiceNo: row.invoiceNo
+        invoiceNo: row.invoiceNo,
+        packageType: row.packageType,
+        manufacturerNo: row.manufacturerNo,
+        manufacturerType: row.manufacturerType,
       }))
     : e.goodsLines;
+  const invoiceNotes = Array.isArray(n.invoiceNotes)
+    ? n.invoiceNotes.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : undefined;
   return {
     header: { ...e.header, ...n.header },
     evrimHeader: n.evrimHeader ?? e.evrimHeader,
@@ -142,7 +149,8 @@ export function mergeNormalizedFromApi(raw: unknown): NormalizedDeclaration {
     finance: n.finance ? { ...n.finance } : undefined,
     documents: n.documents ? { ...n.documents } : undefined,
     packageInfo: { ...e.packageInfo, ...n.packageInfo },
-    goodsLines: gl
+    goodsLines: gl,
+    ...(invoiceNotes && invoiceNotes.length ? { invoiceNotes } : {}),
   };
 }
 

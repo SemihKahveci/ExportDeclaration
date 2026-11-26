@@ -84,6 +84,19 @@ function normalizeKey(value: string): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+/** Firma unvanı: noktalama / şirket ekleri farkını yumuşatır (SAN. vs SAN, A.Ş. vs AS). */
+function normalizeFirmName(value: string): string {
+  return normalizeKey(value)
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\b(A|ANONIM|ANONİM)\s*S(?:IRKETI|İRKETİ|IRKETI)?\b/g, "AS")
+    .replace(/\b(SAN|SANAYI|SANAYİ)\b/g, "SAN")
+    .replace(/\b(TIC|TICARET|TİCARET)\b/g, "TIC")
+    .replace(/\b(LTD|LIMITED|LİMİTED)\b/g, "LTD")
+    .replace(/\b(VE|&)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeVkn(value: string): string {
   return value.replace(/\D/g, "");
 }
@@ -330,23 +343,29 @@ export function lookupEvrimFirmaNoByVkn(
   if (matches.length === 0) return undefined;
   if (matches.length === 1) return matches[0]!.gonderenNo;
   if (!nameHint) return matches[0]!.gonderenNo;
-  const hint = normalizeKey(nameHint);
   const scored = matches
-    .map((row) => ({
-      row,
-      score: normalizeKey(row.unvan).includes(hint) || hint.includes(normalizeKey(row.unvan)) ? 2 : 0,
-    }))
+    .map((row) => ({ row, score: textMatchScore(row.unvan, nameHint) }))
     .sort((a, b) => b.score - a.score);
   return (scored[0]?.score ? scored[0].row : matches[0])?.gonderenNo;
 }
 
 function textMatchScore(haystack: string, needle: string): number {
   if (!needle) return 0;
-  const h = normalizeKey(haystack);
-  const n = normalizeKey(needle);
+  const hRaw = normalizeKey(haystack);
+  const nRaw = normalizeKey(needle);
+  const h = normalizeFirmName(haystack);
+  const n = normalizeFirmName(needle);
   if (!h || !n) return 0;
-  if (h === n) return 4;
-  if (h.includes(n) || n.includes(h)) return 2;
+  if (h === n || hRaw === nRaw) return 4;
+  if (h.includes(n) || n.includes(h) || hRaw.includes(nRaw) || nRaw.includes(hRaw)) return 3;
+
+  const hTokens = h.split(" ").filter((t) => t.length >= 2);
+  const nTokens = n.split(" ").filter((t) => t.length >= 2);
+  if (nTokens.length === 0) return 0;
+  const matched = nTokens.filter((t) => hTokens.includes(t) || h.includes(t)).length;
+  if (matched === nTokens.length && nTokens.length >= 2) return 3; // "Çelikel Alüminyum" → tam unvan
+  if (matched >= 2 && matched / nTokens.length >= 0.6) return 2;
+  if (matched >= 1 && nTokens.length === 1 && nTokens[0]!.length >= 5) return 1;
   return 0;
 }
 

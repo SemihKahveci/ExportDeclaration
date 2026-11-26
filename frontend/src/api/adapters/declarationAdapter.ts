@@ -261,6 +261,10 @@ export function toWritingFieldValues(norm: NormalizedDeclaration, op?: BackendDe
     "Önceki Belge No": norm.documents?.previousDocumentNo ?? "",
     "Dolaşım Belgesi No": norm.documents?.circulationDocumentNo ?? "",
     "Menşe Belgesi No": norm.documents?.originDocumentNo ?? "",
+
+    "Açıklama / Not Alanı": Array.isArray(norm.invoiceNotes)
+      ? norm.invoiceNotes.filter(Boolean).join("\n")
+      : "",
   };
   const extras = evrim.draftFields;
   if (extras && typeof extras === "object" && !Array.isArray(extras)) {
@@ -356,12 +360,30 @@ export function toBeyannameListeItem(d: BackendDeclaration, docs: UploadedDocume
   };
 }
 
+function invoiceNotesFromDocs(docs: UploadedDocument[]): string {
+  for (const doc of docs) {
+    const data = doc.extractedData;
+    if (!data || typeof data !== "object") continue;
+    const notes = (data as { invoiceNotes?: unknown }).invoiceNotes;
+    if (!Array.isArray(notes)) continue;
+    const joined = notes.map((item) => String(item ?? "").trim()).filter(Boolean).join("\n");
+    if (joined) return joined;
+  }
+  return "";
+}
+
 export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[]): BeyannameRecord {
   const norm = mergeNormalizedFromApi(d.normalizedData);
   const op = d.operation;
   const received = docs.filter((doc) => doc.extractionStatus === "SUCCESS").length;
   const formFields = toFormFields(norm);
   const fields = toWritingFields(norm, d.sourceTrace);
+  const fieldValues = toWritingFieldValues(norm, op);
+  // Eski kayıtlar: normalize’da notes yoksa belge extractedData’dan doldur
+  if (!fieldValues["Açıklama / Not Alanı"]) {
+    const fromDocs = invoiceNotesFromDocs(docs);
+    if (fromDocs) fieldValues["Açıklama / Not Alanı"] = fromDocs;
+  }
   return {
     id: d._id,
     ref: refFromId(d),
@@ -377,7 +399,7 @@ export function toBeyannameRecord(d: BackendDeclaration, docs: UploadedDocument[
     lineCount: norm.goodsLines.length,
     warningCount: d.status === "ERROR" ? 1 : 0,
     formFields,
-    fieldValues: toWritingFieldValues(norm, op),
+    fieldValues,
     fieldMappings: [],
     fields,
     lineItems: toLineItems(norm),

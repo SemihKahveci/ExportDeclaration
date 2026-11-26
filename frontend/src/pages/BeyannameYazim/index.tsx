@@ -132,7 +132,7 @@ export default function BeyannameYazimPage() {
     Promise.all([
       beyannameListeService.getItems(),
       beyannameService.getRecords(),
-    ]).then(([liste, recs]) => {
+    ]).then(async ([liste, recs]) => {
       setListeItems(liste);
       setRecords(recs);
       if (recs.length) {
@@ -143,6 +143,10 @@ export default function BeyannameYazimPage() {
         if (target?.parsing) {
           toast('Parse henüz bitmedi. Beyanname yazımı işlem tamamlanınca açılır.');
         } else if (target) {
+          const fresh = await beyannameService.getRecord(target.id);
+          if (fresh) {
+            setRecords((prev) => prev.map((row) => (row.id === fresh.id ? fresh : row)));
+          }
           setActiveTab(requestedTab);
           setViewMode('detail');
         }
@@ -162,7 +166,7 @@ export default function BeyannameYazimPage() {
       }
     : null;
 
-  function openDetail(item: BeyannameListeItem, tab: 'yazim' | 'kontrol') {
+  async function openDetail(item: BeyannameListeItem, tab: 'yazim' | 'kontrol') {
     if (item.parsing) {
       toast('Parse henüz bitmedi. Beyanname yazımı işlem tamamlanınca açılır.');
       return;
@@ -170,6 +174,11 @@ export default function BeyannameYazimPage() {
     const match = records.find((r) => r.ref === item.ref) ?? records[0];
     if (match) {
       setSelectedId(match.id);
+      // Detayda fatura notları / güncel normalize için tek kayıt yenile
+      const fresh = await beyannameService.getRecord(match.id);
+      if (fresh) {
+        setRecords((prev) => prev.map((row) => (row.id === fresh.id ? fresh : row)));
+      }
     }
     setActiveTab(tab);
     setHasViewedPreview(false);
@@ -618,7 +627,7 @@ export default function BeyannameYazimPage() {
             className={exportDetail ? 'items-start' : undefined}
             titleNode={exportDetail ? (
               <div className="min-w-0">
-                <p className="text-[14px] font-semibold text-text-strong leading-snug">
+                <p className="text-[15px] font-bold text-text-strong leading-snug">
                   <span className="font-mono">{selected.ref}</span>
                   {' · '}
                   {selected.customer}

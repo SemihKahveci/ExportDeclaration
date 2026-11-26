@@ -48,6 +48,13 @@ function resolveKapValue(raw: string, options: Array<{ kod: string; label: strin
   return hit?.kod ?? '';
 }
 
+/** Menşe TR (052) → I, değilse T. Ayarlar’da tutulmaz; Excel P/T kolonuna böyle yazılır. */
+function imalatciTipiFromMense(menseRaw: string | undefined, options: Parameters<typeof resolveMenseUlkeNo>[1]): 'I' | 'T' | '' {
+  const ulkeNo = resolveMenseUlkeNo(menseRaw, options);
+  if (!ulkeNo) return '';
+  return ulkeNo === '052' ? 'I' : 'T';
+}
+
 interface ExportWritingPanelProps {
   record: BeyannameRecord;
   fieldValues: Record<string, string>;
@@ -107,16 +114,44 @@ export default function ExportWritingPanel({
     const name = fv(fieldValues, 'Gönderici / İhracatçı Ünvanı');
     if (!name) return;
     let cancelled = false;
-    void apiGetJson<{ items: GonderenHit[] }>(`/api/evrim-lookup/gonderen?q=${encodeURIComponent(name)}&limit=5`)
-      .then((result) => {
-        if (cancelled || !result?.items || result.items.length !== 1) return;
-        const hit = result.items[0];
-        setGonderenNo(hit.gonderenNo);
-        setGonderenQ(hit.label);
-        onFieldChange(EVRIM_GONDEREN_KEY, String(hit.gonderenNo));
-        onFieldChange('Gönderici / İhracatçı Ünvanı', hit.unvan);
-      })
-      .catch(() => undefined);
+
+    async function resolveGonderen() {
+      // 1) Tam / kısmi unvan (backend noktalama farkını yumuşatır)
+      const byName = await apiGetJson<{ items: GonderenHit[] }>(
+        `/api/evrim-lookup/gonderen?q=${encodeURIComponent(name)}&limit=8`
+      ).catch(() => null);
+      let items = byName?.items ?? [];
+
+      // 2) Tam unvan tutmazsa anlamlı ilk kelimelerle tekrar dene ("Çelikel Alüminyum")
+      if (items.length === 0) {
+        const short = name
+          .split(/\s+/)
+          .filter((part) => part.length >= 3)
+          .slice(0, 2)
+          .join(' ');
+        if (short && short !== name) {
+          const retry = await apiGetJson<{ items: GonderenHit[] }>(
+            `/api/evrim-lookup/gonderen?q=${encodeURIComponent(short)}&limit=8`
+          ).catch(() => null);
+          items = retry?.items ?? [];
+        }
+      }
+
+      if (cancelled || items.length === 0) return;
+      if (items.length > 1) {
+        // Birden fazla ise listeyi aç; kullanıcı seçsin
+        setGonderenHits(items);
+        setGonderenQ(name);
+        return;
+      }
+      const hit = items[0]!;
+      setGonderenNo(hit.gonderenNo);
+      setGonderenQ(hit.label);
+      onFieldChange(EVRIM_GONDEREN_KEY, String(hit.gonderenNo));
+      onFieldChange('Gönderici / İhracatçı Ünvanı', hit.unvan);
+    }
+
+    void resolveGonderen();
     return () => { cancelled = true; };
   }, [record.id]);
 
@@ -305,7 +340,7 @@ export default function ExportWritingPanel({
           <div className="ey-card-b" style={{ display: 'flex', flexDirection: 'column', gap: 12.25 }}>
             <div>
               <label className="ey-lbl" htmlFor="ey-doviz">
-                Fatura döviz birimi <span style={{ fontWeight: 400, color: 'var(--muted-2)' }}>· isteğe bağlı</span>
+                Fatura döviz birimi <span className="ey-opt">· isteğe bağlı</span>
               </label>
               <input
                 id="ey-doviz"
@@ -332,7 +367,7 @@ export default function ExportWritingPanel({
 
             <div>
               <label className="ey-lbl" htmlFor="ey-gon">
-                Gönderici (ihracatçı) <span style={{ fontWeight: 400, color: 'var(--muted-2)' }}>· isteğe bağlı</span>
+                Gönderici (ihracatçı) <span className="ey-opt">· isteğe bağlı</span>
               </label>
               <input
                 id="ey-gon"
@@ -368,7 +403,7 @@ export default function ExportWritingPanel({
 
             <div>
               <label className="ey-lbl" htmlFor="ey-ali">
-                Alıcı (yurt dışı) <span style={{ fontWeight: 400, color: 'var(--muted-2)' }}>· isteğe bağlı</span>
+                Alıcı (yurt dışı) <span className="ey-opt">· isteğe bağlı</span>
               </label>
               {aliciWarn.includes('ID yok') && !aliciNo ? (
                 <div className="ey-inp" style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface-2)' }}>
@@ -434,8 +469,8 @@ export default function ExportWritingPanel({
                     <div key={doc.id} className="ey-dosya">
                       <FileText size={16} style={{ color: 'var(--accent)', marginTop: 1, flex: 'none' }} />
                       <span style={{ minWidth: 0, flex: 1 }}>
-                        <span className="ey-mono" style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text-strong)' }}>{doc.name}</span>
-                        <span style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginTop: 1.75 }}>{doc.note || (isXml ? 'ana kaynak' : 'tamamlayıcı')}</span>
+                        <span className="ey-mono" style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>{doc.name}</span>
+                        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{doc.note || (isXml ? 'ana kaynak' : 'tamamlayıcı')}</span>
                       </span>
                       <span className="ey-bdg ey-b-acc">{isXml ? 'XML' : 'PDF'}</span>
                     </div>
@@ -660,16 +695,34 @@ export default function ExportWritingPanel({
                       {item.netKg && item.netKg !== '—' ? item.netKg : <span style={{ color: 'var(--muted)' }}>—</span>}
                     </td>
                     <td>
-                      {item.imalatci ? (
-                        <>
-                          {item.imalatciTipi && (
-                            <span className={`ey-bdg ${item.imalatciTipi === 'I' ? 'ey-b-ok' : 'ey-b-blue'}`}>{item.imalatciTipi}</span>
-                          )}{' '}
-                          <span className="ey-mono">{item.imalatci}</span>
-                        </>
-                      ) : (
-                        <span style={{ color: 'var(--muted)' }}>Menşeye göre</span>
-                      )}
+                      {(() => {
+                        const tip = (item.imalatciTipi === 'I' || item.imalatciTipi === 'T')
+                          ? item.imalatciTipi
+                          : imalatciTipiFromMense(item.mense, codes.mense);
+                        const id = item.imalatci || (gonderenNo != null ? String(gonderenNo) : '');
+                        const fromSender = !item.imalatci && gonderenNo != null;
+                        if (!tip && !id) {
+                          return <span style={{ color: 'var(--muted)' }}>Menşe / gönderici bekleniyor</span>;
+                        }
+                        return (
+                          <>
+                            {tip ? (
+                              <span className={`ey-bdg ${tip === 'I' ? 'ey-b-ok' : 'ey-b-blue'}`}>{tip}</span>
+                            ) : null}
+                            {' '}
+                            {id ? <span className="ey-mono">{id}</span> : <span style={{ color: 'var(--muted)' }}>—</span>}
+                            <span className="ey-kay">
+                              {item.imalatci
+                                ? 'kalem'
+                                : fromSender
+                                  ? 'gönderici · menşe tipi'
+                                  : tip
+                                    ? 'menşe tipi · ID göndericiden'
+                                    : 'menşeye göre'}
+                            </span>
+                          </>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );

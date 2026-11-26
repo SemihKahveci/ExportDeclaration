@@ -51,6 +51,14 @@ assert.equal(mapEvrimIhracatQuantityUnit("EA"), "C62");
 
 const gonderen = searchEvrimGonderen("3206");
 assert.ok(gonderen.some((row) => row.gonderenNo === 3206));
+
+// Noktalama / kısmi unvan: fatura "San ve Tic. A.Ş" ↔ Excel "SAN. VE TİC.A.Ş."
+const celikelFull = searchEvrimGonderen("Çelikel Alüminyum Döküm İmalat San ve Tic. A.Ş");
+assert.ok(celikelFull.some((row) => row.gonderenNo === 2185), "tam unvan (noktalama farkı) → 2185");
+const celikelShort = searchEvrimGonderen("Çelikel Alüminyum");
+assert.ok(celikelShort.some((row) => row.gonderenNo === 2185), "kısmi unvan → 2185");
+assert.equal(lookupEvrimFirmaNoByVkn("2410053479", "Çelikel Alüminyum"), 2185);
+
 const alicilar = searchEvrimAliciForMusteri(3206, "");
 assert.ok(alicilar.length > 0);
 const unmatched = matchEvrimAliciForMusteri(3206, "BU ALICI YOK XYZ");

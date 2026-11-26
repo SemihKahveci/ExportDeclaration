@@ -92,6 +92,8 @@ export interface NormalizedDeclaration {
     netKg?: number;
   };
   goodsLines: GoodsLine[];
+  /** UBL / fatura Note blokları — yazımda “Fatura açıklaması” */
+  invoiceNotes?: string[];
 }
 
 export interface ExtractedSource {
