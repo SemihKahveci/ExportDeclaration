@@ -20,6 +20,7 @@ type CodeOptions = {
   mense: Array<{ ulkeNo: string; label: string }>;
 };
 
+const EMPTY_CODES: CodeOptions = { miktar: [], kap: [], mense: [] };
 const EVRIM_GONDEREN_KEY = 'Gönderici Evrim No';
 const EVRIM_ALICI_KEY = 'Alıcı Evrim No';
 
@@ -105,12 +106,18 @@ export default function ExportWritingPanel({
   const [aliciNo, setAliciNo] = useState<number | null>(() => parseStoredId(fv(fieldValues, EVRIM_ALICI_KEY)));
   const [aliciHits, setAliciHits] = useState<AliciHit[]>([]);
   const [aliciWarn, setAliciWarn] = useState('');
-  const [codes, setCodes] = useState<CodeOptions>({ miktar: [], kap: [], mense: [] });
+  const [codes, setCodes] = useState<CodeOptions>(EMPTY_CODES);
 
   useEffect(() => {
     void apiGetJson<CodeOptions>('/api/evrim-lookup/code-options')
-      .then(setCodes)
-      .catch(() => undefined);
+      .then((payload) => {
+        setCodes({
+          miktar: Array.isArray(payload?.miktar) ? payload.miktar : [],
+          kap: Array.isArray(payload?.kap) ? payload.kap : [],
+          mense: Array.isArray(payload?.mense) ? payload.mense : [],
+        });
+      })
+      .catch(() => setCodes(EMPTY_CODES));
   }, []);
 
   useEffect(() => {
@@ -192,14 +199,16 @@ export default function ExportWritingPanel({
   }, 0);
 
   const sorunluIndexes = useMemo(() => {
+    const miktar = codes?.miktar ?? [];
+    const mense = codes?.mense ?? [];
     const set = new Set<number>();
     lineItems.forEach((item, index) => {
-      const unitOk = codes.miktar.length === 0
+      const unitOk = miktar.length === 0
         ? Boolean(fv({ v: item.miktarBirimi ?? '' }, 'v'))
-        : Boolean(resolveMiktarValue(item.miktarBirimi ?? '', codes.miktar));
-      const menseOk = codes.mense.length === 0
+        : Boolean(resolveMiktarValue(item.miktarBirimi ?? '', miktar));
+      const menseOk = mense.length === 0
         ? Boolean(fv({ v: item.mense ?? '' }, 'v'))
-        : Boolean(resolveMenseValue(item.mense ?? '', codes.mense));
+        : Boolean(resolveMenseValue(item.mense ?? '', mense));
       if (!unitOk || !menseOk) set.add(index);
     });
     return set;
